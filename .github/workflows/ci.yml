@@ -1,0 +1,43 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: discordo
+          POSTGRES_PASSWORD: discordo
+          POSTGRES_DB: discordo_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U discordo" --health-interval 2s --health-retries 30
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+      # A step, not a service: service containers cannot be given the "server /data" command.
+      - run: docker run -d -p 9000:9000 -e MINIO_ROOT_USER=discordo -e MINIO_ROOT_PASSWORD=discordo-secret cgr.dev/chainguard/minio:latest server /data
+      - run: go vet ./...
+      - run: go test -race -p 1 ./...
+        env:
+          TEST_DATABASE_URL: postgres://discordo:discordo@localhost:5432/discordo_test
+          TEST_S3_ENDPOINT: localhost:9000
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      # Building the app project also builds Discordo.Core.
+      - run: dotnet build apps/windows/Discordo.App/Discordo.App.csproj -c Release -p:Platform=x64

@@ -1,0 +1,39 @@
+name: discordo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: discordo
+      POSTGRES_PASSWORD: discordo # local development only
+      POSTGRES_DB: discordo
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "discordo"]
+      interval: 2s
+      retries: 30
+
+  # S3-compatible object storage for attachments. MinIO no longer publishes official images, so this is
+  # Chainguard's build of it; any S3-compatible service works, the server only speaks the S3 API.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: discordo
+      MINIO_ROOT_PASSWORD: discordo-secret # local development only
+    ports:
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001" # web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "/usr/bin/minio", "--version"] # the image has no shell or curl, so this only proves the process starts
+      interval: 2s
+      retries: 30
+
+volumes:
+  pgdata:
+  miniodata:

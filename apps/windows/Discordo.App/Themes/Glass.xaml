@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The glass design system. Every surface in the app is a Border with Style="{StaticResource GlassPanel}":
+    a translucent blurred fill plus a light-catching edge, over the window's own acrylic backdrop.
+    When Windows has transparency effects turned off, AcrylicBrush draws its FallbackColor (opaque) on its own.
+
+    shortcut: blur + specular edge only; the edge refraction (displacement) needs a Win2D/Composition
+    shader that has to be tuned by eye on a real screen. Add it here, inside GlassPanel, once the app runs.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <AcrylicBrush x:Key="GlassFill" TintColor="#FF1B1B2A" TintOpacity="0.30" TintLuminosityOpacity="0.20" FallbackColor="#F01B1B2A" />
+            <AcrylicBrush x:Key="GlassFillRaised" TintColor="#FF3A3A55" TintOpacity="0.35" TintLuminosityOpacity="0.30" FallbackColor="#F02C2C40" />
+            <LinearGradientBrush x:Key="GlassEdge" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#73FFFFFF" Offset="0" />
+                <GradientStop Color="#14FFFFFF" Offset="0.35" />
+                <GradientStop Color="#0AFFFFFF" Offset="0.65" />
+                <GradientStop Color="#40FFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="GlassAccent" Color="#FF7C6CFF" />
+            <SolidColorBrush x:Key="GlassOnline" Color="#FF3DDC97" />
+            <Color x:Key="AmbientA">#807C6CFF</Color>
+            <Color x:Key="AmbientB">#6600C2FF</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <AcrylicBrush x:Key="GlassFill" TintColor="#FFFFFFFF" TintOpacity="0.35" TintLuminosityOpacity="0.45" FallbackColor="#F0F4F4FA" />
+            <AcrylicBrush x:Key="GlassFillRaised" TintColor="#FFFFFFFF" TintOpacity="0.55" TintLuminosityOpacity="0.60" FallbackColor="#F0FFFFFF" />
+            <LinearGradientBrush x:Key="GlassEdge" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#E6FFFFFF" Offset="0" />
+                <GradientStop Color="#40FFFFFF" Offset="0.35" />
+                <GradientStop Color="#26000000" Offset="0.65" />
+                <GradientStop Color="#99FFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="GlassAccent" Color="#FF5B4BE0" />
+            <SolidColorBrush x:Key="GlassOnline" Color="#FF1FA971" />
+            <Color x:Key="AmbientA">#665B4BE0</Color>
+            <Color x:Key="AmbientB">#5500A2E0</Color>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <CornerRadius x:Key="GlassRadius">20</CornerRadius>
+    <CornerRadius x:Key="GlassRadiusSmall">12</CornerRadius>
+
+    <Style x:Key="GlassPanel" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GlassFill}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource GlassEdge}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource GlassRadius}" />
+    </Style>
+
+    <!-- A panel sitting on top of another panel (cards, input bars). -->
+    <Style x:Key="GlassPanelRaised" TargetType="Border" BasedOn="{StaticResource GlassPanel}">
+        <Setter Property="Background" Value="{ThemeResource GlassFillRaised}" />
+        <Setter Property="CornerRadius" Value="{StaticResource GlassRadiusSmall}" />
+    </Style>
+
+    <Style x:Key="PanelTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+</ResourceDictionary>
