@@ -13,6 +13,8 @@
     <!-- Unpackaged: a plain .exe, no MSIX or certificate needed to run it. -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Lets `dotnet build` generate resources with the SDK's own tools instead of Visual Studio's. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
