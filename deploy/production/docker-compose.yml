@@ -1,0 +1,53 @@
+# Production stack, deployed by Openship (see openship.json at the repository root).
+#
+# Variables come from the project's environment in Openship, never from this file:
+#   POSTGRES_PASSWORD, S3_SECRET_KEY   random secrets (letters and digits only: one goes inside a URL)
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET   from the Discord Developer Portal
+#   PUBLIC_URL        how browsers reach the server, e.g. https://discordo.example.com
+#   MEDIA_PUBLIC_IP   the server's public IP, where clients send voice and video
+name: discordo
+
+services:
+  server:
+    build: ../../apps/server
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - minio
+    ports:
+      - "8080" # HTTP and WebSocket, reached through the domain
+      - "7882:7882/udp" # voice and video go straight to the host
+    environment:
+      DATABASE_URL: postgres://discordo:${POSTGRES_PASSWORD}@postgres:5432/discordo
+      PUBLIC_URL: ${PUBLIC_URL}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: discordo
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      MEDIA_PUBLIC_IP: ${MEDIA_PUBLIC_IP}
+
+  # Neither the database nor the object storage publishes a port: only the server reaches them.
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: discordo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: discordo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: server /data
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: discordo
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  miniodata:

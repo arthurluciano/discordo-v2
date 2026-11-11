@@ -34,15 +34,16 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	store, err := postgres.Open(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return err
+	// In a compose stack the database and the object storage start alongside us and take a moment.
+	var store *postgres.Store
+	if err := retry(ctx, func() (err error) { store, err = postgres.Open(ctx, cfg.DatabaseURL); return }); err != nil {
+		return fmt.Errorf("database: %w", err)
 	}
 	defer store.Close()
 
 	discord := auth.NewDiscord(cfg.DiscordClientID, cfg.DiscordClientSecret, cfg.PublicURL+"/auth/discord/callback")
-	blobs, err := blob.NewS3(ctx, cfg.S3)
-	if err != nil {
+	var blobs *blob.S3
+	if err := retry(ctx, func() (err error) { blobs, err = blob.NewS3(ctx, cfg.S3); return }); err != nil {
 		return fmt.Errorf("object storage: %w", err)
 	}
 	sfu, err := pion.New(cfg.Media)
@@ -65,4 +66,21 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// retry gives a dependency up to a minute to come up before giving up with its last error.
+func retry(ctx context.Context, connect func() error) error {
+	deadline := time.Now().Add(time.Minute)
+	for {
+		err := connect()
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		slog.Warn("dependency not ready, retrying", "err", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
