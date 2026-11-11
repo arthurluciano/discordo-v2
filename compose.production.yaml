@@ -1,4 +1,6 @@
-# Production stack, deployed by Openship (see openship.json at the repository root).
+# Production stack, deployed by Openship (see openship.json). It lives at the repository root because
+# Openship rejects build contexts that climb out of the compose file's folder.
+# For local development use deploy/docker-compose.yml (`make db`) instead.
 #
 # Variables come from the project's environment in Openship, never from this file:
 #   POSTGRES_PASSWORD, S3_SECRET_KEY   random secrets (letters and digits only: one goes inside a URL)
@@ -9,7 +11,7 @@ name: discordo
 
 services:
   server:
-    build: ../../apps/server
+    build: apps/server
     restart: unless-stopped
     depends_on:
       - postgres
