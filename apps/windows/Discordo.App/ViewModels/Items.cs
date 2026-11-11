@@ -26,12 +26,30 @@ public sealed class GuildItem(GuildSnapshot guild) : ObservableObject
     public string Initial => name.Length == 0 ? "?" : char.ToUpper(name[0]).ToString();
 }
 
-public sealed class ChannelItem(Channel channel)
+public sealed class ChannelItem(Channel channel) : ObservableObject
 {
+    private string inCall = "";
+
     public string Id { get; } = channel.Id;
     public string Name { get; } = channel.Name;
     public bool IsText { get; } = channel.Type == Channel.Text;
     public string Glyph => IsText ? "#" : "🔊";
+
+    /// <summary>Names of the people in this voice channel, one per line; empty when nobody is.</summary>
+    public string InCall
+    {
+        get => inCall;
+        set
+        {
+            if (SetProperty(ref inCall, value))
+            {
+                OnPropertyChanged(nameof(InCallVisibility));
+            }
+        }
+    }
+
+    public Microsoft.UI.Xaml.Visibility InCallVisibility =>
+        inCall.Length > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 }
 
 public sealed class MemberItem(Member member) : ObservableObject

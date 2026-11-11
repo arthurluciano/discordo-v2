@@ -70,14 +70,37 @@
                           AutomationProperties.Name="Canais">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChannelItem">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="{x:Bind Glyph}" Opacity="0.6" Width="20" />
-                                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                            <StackPanel Padding="0,4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{x:Bind Glyph}" Opacity="0.6" Width="20" />
+                                    <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind InCall, Mode=OneWay}" Visibility="{x:Bind InCallVisibility, Mode=OneWay}"
+                                           Margin="28,2,0,0" FontSize="12" Opacity="0.75" />
                             </StackPanel>
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <Button x:Name="InviteButton" Grid.Row="2" Content="Convidar pessoas" HorizontalAlignment="Stretch" Margin="12" Click="OnInvite" />
+                <StackPanel Grid.Row="2" Margin="12" Spacing="8">
+                    <Border x:Name="CallBar" Style="{StaticResource GlassPanelRaised}" Padding="12" Visibility="Collapsed">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{x:Bind ViewModel.CallTitle, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Click="OnToggleMute" ToolTipService.ToolTip="Ligar/desligar o microfone" AutomationProperties.Name="Ligar ou desligar o microfone">
+                                    <FontIcon Glyph="&#xE720;" FontSize="16" />
+                                </Button>
+                                <Button Click="OnToggleDeafen" ToolTipService.ToolTip="Ligar/desligar o som" AutomationProperties.Name="Ligar ou desligar o som">
+                                    <FontIcon Glyph="&#xE7F6;" FontSize="16" />
+                                </Button>
+                                <Button Click="OnLeaveCall" ToolTipService.ToolTip="Sair da chamada" AutomationProperties.Name="Sair da chamada">
+                                    <FontIcon Glyph="&#xE778;" FontSize="16" />
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="InviteButton" Content="Convidar pessoas" HorizontalAlignment="Stretch" Click="OnInvite" />
+                </StackPanel>
             </Grid>
         </Border>
 

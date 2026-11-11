@@ -9,6 +9,7 @@ namespace Discordo.App;
 /// <summary>Owns the session: shows the login or the shell, and runs the gateway while signed in.</summary>
 public sealed partial class MainWindow : Window
 {
+    private ShellViewModel? shell;
     private readonly ApiClient api = new(new Uri(Environment.GetEnvironmentVariable("DISCORDO_SERVER") ?? "http://localhost:8080"));
     private CancellationTokenSource? session;
 
@@ -18,7 +19,11 @@ public sealed partial class MainWindow : Window
         Title = "Discordo";
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
-        Closed += (_, _) => session?.Cancel();
+        Closed += (_, _) =>
+        {
+            shell?.LeaveCall();
+            session?.Cancel();
+        };
 
         if (TokenStore.Load() is { } token)
         {
@@ -48,8 +53,10 @@ public sealed partial class MainWindow : Window
         session = new CancellationTokenSource();
         var viewModel = new ShellViewModel(api);
         viewModel.LoggedOut += SignOut;
+        shell = viewModel;
 
         var gateway = new GatewayClient();
+        viewModel.SendGateway = gateway.SendAsync;
         gateway.Event += viewModel.OnGatewayEvent;
         gateway.ConnectionChanged += viewModel.OnConnectionChanged;
         gateway.Unauthorized += () => DispatcherQueue.TryEnqueue(SignOut);

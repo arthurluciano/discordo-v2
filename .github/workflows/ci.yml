@@ -32,6 +32,16 @@ jobs:
           TEST_DATABASE_URL: postgres://discordo:discordo@localhost:5432/discordo_test
           TEST_S3_ENDPOINT: localhost:9000
 
+  media-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5 # the interop test runs the real SFU
+        with:
+          go-version-file: apps/server/go.mod
+      - run: cargo test
+        working-directory: crates/media-core
+
   windows:
     runs-on: windows-latest
     steps:
@@ -39,5 +49,5 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      # Building the app project also builds Discordo.Core.
+      # Building the app project also builds Discordo.Core and the Rust media engine (cargo and CMake come with the runner).
       - run: dotnet build apps/windows/Discordo.App/Discordo.App.csproj -c Release -p:Platform=x64

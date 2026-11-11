@@ -40,6 +40,10 @@ public sealed partial class ShellView : UserControl
             ChannelList.SelectedItem = ViewModel.SelectedChannel;
             Composer.IsEnabled = ViewModel.SelectedChannel is not null;
         }
+        else if (e.PropertyName == nameof(ShellViewModel.InCall))
+        {
+            CallBar.Visibility = ViewModel.InCall ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void OnGuildSelected(object sender, SelectionChangedEventArgs e) =>
@@ -100,6 +104,12 @@ public sealed partial class ShellView : UserControl
         Clipboard.SetContent(data);
         InviteButton.Content = $"Copiado: {code}";
     }
+
+    private void OnToggleMute(object sender, RoutedEventArgs e) => ViewModel.ToggleMute();
+
+    private void OnToggleDeafen(object sender, RoutedEventArgs e) => ViewModel.ToggleDeafen();
+
+    private void OnLeaveCall(object sender, RoutedEventArgs e) => ViewModel.LeaveCall();
 
     private async void OnLogout(object sender, RoutedEventArgs e) => await ViewModel.LogoutAsync();
 }

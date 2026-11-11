@@ -15,6 +15,31 @@ public sealed class GatewayClient
     /// <summary>The server rejected the token; the client stops reconnecting.</summary>
     public event Action? Unauthorized;
 
+    private readonly SemaphoreSlim sending = new(1, 1); // a WebSocket allows one send at a time
+    private ClientWebSocket? current;
+
+    /// <summary>Sends a client message (calls and media signaling). Dropped when disconnected: READY resyncs.</summary>
+    public async Task SendAsync(string op, object data)
+    {
+        var bytes = new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(new { op, d = data }));
+        await sending.WaitAsync();
+        try
+        {
+            if (current is { State: WebSocketState.Open } socket)
+            {
+                await socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+        }
+        catch (Exception e) when (e is WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // The connection is going down; the receive loop notices and reconnects.
+        }
+        finally
+        {
+            sending.Release();
+        }
+    }
+
     public async Task RunAsync(Uri gatewayUri, string token, CancellationToken ct)
     {
         var delay = TimeSpan.FromSeconds(1);
@@ -26,6 +51,7 @@ public sealed class GatewayClient
                 await socket.ConnectAsync(gatewayUri, ct);
                 var hello = new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(new { token }));
                 await socket.SendAsync(hello, WebSocketMessageType.Text, true, ct);
+                current = socket;
                 ConnectionChanged?.Invoke(true);
                 delay = TimeSpan.FromSeconds(1);
 

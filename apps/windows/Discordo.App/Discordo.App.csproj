@@ -27,4 +27,15 @@
     <ProjectReference Include="..\Discordo.Core\Discordo.Core.csproj" />
   </ItemGroup>
 
+  <!-- The native media engine (Rust). Needs the Rust toolchain and CMake (for libopus) on the build machine. -->
+  <PropertyGroup>
+    <MediaCoreDir>$(MSBuildThisFileDirectory)..\..\..\crates\media-core\</MediaCoreDir>
+  </PropertyGroup>
+  <Target Name="BuildMediaCore" BeforeTargets="BeforeBuild">
+    <Exec Command="cargo build --release --manifest-path &quot;$(MediaCoreDir)Cargo.toml&quot;" />
+  </Target>
+  <ItemGroup>
+    <Content Include="$(MediaCoreDir)target\release\media_core.dll" Link="media_core.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
 </Project>

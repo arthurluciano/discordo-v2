@@ -84,10 +84,10 @@ fn pump_until(sender: &Session, track: &str, step: u64, payload: &[u8], frames: 
     while Instant::now() < deadline {
         sender.write(track, time, payload.to_vec());
         time += step;
-        if let Ok(frame) = frames.recv_timeout(Duration::from_millis(20)) {
-            if wanted(&frame) {
-                return frame;
-            }
+        if let Ok(frame) = frames.recv_timeout(Duration::from_millis(20))
+            && wanted(&frame)
+        {
+            return frame;
         }
     }
     panic!("no matching frame on {track} within the deadline");

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Discordo.App.Services;
 using Discordo.Core;
 using Microsoft.UI.Dispatching;
 
@@ -15,6 +16,14 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
 {
     private readonly DispatcherQueue ui = DispatcherQueue.GetForCurrentThread();
     private readonly Dictionary<string, GuildSnapshot> snapshots = [];
+    private readonly Dictionary<string, VoiceState> voiceStates = []; // by user ID
+    private string myId = "";
+    private MediaCall? call;
+    private string? callChannelId;
+    private bool muted, deafened;
+
+    /// <summary>Sends a client message over the gateway; set by whoever owns the connection.</summary>
+    public Func<string, object, Task> SendGateway { get; set; } = (_, _) => Task.CompletedTask;
 
     private GuildItem? selectedGuild;
     private ChannelItem? selectedChannel;
@@ -84,6 +93,19 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
             case "READY":
             {
                 var ready = Read<Ready>(d);
+                myId = ready.User.Id;
+                voiceStates.Clear();
+                foreach (var s in ready.VoiceStates ?? [])
+                {
+                    voiceStates[s.UserId] = s;
+                }
+                // A new connection means the server already dropped our call; go back in if we were in one.
+                var rejoin = callChannelId;
+                EndCall();
+                if (rejoin is not null)
+                {
+                    _ = SendGateway("voice_join", new { channel_id = rejoin });
+                }
                 var keep = selectedGuild?.Id;
                 snapshots.Clear();
                 Guilds.Clear();
@@ -204,6 +226,51 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                 }
                 break;
             }
+            case "VOICE_STATE_UPDATE":
+            {
+                var s = Read<VoiceState>(d);
+                if (s.ChannelId.Length == 0)
+                {
+                    voiceStates.Remove(s.UserId);
+                }
+                else
+                {
+                    voiceStates[s.UserId] = s;
+                }
+                RefreshVoice();
+                break;
+            }
+            case "VOICE_READY":
+            {
+                EndCall();
+                callChannelId = d.GetProperty("channel_id").GetString();
+                call = MediaCall.Start();
+                if (call is null)
+                {
+                    Status = "Não foi possível iniciar o áudio.";
+                    LeaveCall();
+                    break;
+                }
+                call.Signal += (op, sdp) => _ = SendGateway(op, new { sdp });
+                call.Closed += () => ui.TryEnqueue(() =>
+                {
+                    Status = "A chamada caiu.";
+                    LeaveCall();
+                });
+                if (!call.EnableMic())
+                {
+                    Status = "Sem microfone: você está só ouvindo.";
+                }
+                OnPropertyChanged(nameof(CallTitle));
+                OnPropertyChanged(nameof(InCall));
+                break;
+            }
+            case "RTC_OFFER" or "RTC_ANSWER":
+                call?.HandleSignal(type, d.GetProperty("sdp").GetString() ?? "");
+                break;
+            case "VOICE_ERROR":
+                Status = "Chamada: " + d.GetProperty("error").GetString();
+                break;
             // DMs, relationships, reactions and typing arrive too; their screens come in a later milestone.
         }
     }
@@ -231,6 +298,69 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
         }
         SelectedChannel = channel;
         _ = LoadMessagesAsync();
+        if (!channel.IsText && channel.Id != callChannelId)
+        {
+            _ = SendGateway("voice_join", new { channel_id = channel.Id }); // answered with VOICE_READY or VOICE_ERROR
+        }
+    }
+
+    // ---- call ----
+
+    public bool InCall => call is not null;
+
+    public string CallTitle =>
+        call is null ? "" : "Em chamada" + (muted ? " · mudo" : "") + (deafened ? " · sem som" : "");
+
+    public void ToggleMute() => SetCallFlags(!muted, deafened);
+
+    public void ToggleDeafen() => SetCallFlags(muted, !deafened);
+
+    private void SetCallFlags(bool mute, bool deafen)
+    {
+        if (call is null)
+        {
+            return;
+        }
+        (muted, deafened) = (mute || deafen, deafen); // deafened implies muted, as on the server
+        call.SetMuted(muted);
+        call.SetDeafened(deafened);
+        _ = SendGateway("voice_state", new { muted, deafened });
+        OnPropertyChanged(nameof(CallTitle));
+    }
+
+    public void LeaveCall()
+    {
+        if (callChannelId is not null)
+        {
+            _ = SendGateway("voice_leave", new { });
+        }
+        EndCall();
+    }
+
+    /// <summary>Tears down the local side of the call.</summary>
+    private void EndCall()
+    {
+        call?.Dispose();
+        call = null;
+        callChannelId = null;
+        (muted, deafened) = (false, false);
+        OnPropertyChanged(nameof(CallTitle));
+        OnPropertyChanged(nameof(InCall));
+    }
+
+    /// <summary>Shows who is in each voice channel of the selected guild.</summary>
+    private void RefreshVoice()
+    {
+        var names = selectedGuild is not null && snapshots.TryGetValue(selectedGuild.Id, out var g)
+            ? g.Members.ToDictionary(m => m.User.Id, m => m.Nickname.Length > 0 ? m.Nickname : m.User.DisplayName)
+            : new Dictionary<string, string>();
+        foreach (var channel in Channels)
+        {
+            channel.InCall = string.Join("\n", voiceStates.Values
+                .Where(s => s.ChannelId == channel.Id)
+                .Select(s => (names.GetValueOrDefault(s.UserId) ?? "?") + (s.Muted ? " (mudo)" : ""))
+                .Order());
+        }
     }
 
     /// <summary>Rebuilds the channel and member lists from the selected guild's snapshot, keeping the channel when it still exists.</summary>
@@ -250,6 +380,7 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                 Members.Add(new MemberItem(m));
             }
         }
+        RefreshVoice();
         // Always a fresh instance, so the view re-selects it in the rebuilt list.
         SelectedChannel = Channels.FirstOrDefault(c => c.Id == previous) ?? Channels.FirstOrDefault(c => c.IsText);
         if (reloadMessages || selectedChannel?.Id != previous)
@@ -309,6 +440,7 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
 
     public async Task LogoutAsync()
     {
+        LeaveCall();
         await TryAsync(() => api.LogoutAsync()); // signing out locally must work even if the server is unreachable
         LoggedOut?.Invoke();
     }

@@ -5,8 +5,8 @@ App de comunidades com chat, voz e transmissão em tempo real. Monorepo:
 | Pasta | O quê | Estado |
 |---|---|---|
 | `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos (transmissão em camadas e LiveKit a fazer) |
-| `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais e chat em tempo real; ainda não compilado em um Windows |
-| `crates/media-core` | Núcleo de mídia em Rust (captura e encode por GPU, WebRTC) | a fazer |
+| `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais, chat em tempo real e chamadas de voz; ainda não compilado em um Windows |
+| `crates/media-core` | Motor de mídia em Rust: WebRTC, áudio (WASAPI + Opus) | transporte testado contra o SFU; áudio ainda não executado em um Windows; vídeo por GPU a fazer |
 | `docs/protocol.md` | Contrato entre cliente e servidor | |
 | `deploy/` | Infra local (Postgres, MinIO) | |
 
@@ -40,7 +40,10 @@ Precisa de Go e Docker.
 
 ## Rodando o cliente Windows
 
-Precisa do Visual Studio 2022 com a carga de trabalho "Desenvolvimento de aplicativos WinUI" (ou só o SDK do .NET 8).
+Precisa de:
+
+- Visual Studio 2022 com as cargas "Desenvolvimento de aplicativos WinUI" e "Desenvolvimento para desktop com C++" (esta inclui o CMake, usado para compilar o codec Opus);
+- [Rust](https://rustup.rs) (o build do app compila o motor de mídia com `cargo`).
 
 ```powershell
 $env:DISCORDO_SERVER = "http://<ip do servidor>:8080"   # opcional; o padrão é http://localhost:8080

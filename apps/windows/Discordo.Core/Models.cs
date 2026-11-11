@@ -31,7 +31,11 @@ public record DmChannel(string Id, int Type, string Name, List<User> Recipients)
 
 public record Relationship(User User, int Status, bool Online);
 
-public record Ready(User User, List<GuildSnapshot> Guilds, List<DmChannel> Dms, List<Relationship> Relationships);
+/// <summary>Someone's presence in a call. An empty ChannelId means they left.</summary>
+public record VoiceState(string UserId, string ChannelId, string? GuildId, bool Muted, bool Deafened, List<string> Tracks);
+
+public record Ready(
+    User User, List<GuildSnapshot> Guilds, List<DmChannel> Dms, List<Relationship> Relationships, List<VoiceState> VoiceStates);
 
 public record Invite(string Code, string GuildId);
 
