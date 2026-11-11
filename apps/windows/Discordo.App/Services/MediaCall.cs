@@ -15,6 +15,10 @@ public sealed class MediaCall : IDisposable
     public event Action<string, string>? Signal;
     /// <summary>The media connection was lost.</summary>
     public event Action? Closed;
+    /// <summary>The watched video's picture size: (width, height). Sent for the first frame and on changes.</summary>
+    public event Action<int, int>? VideoSized;
+    /// <summary>Our screen share ended on its own (capture or encoder failure).</summary>
+    public event Action? ShareStopped;
 
     private static readonly ConcurrentDictionary<nint, MediaCall> Calls = new();
     private static readonly EventCallback Callback = OnEvent; // static: the native side may call it at any time
@@ -76,6 +80,31 @@ public sealed class MediaCall : IDisposable
         }
     }
 
+    /// <summary>Shares the primary screen. Returns 1 when the GPU encodes, 2 when the CPU does, 0 on failure.</summary>
+    public int ShareScreen(int height, int fps) => handle == 0 ? 0 : dm_call_share_screen(handle, (uint)height, (uint)fps);
+
+    public void StopShare()
+    {
+        if (handle != 0)
+        {
+            dm_call_stop_share(handle);
+        }
+    }
+
+    /// <summary>
+    /// Starts decoding someone's video. Returns an IDXGISwapChain1* for a SwapChainPanel (0 on failure);
+    /// the caller owns one reference and must release it.
+    /// </summary>
+    public nint Watch(string userId, string track) => handle == 0 ? 0 : dm_call_watch(handle, userId, track);
+
+    public void Unwatch(string userId, string track)
+    {
+        if (handle != 0)
+        {
+            dm_call_unwatch(handle, userId, track);
+        }
+    }
+
     public void Dispose()
     {
         var h = Interlocked.Exchange(ref handle, 0);
@@ -103,6 +132,12 @@ public sealed class MediaCall : IDisposable
                     break;
                 case "closed":
                     call.Closed?.Invoke();
+                    break;
+                case "video":
+                    call.VideoSized?.Invoke(root.GetProperty("width").GetInt32(), root.GetProperty("height").GetInt32());
+                    break;
+                case "share_stopped":
+                    call.ShareStopped?.Invoke();
                     break;
             }
         }
@@ -132,6 +167,18 @@ public sealed class MediaCall : IDisposable
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void dm_call_set_deafened(nint call, [MarshalAs(UnmanagedType.I1)] bool deafened);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int dm_call_share_screen(nint call, uint height, uint fps);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void dm_call_stop_share(nint call);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint dm_call_watch(nint call, [MarshalAs(UnmanagedType.LPUTF8Str)] string user, [MarshalAs(UnmanagedType.LPUTF8Str)] string track);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void dm_call_unwatch(nint call, [MarshalAs(UnmanagedType.LPUTF8Str)] string user, [MarshalAs(UnmanagedType.LPUTF8Str)] string track);
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void dm_call_stop(nint call);

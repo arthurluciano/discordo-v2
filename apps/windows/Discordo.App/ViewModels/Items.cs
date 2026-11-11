@@ -52,6 +52,12 @@ public sealed class ChannelItem(Channel channel) : ObservableObject
         inCall.Length > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 }
 
+/// <summary>Someone in our call who is sharing their screen.</summary>
+public sealed record StreamItem(string UserId, string Name)
+{
+    public string Label => $"Assistir {Name}";
+}
+
 public sealed class MemberItem(Member member) : ObservableObject
 {
     private bool online = member.Online;

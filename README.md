@@ -5,8 +5,8 @@ App de comunidades com chat, voz e transmissão em tempo real. Monorepo:
 | Pasta | O quê | Estado |
 |---|---|---|
 | `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos (transmissão em camadas e LiveKit a fazer) |
-| `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais, chat em tempo real e chamadas de voz; ainda não compilado em um Windows |
-| `crates/media-core` | Motor de mídia em Rust: WebRTC, áudio (WASAPI + Opus) | transporte testado contra o SFU; áudio ainda não executado em um Windows; vídeo por GPU a fazer |
+| `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais, chat em tempo real, chamadas de voz e transmissão de tela (480p a 4K); ainda não compilado em um Windows |
+| `crates/media-core` | Motor de mídia em Rust: WebRTC, áudio (WASAPI + Opus), captura de tela e H.264 por GPU (Media Foundation) | transporte testado contra o SFU; áudio e vídeo checados só por tipos, ainda não executados em um Windows |
 | `docs/protocol.md` | Contrato entre cliente e servidor | |
 | `deploy/` | Infra local (Postgres, MinIO) | |
 
@@ -51,3 +51,10 @@ dotnet run --project apps/windows/Discordo.App -p:Platform=x64
 ```
 
 Ou abra `apps/windows/Discordo.sln` e rode o projeto `Discordo.App`.
+
+### Transmissão de tela
+
+Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela" (monitor principal).
+A codificação usa o encoder da placa de vídeo (NVENC, AMF ou Quick Sync); sem um, cai para o encoder de software e o app avisa.
+Para testar esse fallback, defina `DISCORDO_FORCE_SW_ENCODE=1` antes de abrir o app.
+No Gerenciador de Tarefas, aba Desempenho → GPU, o gráfico "Video Encode" mostra o encoder de hardware em uso.

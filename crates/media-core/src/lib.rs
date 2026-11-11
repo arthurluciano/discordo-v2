@@ -9,9 +9,13 @@
 
 #[cfg(windows)]
 mod audio_win;
+#[cfg(windows)]
+mod video_win;
 pub mod call;
 pub mod codec;
 pub mod ffi;
+pub mod h264;
 pub mod mixer;
+pub mod quality;
 pub mod session;
 pub mod transport;

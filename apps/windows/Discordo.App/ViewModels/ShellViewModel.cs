@@ -20,7 +20,16 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
     private string myId = "";
     private MediaCall? call;
     private string? callChannelId;
-    private bool muted, deafened;
+    private bool muted, deafened, sharing;
+    private string? watching; // user ID whose screen we are showing
+
+    /// <summary>People in our call who are sharing their screen.</summary>
+    public ObservableCollection<StreamItem> Streams { get; } = [];
+
+    /// <summary>The watched video has this picture size (raised on the UI thread).</summary>
+    public event Action<int, int>? VideoSized;
+    /// <summary>The video being watched is over; the view should hide it.</summary>
+    public event Action? WatchEnded;
 
     /// <summary>Sends a client message over the gateway; set by whoever owns the connection.</summary>
     public Func<string, object, Task> SendGateway { get; set; } = (_, _) => Task.CompletedTask;
@@ -257,12 +266,19 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                     Status = "A chamada caiu.";
                     LeaveCall();
                 });
+                call.VideoSized += (width, height) => ui.TryEnqueue(() => VideoSized?.Invoke(width, height));
+                call.ShareStopped += () => ui.TryEnqueue(() =>
+                {
+                    Status = "A transmissão parou: falha na captura ou no encoder.";
+                    StopShare();
+                });
                 if (!call.EnableMic())
                 {
                     Status = "Sem microfone: você está só ouvindo.";
                 }
                 OnPropertyChanged(nameof(CallTitle));
                 OnPropertyChanged(nameof(InCall));
+                RefreshVoice();
                 break;
             }
             case "RTC_OFFER" or "RTC_ANSWER":
@@ -309,7 +325,69 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
     public bool InCall => call is not null;
 
     public string CallTitle =>
-        call is null ? "" : "Em chamada" + (muted ? " · mudo" : "") + (deafened ? " · sem som" : "");
+        call is null ? "" : "Em chamada" + (muted ? " · mudo" : "") + (deafened ? " · sem som" : "") + (sharing ? " · transmitindo" : "");
+
+    public bool Sharing => sharing;
+
+    /// <summary>Starts sharing the primary screen at up to <paramref name="height"/> lines.</summary>
+    public void StartShare(int height, int fps)
+    {
+        if (call is null)
+        {
+            return;
+        }
+        var result = call.ShareScreen(height, fps);
+        sharing = result != 0;
+        Status = result switch
+        {
+            0 => "Não foi possível transmitir a tela.",
+            2 => "Transmitindo com codificação por CPU: nenhum encoder de GPU disponível.",
+            _ => "",
+        };
+        OnPropertyChanged(nameof(Sharing));
+        OnPropertyChanged(nameof(CallTitle));
+    }
+
+    public void StopShare()
+    {
+        call?.StopShare();
+        sharing = false;
+        OnPropertyChanged(nameof(Sharing));
+        OnPropertyChanged(nameof(CallTitle));
+    }
+
+    /// <summary>
+    /// Starts watching someone's screen. Returns the swap chain (IDXGISwapChain1*) to show, or 0 on failure;
+    /// the caller owns one reference to it.
+    /// </summary>
+    public nint Watch(string userId)
+    {
+        if (call is null)
+        {
+            return 0;
+        }
+        Unwatch();
+        var swapChain = call.Watch(userId, "screen");
+        if (swapChain == 0)
+        {
+            Status = "Não foi possível abrir o vídeo.";
+            return 0;
+        }
+        watching = userId;
+        _ = SendGateway("rtc_subscribe", new { user_id = userId, track = "screen", on = true });
+        return swapChain;
+    }
+
+    public void Unwatch()
+    {
+        if (watching is not { } userId)
+        {
+            return;
+        }
+        watching = null;
+        call?.Unwatch(userId, "screen");
+        _ = SendGateway("rtc_subscribe", new { user_id = userId, track = "screen", on = false });
+    }
 
     public void ToggleMute() => SetCallFlags(!muted, deafened);
 
@@ -340,10 +418,17 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
     /// <summary>Tears down the local side of the call.</summary>
     private void EndCall()
     {
+        if (watching is not null)
+        {
+            watching = null; // the call is going away, and the server-side subscription with it
+            WatchEnded?.Invoke();
+        }
         call?.Dispose();
         call = null;
         callChannelId = null;
-        (muted, deafened) = (false, false);
+        (muted, deafened, sharing) = (false, false, false);
+        Streams.Clear();
+        OnPropertyChanged(nameof(Sharing));
         OnPropertyChanged(nameof(CallTitle));
         OnPropertyChanged(nameof(InCall));
     }
@@ -360,6 +445,26 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                 .Where(s => s.ChannelId == channel.Id)
                 .Select(s => (names.GetValueOrDefault(s.UserId) ?? "?") + (s.Muted ? " (mudo)" : ""))
                 .Order());
+        }
+
+        // Who in our call is sharing their screen.
+        var live = voiceStates.Values
+            .Where(s => callChannelId is not null && s.ChannelId == callChannelId && s.UserId != myId && s.Tracks.Contains("screen"))
+            .Select(s => new StreamItem(s.UserId, names.GetValueOrDefault(s.UserId) ?? "?"))
+            .OrderBy(s => s.Name)
+            .ToList();
+        if (!live.SequenceEqual(Streams))
+        {
+            Streams.Clear();
+            foreach (var stream in live)
+            {
+                Streams.Add(stream);
+            }
+        }
+        if (watching is not null && live.All(s => s.UserId != watching))
+        {
+            Unwatch(); // they stopped sharing or left
+            WatchEnded?.Invoke();
         }
     }
 

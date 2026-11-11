@@ -1,11 +1,13 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Discordo.App.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using WinRT;
 
 namespace Discordo.App.Views;
 
@@ -20,8 +22,12 @@ public sealed partial class ShellView : UserControl
         InviteButton.IsEnabled = Composer.IsEnabled = false; // until something is selected
         ViewModel.PropertyChanged += OnViewModelChanged;
         ViewModel.Messages.CollectionChanged += OnMessagesChanged;
+        ViewModel.VideoSized += OnVideoSized;
+        ViewModel.WatchEnded += HideVideo;
         Unloaded += (_, _) =>
         {
+            ViewModel.VideoSized -= OnVideoSized;
+            ViewModel.WatchEnded -= HideVideo;
             ViewModel.PropertyChanged -= OnViewModelChanged;
             ViewModel.Messages.CollectionChanged -= OnMessagesChanged;
         };
@@ -43,6 +49,10 @@ public sealed partial class ShellView : UserControl
         else if (e.PropertyName == nameof(ShellViewModel.InCall))
         {
             CallBar.Visibility = ViewModel.InCall ? Visibility.Visible : Visibility.Collapsed;
+        }
+        else if (e.PropertyName == nameof(ShellViewModel.Sharing))
+        {
+            ShareButton.Content = ViewModel.Sharing ? "Parar transmissão" : "Transmitir tela";
         }
     }
 
@@ -110,6 +120,64 @@ public sealed partial class ShellView : UserControl
     private void OnToggleDeafen(object sender, RoutedEventArgs e) => ViewModel.ToggleDeafen();
 
     private void OnLeaveCall(object sender, RoutedEventArgs e) => ViewModel.LeaveCall();
+
+    private void OnToggleShare(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Sharing)
+        {
+            ViewModel.StopShare();
+            return;
+        }
+        static int Picked(ComboBox box) => int.Parse((string)((ComboBoxItem)box.SelectedItem).Tag);
+        ViewModel.StartShare(Picked(ShareHeight), Picked(ShareFps));
+    }
+
+    // ---- watching a screen share ----
+
+    private void OnWatch(object sender, RoutedEventArgs e)
+    {
+        var swapChain = ViewModel.Watch((string)((Button)sender).Tag);
+        if (swapChain == 0)
+        {
+            return;
+        }
+        try
+        {
+            // The panel takes its own reference to the swap chain; ours is released below.
+            Marshal.ThrowExceptionForHR(VideoPanel.As<ISwapChainPanelNative>().SetSwapChain(swapChain));
+            VideoArea.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            Marshal.Release(swapChain);
+        }
+    }
+
+    private void OnVideoSized(int width, int height)
+    {
+        // The Viewbox scales the panel to the space available, keeping the aspect ratio.
+        (VideoPanel.Width, VideoPanel.Height) = (width, height);
+    }
+
+    private void OnCloseVideo(object sender, RoutedEventArgs e)
+    {
+        ViewModel.Unwatch();
+        HideVideo();
+    }
+
+    private void HideVideo()
+    {
+        VideoArea.Visibility = Visibility.Collapsed;
+        VideoPanel.As<ISwapChainPanelNative>().SetSwapChain(0);
+    }
+
+    /// <summary>How native code hands a swap chain to a WinUI 3 SwapChainPanel.</summary>
+    [ComImport, Guid("63aad0b8-7c24-40ff-85a8-640d944cc325"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ISwapChainPanelNative
+    {
+        [PreserveSig]
+        int SetSwapChain(nint swapChain);
+    }
 
     private async void OnLogout(object sender, RoutedEventArgs e) => await ViewModel.LogoutAsync();
 }

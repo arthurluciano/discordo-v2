@@ -97,6 +97,27 @@
                                     <FontIcon Glyph="&#xE778;" FontSize="16" />
                                 </Button>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ComboBox x:Name="ShareHeight" SelectedIndex="2" AutomationProperties.Name="Resolução da transmissão">
+                                    <ComboBoxItem Content="480p" Tag="480" />
+                                    <ComboBoxItem Content="720p" Tag="720" />
+                                    <ComboBoxItem Content="1080p" Tag="1080" />
+                                    <ComboBoxItem Content="1440p" Tag="1440" />
+                                    <ComboBoxItem Content="4K" Tag="2160" />
+                                </ComboBox>
+                                <ComboBox x:Name="ShareFps" SelectedIndex="0" AutomationProperties.Name="Quadros por segundo da transmissão">
+                                    <ComboBoxItem Content="30 fps" Tag="30" />
+                                    <ComboBoxItem Content="60 fps" Tag="60" />
+                                </ComboBox>
+                            </StackPanel>
+                            <Button x:Name="ShareButton" Content="Transmitir tela" HorizontalAlignment="Stretch" Click="OnToggleShare" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Streams}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StreamItem">
+                                        <Button Content="{x:Bind Label}" Tag="{x:Bind UserId}" HorizontalAlignment="Stretch" Margin="0,4,0,0" Click="OnWatch" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
                     <Button x:Name="InviteButton" Content="Convidar pessoas" HorizontalAlignment="Stretch" Click="OnInvite" />
@@ -109,12 +130,25 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="{x:Bind ViewModel.ChannelTitle, Mode=OneWay}" Style="{StaticResource PanelTitle}" Margin="20,16,20,8" />
-                <ListView x:Name="MessageList" Grid.Row="1" ItemsSource="{x:Bind ViewModel.Messages}" SelectionMode="None"
+                <!-- A watched screen share. The native engine draws straight into the panel's swap chain. -->
+                <Grid x:Name="VideoArea" Grid.Row="1" Visibility="Collapsed" MaxHeight="520" Margin="12,0,12,8">
+                    <Border CornerRadius="12" Background="Black">
+                        <Viewbox Stretch="Uniform">
+                            <SwapChainPanel x:Name="VideoPanel" Width="1280" Height="720" />
+                        </Viewbox>
+                    </Border>
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Click="OnCloseVideo"
+                            ToolTipService.ToolTip="Fechar o vídeo" AutomationProperties.Name="Fechar o vídeo">
+                        <FontIcon Glyph="&#xE711;" FontSize="14" />
+                    </Button>
+                </Grid>
+                <ListView x:Name="MessageList" Grid.Row="2" ItemsSource="{x:Bind ViewModel.Messages}" SelectionMode="None"
                           Padding="8,0" AutomationProperties.Name="Mensagens">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:MessageItem">
@@ -129,9 +163,9 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.Status, Mode=OneWay}" Margin="20,4" Opacity="0.8" TextWrapping="Wrap"
+                <TextBlock Grid.Row="3" Text="{x:Bind ViewModel.Status, Mode=OneWay}" Margin="20,4" Opacity="0.8" TextWrapping="Wrap"
                            AutomationProperties.LiveSetting="Polite" />
-                <Border Grid.Row="3" Style="{StaticResource GlassPanelRaised}" Margin="12" Padding="4">
+                <Border Grid.Row="4" Style="{StaticResource GlassPanelRaised}" Margin="12" Padding="4">
                     <TextBox x:Name="Composer" PlaceholderText="Escreva uma mensagem" MaxLength="4000" BorderThickness="0"
                              Background="Transparent" KeyDown="OnComposerKeyDown" AutomationProperties.Name="Mensagem" />
                 </Border>
