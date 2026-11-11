@@ -587,6 +587,7 @@ func TestVoiceFlow(t *testing.T) {
 	}
 	aliceWS.send("voice_join", map[string]string{"channel_id": voiceChannel})
 	aliceWS.next("VOICE_READY", nil)
+	aliceWS.next("VOICE_STATE_UPDATE", nil) // the join is published after VOICE_READY; let it pass before the watcher connects
 	watcher := e.connect(alice)
 	watcher.next("READY", nil)
 	aliceWS.c.CloseNow()

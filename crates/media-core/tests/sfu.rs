@@ -39,8 +39,11 @@ impl Harness {
                 let msg: Value = serde_json::from_str(&line.unwrap()).unwrap();
                 let (user, typ) = (msg["user"].as_str().unwrap(), msg["t"].as_str().unwrap());
                 assert_ne!(typ, "ERROR", "SFU rejected a message from {user}: {}", msg["d"]);
+                let sdp = msg["d"]["sdp"].as_str().unwrap();
+                let candidates: Vec<_> = sdp.lines().filter(|l| l.starts_with("a=candidate")).collect();
+                eprintln!("sfu -> {user} {typ}: {candidates:?}");
                 if let Some(session) = routed.lock().unwrap().get(user) {
-                    session.signal(typ, msg["d"]["sdp"].as_str().unwrap());
+                    session.signal(typ, sdp);
                 }
             }
         });
@@ -57,11 +60,16 @@ impl Harness {
         let (frames_tx, frames) = mpsc::channel();
         let stdin = self.stdin.clone();
         let session = Session::start(move |event| match event {
-            SessionEvent::Signal { op, sdp } => Self::send(&stdin, user, op, json!({ "sdp": sdp })),
+            SessionEvent::Signal { op, sdp } => {
+                // Shown only when the test fails; the candidates are what matters when ICE never connects.
+                let candidates: Vec<_> = sdp.lines().filter(|l| l.starts_with("a=candidate")).collect();
+                eprintln!("{user} -> {op}: {candidates:?}");
+                Self::send(&stdin, user, op, json!({ "sdp": sdp }))
+            }
             SessionEvent::Frame(frame) => {
                 let _ = frames_tx.send(frame);
             }
-            _ => {}
+            other => eprintln!("{user}: {other:?}"),
         })
         .unwrap();
         let session = Arc::new(session);
