@@ -23,6 +23,15 @@ func (s *Service) ChannelAccess(ctx context.Context, userID, channelID string) (
 	return perms, c.GuildID, err
 }
 
+// VoiceAccess is ChannelAccess for joining a call: the channel must be a voice channel.
+func (s *Service) VoiceAccess(ctx context.Context, userID, channelID string) (permission.Set, string, error) {
+	_, c, perms, err := s.channel(ctx, userID, channelID)
+	if err == nil && c.Type != Voice {
+		err = errs.Invalid("not a voice channel")
+	}
+	return perms, c.GuildID, err
+}
+
 func (s *Service) channel(ctx context.Context, userID, channelID string) (actor, Channel, permission.Set, error) {
 	c, err := s.store.Channel(ctx, channelID)
 	if err != nil {

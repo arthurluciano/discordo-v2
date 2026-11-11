@@ -23,6 +23,7 @@ import (
 	"discordo/server/internal/app"
 	"discordo/server/internal/auth"
 	"discordo/server/internal/blob"
+	"discordo/server/internal/media/pion"
 	"discordo/server/internal/permission"
 	"discordo/server/internal/postgres"
 )
@@ -71,7 +72,12 @@ func start(t *testing.T) env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, hub := app.New(store, fakeProvider{}, app.Options{PublicURL: "http://localhost", Blobs: blobs})
+	sfu, err := pion.New(pion.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sfu.Close() })
+	handler, hub := app.New(store, fakeProvider{}, app.Options{PublicURL: "http://localhost", Blobs: blobs, Media: sfu})
 	go hub.Run(ctx)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -507,4 +513,84 @@ func (e env) userID(token string) string {
 	var u struct{ ID string }
 	e.must(token, "GET", "/users/@me", nil, &u)
 	return u.ID
+}
+
+func (s socket) send(op string, data any) {
+	s.t.Helper()
+	if err := wsjson.Write(s.t.Context(), s.c, map[string]any{"op": op, "d": data}); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+// Media itself is covered by the SFU's own test; this is the call bookkeeping around it.
+func TestVoiceFlow(t *testing.T) {
+	e := start(t)
+	alice, _ := e.login("alice")
+	bob, bobID := e.login("bob")
+	var guild snapshot
+	e.must(alice, "POST", "/guilds", map[string]string{"name": "Oficina"}, &guild)
+	text, voiceChannel := guild.Channels[0].ID, guild.Channels[1].ID
+	var invite struct{ Code string }
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{}, &invite)
+	e.must(bob, "POST", "/invites/"+invite.Code, nil, nil)
+
+	aliceWS, bobWS := e.connect(alice), e.connect(bob)
+	aliceWS.next("READY", nil)
+	bobWS.next("READY", nil)
+
+	type state struct {
+		UserID    string `json:"user_id"`
+		ChannelID string `json:"channel_id"`
+		Muted     bool
+	}
+	var st state
+	var failure struct{ Op, Error string }
+
+	// Only voice channels host calls, and signaling needs a call.
+	bobWS.send("voice_join", map[string]string{"channel_id": text})
+	if bobWS.next("VOICE_ERROR", &failure); failure.Op != "voice_join" {
+		t.Fatalf("joining a text channel: %+v", failure)
+	}
+	bobWS.send("rtc_offer", map[string]string{"sdp": "x"})
+	bobWS.next("VOICE_ERROR", nil)
+
+	// Joining is announced to the others; mute state too.
+	var ready struct {
+		ChannelID  string `json:"channel_id"`
+		Connection struct{ Kind string }
+	}
+	bobWS.send("voice_join", map[string]string{"channel_id": voiceChannel})
+	if bobWS.next("VOICE_READY", &ready); ready.ChannelID != voiceChannel || ready.Connection.Kind != "pion" {
+		t.Fatalf("VOICE_READY: %+v", ready)
+	}
+	if aliceWS.next("VOICE_STATE_UPDATE", &st); st.UserID != bobID || st.ChannelID != voiceChannel {
+		t.Fatalf("join state: %+v", st)
+	}
+	bobWS.send("voice_state", map[string]bool{"deafened": true})
+	if aliceWS.next("VOICE_STATE_UPDATE", &st); !st.Muted {
+		t.Fatalf("deafened should imply muted: %+v", st)
+	}
+
+	// Someone connecting later sees the call in READY.
+	var late struct {
+		VoiceStates []state `json:"voice_states"`
+	}
+	e.connect(alice).next("READY", &late)
+	if len(late.VoiceStates) != 1 || late.VoiceStates[0].UserID != bobID {
+		t.Fatalf("voice states in READY: %+v", late)
+	}
+
+	// Being kicked from the guild ends the call; so does dropping the connection.
+	e.must(alice, "DELETE", "/guilds/"+guild.ID+"/members/"+bobID, nil, nil)
+	if aliceWS.next("VOICE_STATE_UPDATE", &st); st.UserID != bobID || st.ChannelID != "" {
+		t.Fatalf("state after kick: %+v", st)
+	}
+	aliceWS.send("voice_join", map[string]string{"channel_id": voiceChannel})
+	aliceWS.next("VOICE_READY", nil)
+	watcher := e.connect(alice)
+	watcher.next("READY", nil)
+	aliceWS.c.CloseNow()
+	if watcher.next("VOICE_STATE_UPDATE", &st); st.ChannelID != "" {
+		t.Fatalf("state after disconnect: %+v", st)
+	}
 }

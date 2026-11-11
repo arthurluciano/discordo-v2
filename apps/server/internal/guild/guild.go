@@ -105,6 +105,9 @@ type Presence interface {
 }
 
 type Service struct {
+	// OnRemoved, when set, is called after a member leaves or is removed from a guild.
+	OnRemoved func(guildID, userID string)
+
 	store    Store
 	pub      event.Publisher
 	presence Presence

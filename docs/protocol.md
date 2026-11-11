@@ -20,12 +20,12 @@ A fonte da verdade são os tipos Go em `apps/server/internal`. Este documento é
 ## Gateway (tempo real)
 
 WebSocket em `GET /gateway`. A primeira mensagem do cliente é `{"token": "..."}`. Toda mensagem do servidor é `{"t": TIPO, "d": DADOS}`.
-O servidor envia pings WebSocket; o cliente não envia mais nada. Ao reconectar, o `READY` substitui todo o estado local.
+O servidor envia pings WebSocket. Depois de autenticar, o cliente só envia mensagens de chamada, no formato `{"op": OP, "d": DADOS}` (seção "Voz e vídeo"). Ao reconectar, o `READY` substitui todo o estado local.
 Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 
 | Tipo | Dados | Quando |
 |---|---|---|
-| `READY` | `{user, guilds: [Snapshot], dms: [DM], relationships: [Relationship]}` | logo após autenticar |
+| `READY` | `{user, guilds: [Snapshot], dms: [DM], relationships: [Relationship], voice_states: [VoiceState]}` | logo após autenticar |
 | `GUILD_SYNC` | `Snapshot` | você entrou no servidor, ou algo estrutural mudou (servidor, canais, cargos, permissões). Substitua a cópia local |
 | `GUILD_DELETE` | `{id}` | servidor apagado, ou você saiu / foi expulso / banido |
 | `MEMBER_ADD` | `{guild_id, member}` | |
@@ -38,6 +38,8 @@ Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 | `DM_CREATE` / `DM_UPDATE` | `DM` | |
 | `DM_DELETE` | `{id}` | você saiu do grupo |
 | `RELATIONSHIP_UPDATE` | `Relationship` | `status` 0 = remova da lista |
+| `VOICE_STATE_UPDATE` | `VoiceState` | alguém entrou, saiu (`channel_id` vazio), mutou ou mudou o que transmite |
+| `VOICE_READY` / `VOICE_ERROR` / `RTC_OFFER` / `RTC_ANSWER` | ver "Voz e vídeo" | só para a sessão que está na chamada |
 
 ### Tipos
 
@@ -54,6 +56,7 @@ Message      {id, channel_id, author: User, content, created_at, edited_at, ment
 Attachment   {id, filename, content_type, size}
 DM           {id, type, name, recipients: [User]}   // type 2 conversa, 3 grupo
 Relationship {user, status, online}   // 1 amigo, 2 pedido recebido, 3 pedido enviado, 4 bloqueado
+VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome]}
 ```
 
 Menções vão no texto como `<@id-do-usuário>`; `@everyone` só conta para quem tem a permissão.
@@ -102,3 +105,34 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 | `DELETE /dms/{channel}/recipients/@me` | | sai do grupo |
 
 `{channel}` nas rotas de mensagens aceita canal de servidor ou DM.
+
+## Voz e vídeo
+
+Uma chamada acontece em um canal de voz ou em qualquer DM. Cada usuário está em no máximo uma, presa à conexão do gateway que entrou (cair a conexão encerra a chamada).
+
+Cliente → servidor (`{"op", "d"}`):
+
+| op | d | |
+|---|---|---|
+| `voice_join` | `{channel_id}` | exige a permissão conectar; sai de qualquer outra chamada |
+| `voice_leave` | | |
+| `voice_state` | `{muted, deafened}` | só informativo para os outros; quem muta de verdade é o cliente |
+| `rtc_offer` | `{sdp}` | oferta da conexão de **envio** |
+| `rtc_answer` | `{sdp}` | resposta à oferta da conexão de **recepção** |
+| `rtc_subscribe` | `{user_id, track, on}` | começa/para de receber `camera` ou `screen` de alguém |
+
+Servidor → cliente: `VOICE_READY {channel_id, connection: {kind}}`, `VOICE_ERROR {op, error}`, `RTC_ANSWER {sdp}`, `RTC_OFFER {sdp}`.
+
+### Mídia (`connection.kind == "pion"`)
+
+O cliente mantém **duas** conexões WebRTC com o servidor, para as ofertas nunca colidirem:
+
+- **Envio**: o cliente cria, adiciona suas faixas e manda `rtc_offer` sempre que o que ele envia muda; recebe `RTC_ANSWER`.
+- **Recepção**: o servidor manda `RTC_OFFER` sempre que o que o cliente recebe muda; o cliente responde `rtc_answer`.
+
+Sem trickle ICE: espere a coleta de candidatos terminar antes de enviar um SDP (os do servidor já vêm completos).
+
+O **ID da faixa** diz o que ela é: `mic`, `screen-audio` (áudio, Opus), `camera`, `screen` (vídeo, H.264). Outros nomes são ignorados.
+`mic` exige a permissão falar; as demais, transmitir vídeo. Nas faixas recebidas, o ID do *stream* é o ID do usuário dono.
+
+Áudio chega de todos automaticamente. Vídeo só depois de `rtc_subscribe`: use `tracks` do `VoiceState` para saber quem está transmitindo o quê.

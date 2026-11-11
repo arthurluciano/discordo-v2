@@ -15,6 +15,7 @@ import (
 	"discordo/server/internal/auth"
 	"discordo/server/internal/blob"
 	"discordo/server/internal/config"
+	"discordo/server/internal/media/pion"
 	"discordo/server/internal/postgres"
 )
 
@@ -44,7 +45,12 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("object storage: %w", err)
 	}
-	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs})
+	sfu, err := pion.New(cfg.Media)
+	if err != nil {
+		return fmt.Errorf("media: %w", err)
+	}
+	defer sfu.Close()
+	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs, Media: sfu})
 	go hub.Run(ctx)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}

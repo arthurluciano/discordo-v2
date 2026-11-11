@@ -3,8 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"discordo/server/internal/blob"
+	"discordo/server/internal/media/pion"
 )
 
 type Config struct {
@@ -14,15 +16,27 @@ type Config struct {
 	DiscordClientID     string
 	DiscordClientSecret string
 	S3                  blob.Config // uploaded files
+	Media               pion.Config // built-in SFU
 }
 
 func Load() (Config, error) {
+	if p := env("MEDIA_PROVIDER", "pion"); p != "pion" {
+		return Config{}, fmt.Errorf("MEDIA_PROVIDER %q is not available yet (only pion)", p)
+	}
+	port, err := strconv.Atoi(env("MEDIA_UDP_PORT", "7882"))
+	if err != nil {
+		return Config{}, fmt.Errorf("MEDIA_UDP_PORT: %w", err)
+	}
 	c := Config{
 		Addr:                env("HTTP_ADDR", ":8080"),
 		DatabaseURL:         os.Getenv("DATABASE_URL"),
 		PublicURL:           env("PUBLIC_URL", "http://localhost:8080"),
 		DiscordClientID:     os.Getenv("DISCORD_CLIENT_ID"),
 		DiscordClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
+		Media: pion.Config{
+			UDPPort:  port,
+			PublicIP: os.Getenv("MEDIA_PUBLIC_IP"),
+		},
 		S3: blob.Config{
 			Endpoint:  env("S3_ENDPOINT", "localhost:9000"),
 			AccessKey: os.Getenv("S3_ACCESS_KEY"),

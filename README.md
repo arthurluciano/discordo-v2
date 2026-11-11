@@ -4,7 +4,7 @@ App de comunidades com chat, voz e transmissão em tempo real. Monorepo:
 
 | Pasta | O quê | Estado |
 |---|---|---|
-| `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; voz/vídeo a fazer |
+| `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos (transmissão em camadas e LiveKit a fazer) |
 | `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais e chat em tempo real; ainda não compilado em um Windows |
 | `crates/media-core` | Núcleo de mídia em Rust (captura e encode por GPU, WebRTC) | a fazer |
 | `docs/protocol.md` | Contrato entre cliente e servidor | |
@@ -34,6 +34,8 @@ Precisa de Go e Docker.
 | `S3_BUCKET` | `discordo` | criado ao iniciar se não existir |
 | `S3_SECURE` | `false` | `true` para TLS |
 | `HTTP_ADDR` | `:8080` | |
+| `MEDIA_UDP_PORT` | `7882` | toda a mídia passa por esta porta UDP; libere-a no firewall |
+| `MEDIA_PUBLIC_IP` | vazio | IP pelo qual os clientes alcançam o servidor; vazio só serve para desenvolvimento na mesma máquina/rede |
 | `PUBLIC_URL` | `http://localhost:8080` | como o navegador alcança o servidor |
 
 ## Rodando o cliente Windows

@@ -85,6 +85,9 @@ func (s *Service) remove(ctx context.Context, guildID, userID string) error {
 }
 
 func (s *Service) removed(guildID, userID string) {
+	if s.OnRemoved != nil {
+		s.OnRemoved(guildID, userID)
+	}
 	s.pub.Publish(event.Event{Kind: event.Left, GuildID: guildID, UserIDs: []string{userID}})
 	s.pub.Publish(event.Event{Kind: event.ToGuild, GuildID: guildID, Type: "MEMBER_REMOVE",
 		Data: map[string]string{"guild_id": guildID, "user_id": userID}})

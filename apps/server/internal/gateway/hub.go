@@ -1,7 +1,8 @@
 // Package gateway is the realtime side: one WebSocket per client, fed by domain events.
 //
 // Protocol: the client's first message is {"token": "..."}; every server message is
-// {"t": TYPE, "d": DATA}, starting with READY. Delivery is at-least-once around (re)connects,
+// {"t": TYPE, "d": DATA}, starting with READY. After that the client may send {"op": OP, "d": DATA}
+// for calls (see the voice package). Delivery is at-least-once around (re)connects,
 // so clients must apply events idempotently (by ID).
 package gateway
 
@@ -17,6 +18,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"discordo/server/internal/event"
+	"discordo/server/internal/id"
 	"discordo/server/internal/user"
 )
 
@@ -37,7 +39,14 @@ type Social interface {
 	FriendIDs(ctx context.Context, userID string) ([]string, error)
 }
 
+// Voice handles the client's call and media-signaling messages.
+type Voice interface {
+	Handle(ctx context.Context, userID, sessionID, op string, data json.RawMessage, send func(typ string, data any))
+	Disconnected(userID, sessionID string)
+}
+
 type session struct {
+	id     string
 	userID string
 	guilds map[string]struct{} // guarded by Hub.mu
 	send   chan []byte
@@ -59,6 +68,7 @@ type Hub struct {
 	// Set before serving; fields because these services in turn depend on the hub.
 	Guilds Guilds
 	Social Social
+	Voice  Voice
 
 	auth  Authenticator
 	queue chan event.Event
@@ -240,9 +250,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscribe before building READY so nothing published in between is lost.
-	s := &session{userID: u.ID, guilds: map[string]struct{}{}, send: make(chan []byte, 256), kick: cancel}
+	s := &session{id: id.New(), userID: u.ID, guilds: map[string]struct{}{}, send: make(chan []byte, 256), kick: cancel}
 	h.add(s, guildIDs)
 	defer h.remove(s)
+	defer h.Voice.Disconnected(u.ID, s.id)
 
 	snaps := make([]any, 0, len(guildIDs))
 	for _, g := range guildIDs {
@@ -250,7 +261,21 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			snaps = append(snaps, snap)
 		}
 	}
-	ctx = c.CloseRead(ctx) // nothing more is expected from the client; this still answers pings and close frames
+	// Client messages are handled one at a time, in order. Reading also answers pings and notices the close.
+	c.SetReadLimit(256 << 10) // an SDP with many tracks is far larger than the default limit
+	go func() {
+		defer cancel()
+		for {
+			var msg struct {
+				Op string          `json:"op"`
+				D  json.RawMessage `json:"d"`
+			}
+			if wsjson.Read(ctx, c, &msg) != nil {
+				return
+			}
+			h.Voice.Handle(ctx, u.ID, s.id, msg.Op, msg.D, func(typ string, data any) { s.push(encode(typ, data)) })
+		}
+	}()
 	write := func(b []byte) error {
 		wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
 		defer wcancel()
