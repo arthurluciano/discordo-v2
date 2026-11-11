@@ -10,7 +10,8 @@ namespace Discordo.App;
 public sealed partial class MainWindow : Window
 {
     private ShellViewModel? shell;
-    private readonly ApiClient api = new(new Uri(Environment.GetEnvironmentVariable("DISCORDO_SERVER") ?? "http://localhost:8080"));
+    // DISCORDO_SERVER=http://localhost:8080 points it at a local server.
+    private readonly ApiClient api = new(new Uri(Environment.GetEnvironmentVariable("DISCORDO_SERVER") ?? "https://discordo.arluck.com.br"));
     private CancellationTokenSource? session;
 
     public MainWindow()

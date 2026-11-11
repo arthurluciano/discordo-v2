@@ -46,7 +46,7 @@ Precisa de:
 - [Rust](https://rustup.rs) (o build do app compila o motor de mídia com `cargo`).
 
 ```powershell
-$env:DISCORDO_SERVER = "http://<ip do servidor>:8080"   # opcional; o padrão é http://localhost:8080
+$env:DISCORDO_SERVER = "http://localhost:8080"   # opcional; o padrão é https://discordo.arluck.com.br
 dotnet run --project apps/windows/Discordo.App -p:Platform=x64
 ```
 
@@ -79,4 +79,4 @@ Novo deploy, com a CLI (`npm i -g openship`) autenticada na instância:
 openship deploy --project discordo --branch <branch> --watch
 ```
 
-O cliente Windows aponta para produção com `DISCORDO_SERVER=<PUBLIC_URL>`.
+O cliente Windows aponta para produção por padrão.
