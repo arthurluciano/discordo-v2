@@ -92,20 +92,30 @@ pub unsafe extern "C" fn dm_call_set_deafened(call: *const Call, deafened: bool)
     }
 }
 
-/// Starts (or restarts with new settings) sharing the primary screen, at up to `height` lines and
-/// `fps` frames per second. Returns 1 when the GPU encodes, 2 when the CPU does, 0 on failure.
+/// Starts (or restarts with new settings) sharing `item`, at up to `height` lines and `fps` frames
+/// per second. Returns 1 when the GPU encodes, 2 when the CPU does, 0 on failure.
 ///
 /// # Safety
-/// `call` must come from `dm_call_start` and not have been stopped.
+/// `call` must come from `dm_call_start` and not have been stopped. `item` is a
+/// `GraphicsCaptureItem` (its IInspectable pointer) from the system picker; this takes over one
+/// reference to it, also on failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dm_call_share_screen(call: *const Call, height: u32, fps: u32) -> i32 {
-    let Some(call) = (unsafe { call.as_ref() }) else { return 0 };
+pub unsafe extern "C" fn dm_call_share_screen(call: *const Call, item: *mut c_void, height: u32, fps: u32) -> i32 {
+    if item.is_null() {
+        return 0;
+    }
     #[cfg(windows)]
-    return match call.share_screen(height, fps) {
-        Ok(true) => 1,
-        Ok(false) => 2,
-        Err(_) => 0,
-    };
+    {
+        use windows::core::Interface;
+        // Takes over the caller's reference (released on every path, as the item drops).
+        let item = unsafe { windows::Graphics::Capture::GraphicsCaptureItem::from_raw(item) };
+        let Some(call) = (unsafe { call.as_ref() }) else { return 0 };
+        match call.share_screen(item, height, fps) {
+            Ok(true) => 1,
+            Ok(false) => 2,
+            Err(_) => 0,
+        }
+    }
     #[cfg(not(windows))]
     {
         let _ = (call, height, fps);

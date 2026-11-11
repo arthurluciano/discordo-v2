@@ -21,7 +21,7 @@ pub enum CallEvent {
     Closed,
     /// A watched video has this picture size now (sent for the first frame and on every change).
     Video { user: String, track: String, width: u32, height: u32 },
-    /// Our screen share ended on its own (capture or encoder failure).
+    /// Our screen share ended on its own (the window closed, or capture or encoder failure).
     ShareStopped,
 }
 
@@ -137,6 +137,7 @@ mod windows_impl {
     use std::thread::{self, JoinHandle};
     use std::time::{Duration, Instant};
 
+    use windows::Graphics::Capture::GraphicsCaptureItem;
     use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_NV12;
     use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
     use windows::core::Interface;
@@ -207,9 +208,9 @@ mod windows_impl {
             Ok(())
         }
 
-        /// Starts (or restarts, with new settings) sharing the primary screen at up to `height` lines
-        /// and `fps` frames per second. Returns whether the GPU is doing the encoding.
-        pub fn share_screen(&self, height: u32, fps: u32) -> io::Result<bool> {
+        /// Starts (or restarts, with new settings) sharing `item`, a screen or window the user picked,
+        /// at up to `height` lines and `fps` frames per second. Returns whether the GPU is doing the encoding.
+        pub fn share_screen(&self, item: GraphicsCaptureItem, height: u32, fps: u32) -> io::Result<bool> {
             let mut share = self.devices.share.lock().unwrap();
             *share = None; // stops a share already running
             let fps = fps.clamp(5, 60);
@@ -221,7 +222,7 @@ mod windows_impl {
                 let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
                 let setup = || -> windows::core::Result<_> {
                     let gpu = Gpu::new()?;
-                    let capture = ScreenCapture::primary(&gpu)?;
+                    let capture = ScreenCapture::new(&gpu, &item)?;
                     let size = quality::output_size(capture.size, height);
                     let converter = Converter::new(&gpu, capture.size, size, fps)?;
                     let nv12 = gpu.texture(size.0, size.1, DXGI_FORMAT_NV12)?;
@@ -244,7 +245,7 @@ mod windows_impl {
                 let interval = Duration::from_secs_f64(1.0 / fps as f64);
                 let mut run = || -> windows::core::Result<()> {
                     let (mut next, mut have_picture, mut sent) = (Instant::now(), false, 0u64);
-                    while !stopped.load(Ordering::Relaxed) {
+                    while !stopped.load(Ordering::Relaxed) && !capture.is_closed() {
                         // A still screen produces no new captures; the last picture is encoded again
                         // (which costs almost nothing) so the stream keeps its frame rate.
                         if let Some((_frame, texture)) = capture.latest() {
@@ -266,7 +267,7 @@ mod windows_impl {
                     }
                     Ok(())
                 };
-                let failed = run().is_err();
+                let failed = run().is_err() || capture.is_closed();
                 session.unpublish("screen");
                 if failed {
                     sink(CallEvent::ShareStopped);

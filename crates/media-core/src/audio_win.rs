@@ -1,7 +1,8 @@
 //! Microphone and speakers through WASAPI (shared mode, event-driven, 48 kHz 16-bit).
 //!
 //! Streams are opened in the *Communications* category, which is what makes Windows apply its
-//! echo cancellation and noise suppression to the microphone on hardware that supports it.
+//! echo cancellation and noise suppression to the microphone on hardware that supports it. We opt
+//! out of the ducking that comes with it, so other apps' sound keeps its volume during a call.
 //! shortcut: relies on those system effects; bring our own (webrtc-audio-processing) if echo is a problem.
 
 use std::io;
@@ -14,9 +15,9 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{
     AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
     AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, AUDCLNT_STREAMOPTIONS_NONE,
-    AudioCategory_Communications, AudioClientProperties, EDataFlow, ERole, IAudioCaptureClient, IAudioClient,
-    IAudioClient2, IAudioRenderClient, IMMDeviceEnumerator, MMDeviceEnumerator, WAVE_FORMAT_PCM, WAVEFORMATEX,
-    eCapture, eCommunications, eConsole, eRender,
+    AudioCategory_Communications, AudioClientProperties, EDataFlow, IAudioCaptureClient, IAudioClient,
+    IAudioClient2, IAudioRenderClient, IAudioSessionControl, IAudioSessionControl2, IMMDeviceEnumerator,
+    MMDeviceEnumerator, WAVE_FORMAT_PCM, WAVEFORMATEX, eCapture, eConsole, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
@@ -39,10 +40,10 @@ impl Drop for Stream {
     }
 }
 
-/// Captures the default communications microphone. `on_pcm` gets mono samples as they arrive.
+/// Captures the default microphone. `on_pcm` gets mono samples as they arrive.
 pub fn capture(mut on_pcm: impl FnMut(&[i16]) + Send + 'static) -> io::Result<Stream> {
     spawn("audio-capture", move |stop| unsafe {
-        let (client, event) = open(eCapture, eCommunications, 1)?;
+        let (client, event) = open(eCapture, 1)?;
         let capture: IAudioCaptureClient = client.GetService()?;
         Ok(Box::new(move || {
             let mut run = || -> Result<()> {
@@ -73,7 +74,7 @@ pub fn capture(mut on_pcm: impl FnMut(&[i16]) + Send + 'static) -> io::Result<St
 /// Plays on the default output device. `fill` must fill the buffer with mono samples.
 pub fn playback(mut fill: impl FnMut(&mut [i16]) + Send + 'static) -> io::Result<Stream> {
     spawn("audio-playback", move |stop| unsafe {
-        let (client, event) = open(eRender, eConsole, 2)?;
+        let (client, event) = open(eRender, 2)?;
         let render: IAudioRenderClient = client.GetService()?;
         let capacity = client.GetBufferSize()?;
         Ok(Box::new(move || {
@@ -137,10 +138,11 @@ fn spawn(name: &str, setup: impl FnOnce(Arc<AtomicBool>) -> Result<Body> + Send 
 }
 
 /// Opens the default device for `flow` with our fixed format; Windows converts to and from the device's own.
-unsafe fn open(flow: EDataFlow, role: ERole, channels: u16) -> Result<(IAudioClient, HANDLE)> {
+/// The default device, not the "communications" one: that is what people expect to be used.
+unsafe fn open(flow: EDataFlow, channels: u16) -> Result<(IAudioClient, HANDLE)> {
     unsafe {
         let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
-        let device = enumerator.GetDefaultAudioEndpoint(flow, role)?;
+        let device = enumerator.GetDefaultAudioEndpoint(flow, eConsole)?;
         let client: IAudioClient = device.Activate(CLSCTX_ALL, None)?;
         if let Ok(client2) = client.cast::<IAudioClient2>() {
             let properties = AudioClientProperties {
@@ -164,6 +166,12 @@ unsafe fn open(flow: EDataFlow, role: ERole, channels: u16) -> Result<(IAudioCli
         let flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
         const BUFFER_100NS: i64 = 200_000; // 20 ms
         client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, BUFFER_100NS, 0, &format, None)?;
+        // Without this Windows lowers every other app's volume while we are in a call.
+        if let Ok(control) = client.GetService::<IAudioSessionControl>()
+            && let Ok(control) = control.cast::<IAudioSessionControl2>()
+        {
+            let _ = control.SetDuckingPreference(true);
+        }
         let event = CreateEventW(None, false, false, None)?;
         client.SetEventHandle(event)?;
         Ok((client, event))

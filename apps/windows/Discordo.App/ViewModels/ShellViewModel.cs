@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Discordo.App.Services;
 using Discordo.Core;
 using Microsoft.UI.Dispatching;
+using Windows.Graphics.Capture;
 
 namespace Discordo.App.ViewModels;
 
@@ -261,6 +262,23 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                     break;
                 }
                 call.Signal += (op, sdp) => _ = SendGateway(op, new { sdp });
+                var connecting = call;
+                Status = "Conectando a voz…";
+                call.Connected += () => ui.TryEnqueue(() =>
+                {
+                    if (call == connecting && Status == "Conectando a voz…")
+                    {
+                        Status = "";
+                    }
+                });
+                // No media after this long almost always means UDP to the server is blocked.
+                _ = Task.Delay(TimeSpan.FromSeconds(15)).ContinueWith(_ => ui.TryEnqueue(() =>
+                {
+                    if (call == connecting && Status == "Conectando a voz…")
+                    {
+                        Status = "A voz não conectou: a porta UDP de mídia do servidor parece bloqueada.";
+                    }
+                }));
                 call.Closed += () => ui.TryEnqueue(() =>
                 {
                     Status = "A chamada caiu.";
@@ -269,7 +287,7 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
                 call.VideoSized += (width, height) => ui.TryEnqueue(() => VideoSized?.Invoke(width, height));
                 call.ShareStopped += () => ui.TryEnqueue(() =>
                 {
-                    Status = "A transmissão parou: falha na captura ou no encoder.";
+                    Status = "A transmissão parou: a janela foi fechada ou a captura falhou.";
                     StopShare();
                 });
                 if (!call.EnableMic())
@@ -329,14 +347,14 @@ public sealed class ShellViewModel(ApiClient api) : ObservableObject
 
     public bool Sharing => sharing;
 
-    /// <summary>Starts sharing the primary screen at up to <paramref name="height"/> lines.</summary>
-    public void StartShare(int height, int fps)
+    /// <summary>Starts sharing a picked screen or window at up to <paramref name="height"/> lines.</summary>
+    public void StartShare(GraphicsCaptureItem item, int height, int fps)
     {
         if (call is null)
         {
             return;
         }
-        var result = call.ShareScreen(height, fps);
+        var result = call.ShareScreen(item, height, fps);
         sharing = result != 0;
         Status = result switch
         {

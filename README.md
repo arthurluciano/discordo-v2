@@ -54,7 +54,7 @@ Ou abra `apps/windows/Discordo.sln` e rode o projeto `Discordo.App`.
 
 ### Transmissão de tela
 
-Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela" (monitor principal).
+Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela" e escolha a tela ou janela no seletor do Windows.
 A codificação usa o encoder da placa de vídeo (NVENC, AMF ou Quick Sync); sem um, cai para o encoder de software e o app avisa.
 Para testar esse fallback, defina `DISCORDO_FORCE_SW_ENCODE=1` antes de abrir o app.
 No Gerenciador de Tarefas, aba Desempenho → GPU, o gráfico "Video Encode" mostra o encoder de hardware em uso.

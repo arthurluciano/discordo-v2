@@ -2,12 +2,15 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Discordo.App.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics.Capture;
 using Windows.System;
 using WinRT;
+using WinRT.Interop;
 
 namespace Discordo.App.Views;
 
@@ -121,15 +124,22 @@ public sealed partial class ShellView : UserControl
 
     private void OnLeaveCall(object sender, RoutedEventArgs e) => ViewModel.LeaveCall();
 
-    private void OnToggleShare(object sender, RoutedEventArgs e)
+    private async void OnToggleShare(object sender, RoutedEventArgs e)
     {
         if (ViewModel.Sharing)
         {
             ViewModel.StopShare();
             return;
         }
+        // Windows' own picker: every screen and window, with live previews.
+        var picker = new GraphicsCapturePicker();
+        InitializeWithWindow.Initialize(picker, Win32Interop.GetWindowFromWindowId(XamlRoot.ContentIslandEnvironment.AppWindowId));
+        if (await picker.PickSingleItemAsync() is not { } item)
+        {
+            return; // cancelled
+        }
         static int Picked(ComboBox box) => int.Parse((string)((ComboBoxItem)box.SelectedItem).Tag);
-        ViewModel.StartShare(Picked(ShareHeight), Picked(ShareFps));
+        ViewModel.StartShare(item, Picked(ShareHeight), Picked(ShareFps));
     }
 
     // ---- watching a screen share ----
