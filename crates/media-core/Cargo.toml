@@ -9,10 +9,7 @@ publish = false
 # cdylib: the DLL the Windows app loads. rlib: so tests can link the same code.
 crate-type = ["cdylib", "rlib"]
 
-# The WebRTC stack. Its crypto backend differs per platform: Windows' own (CNG) on Windows, so the
-# DLL needs no C toolchain or OpenSSL to build; a Rust one elsewhere, which is what tests run on.
 [target.'cfg(windows)'.dependencies]
-str0m = { version = "0.25", default-features = false, features = ["wincrypto"] }
 windows = { version = "0.61", features = [
     "Foundation",
     "Graphics",
@@ -38,10 +35,10 @@ windows = { version = "0.61", features = [
     "Win32_System_Variant",
 ] }
 
-[target.'cfg(not(windows))'.dependencies]
-str0m = { version = "0.25", default-features = false, features = ["rust-crypto"] }
-
 [dependencies]
+# The WebRTC stack, with the same crypto on every platform (it builds aws-lc, so a C compiler is needed).
+# The "wincrypto" backend failed the DTLS handshake on Windows whenever we were the DTLS client.
+str0m = { version = "0.25", default-features = false, features = ["rust-crypto"] }
 serde_json = "1"
 # libopus, built from source by CMake (on Windows: the "C++ CMake tools" component of Visual Studio).
 opus = { version = "0.4", optional = true }

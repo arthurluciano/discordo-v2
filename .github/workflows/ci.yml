@@ -60,6 +60,6 @@ jobs:
           path: apps/windows/Discordo.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
           if-no-files-found: error
       - run: netsh advfirewall show allprofiles state # context for the interop test if ICE never connects
-      # On Windows the engine uses the system's own crypto, so this is the only place that path is tested.
+      # The interop test against the real SFU, on the OS the engine ships on.
       - run: cargo test -- --nocapture
         working-directory: crates/media-core
