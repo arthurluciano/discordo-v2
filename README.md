@@ -58,3 +58,25 @@ Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Tr
 A codificação usa o encoder da placa de vídeo (NVENC, AMF ou Quick Sync); sem um, cai para o encoder de software e o app avisa.
 Para testar esse fallback, defina `DISCORDO_FORCE_SW_ENCODE=1` antes de abrir o app.
 No Gerenciador de Tarefas, aba Desempenho → GPU, o gráfico "Video Encode" mostra o encoder de hardware em uso.
+
+## Produção (Openship)
+
+O servidor roda em um Openship auto-hospedado, a partir de `openship.json` e `compose.production.yaml` (servidor, Postgres e MinIO; só o servidor é acessível de fora).
+
+Fica na plataforma, não no repositório:
+
+| Onde | O quê |
+|---|---|
+| Variáveis do projeto | `PUBLIC_URL`, `MEDIA_PUBLIC_IP`, e como segredos `POSTGRES_PASSWORD`, `S3_SECRET_KEY`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` |
+| Serviço `server` | exposto na porta 8080 com o domínio customizado |
+| Host | porta UDP 7882 publicada (voz e vídeo); precisa estar liberada no firewall |
+
+No app do Discord (Developer Portal → OAuth2), o redirect é `<PUBLIC_URL>/auth/discord/callback`.
+
+Novo deploy, com a CLI (`npm i -g openship`) autenticada na instância:
+
+```sh
+openship deploy --project discordo --branch <branch> --watch
+```
+
+O cliente Windows aponta para produção com `DISCORDO_SERVER=<PUBLIC_URL>`.
