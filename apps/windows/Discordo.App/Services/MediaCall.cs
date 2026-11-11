@@ -22,9 +22,9 @@ public sealed class MediaCall : IDisposable
 
     private static readonly ConcurrentDictionary<nint, MediaCall> Calls = new();
     private static readonly EventCallback Callback = OnEvent; // static: the native side may call it at any time
-    private static nint nextId;
+    private static long nextId; // Interlocked has no nint overload
 
-    private readonly nint id = Interlocked.Increment(ref nextId);
+    private readonly nint id = (nint)Interlocked.Increment(ref nextId);
     private nint handle;
 
     private MediaCall()
