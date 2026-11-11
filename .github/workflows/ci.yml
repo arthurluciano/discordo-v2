@@ -49,5 +49,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - uses: actions/setup-go@v5 # the engine's interop test runs the real SFU
+        with:
+          go-version-file: apps/server/go.mod
+      # On Windows the engine uses the system's own crypto, so this is the only place that path is tested.
+      - run: cargo test
+        working-directory: crates/media-core
       # Building the app project also builds Discordo.Core and the Rust media engine (cargo and CMake come with the runner).
       - run: dotnet build apps/windows/Discordo.App/Discordo.App.csproj -c Release -p:Platform=x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discordo-windows-x64
+          path: apps/windows/Discordo.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
+          if-no-files-found: error
