@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MotionConfig } from 'motion/react'
 import { App } from './app'
+import { ThemeProvider } from './components/theme-provider'
 import { TooltipProvider } from './components/ui/tooltip'
 import { AppUpdatePrompt } from './features/shell/app-update-prompt'
 import { markPlatform } from './lib/platform'
@@ -19,6 +20,7 @@ if (!container) throw new Error('Elemento #root nao existe no index.html')
 
 createRoot(container).render(
   <StrictMode>
+    <ThemeProvider>
     <MotionConfig reducedMotion="user">
       <TooltipProvider>
         <QueryClientProvider client={queryClient}>
@@ -27,6 +29,7 @@ createRoot(container).render(
         </QueryClientProvider>
       </TooltipProvider>
     </MotionConfig>
+    </ThemeProvider>
   </StrictMode>,
 )
 

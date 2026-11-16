@@ -7,13 +7,16 @@
 // There is no trickle ICE: SDPs are sent with all candidates in them (we only have host candidates on one UDP port).
 // Audio reaches everyone in the room. Video is forwarded only to those who ask ("rtc_subscribe"),
 // so a 4K stream costs bandwidth only for the people watching it.
+//
+// Video may be simulcast: the publisher sends up to three layers of the same track (rids "h", "m", "l"),
+// and each subscriber gets one of them (layer.go), switched on keyframes with sequence numbers and
+// timestamps rewritten so the subscriber sees a single continuous stream.
 package pion
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net"
 	"slices"
@@ -22,6 +25,7 @@ import (
 
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
 	"discordo/server/internal/errs"
@@ -55,19 +59,39 @@ type peer struct {
 	send   media.Sender
 	pub    *webrtc.PeerConnection // created on the first rtc_offer
 	sub    *webrtc.PeerConnection
-	names  map[string]string            // publish transceiver mid -> track name, from the client's offers
-	sends  map[string]*webrtc.RTPSender // track key -> what we forward to this peer
-	wants  map[string]bool              // video track keys this peer asked for
-	dirty  bool                         // subscriptions changed while an offer was in flight
+	names  map[string]string // publish transceiver mid -> track name, from the client's offers
+	sends  map[string]*down  // track key -> what we forward to this peer
+	wants  map[string]string // video track keys this peer asked for -> the quality it asked for
+	dirty  bool              // subscriptions changed while an offer was in flight
 	closed bool
 }
 
+// track is one published track. With simulcast, each of its layers arrives as its own TrackRemote.
 type track struct {
-	owner  *peer
-	name   string
-	local  *webrtc.TrackLocalStaticRTP
-	remote *webrtc.TrackRemote
-	lastKF time.Time // last keyframe request, to throttle them
+	owner    *peer
+	name     string
+	kind     webrtc.RTPCodecType
+	codec    webrtc.RTPCodecCapability
+	receiver *webrtc.RTPReceiver
+	pub      *webrtc.PeerConnection // the owner's, for keyframe requests
+
+	mu     sync.Mutex                     // guards the fields below; taken after SFU.mu when both are held
+	layers map[string]*webrtc.TrackRemote // by rid; "" without simulcast
+	downs  map[*peer]*down
+	lastKF map[string]time.Time // by rid: last keyframe request, to throttle them
+}
+
+// down is one track as forwarded to one subscriber.
+type down struct {
+	t       *track
+	local   *webrtc.TrackLocalStaticRTP
+	sender  *webrtc.RTPSender
+	quality string // auto, high, medium or low
+	auto    autoQuality
+	cur     string // the layer being forwarded, once on is set
+	on      bool
+	want    string // the layer to forward from its next keyframe on
+	rw      rewriter
 }
 
 func New(cfg Config) (*SFU, error) {
@@ -108,7 +132,7 @@ func (s *SFU) Join(_ context.Context, roomID, userID string, grants media.Grants
 	if err != nil {
 		return media.Connection{}, err
 	}
-	p := &peer{userID: userID, grants: grants, send: send, sub: sub, sends: map[string]*webrtc.RTPSender{}, wants: map[string]bool{}}
+	p := &peer{userID: userID, grants: grants, send: send, sub: sub, sends: map[string]*down{}, wants: map[string]string{}}
 
 	s.mu.Lock()
 	r := s.rooms[roomID]
@@ -123,7 +147,7 @@ func (s *SFU) Join(_ context.Context, roomID, userID string, grants media.Grants
 	s.rooms[roomID] = r // removeLocked may have dropped the room when the old peer was its only one
 	r.peers[userID] = p
 	for key, t := range r.tracks {
-		if t.remote.Kind() == webrtc.RTPCodecTypeAudio {
+		if t.kind == webrtc.RTPCodecTypeAudio {
 			s.attachLocked(p, key, t)
 		}
 	}
@@ -148,11 +172,12 @@ func (s *SFU) Leave(roomID, userID string) {
 
 func (s *SFU) Signal(_ context.Context, roomID, userID, typ string, data json.RawMessage) error {
 	var msg struct {
-		SDP    string            `json:"sdp"`
-		Tracks map[string]string `json:"tracks"` // rtc_offer: mid -> track name
-		UserID string            `json:"user_id"`
-		Track  string            `json:"track"`
-		On     bool              `json:"on"`
+		SDP     string            `json:"sdp"`
+		Tracks  map[string]string `json:"tracks"` // rtc_offer: mid -> track name
+		UserID  string            `json:"user_id"`
+		Track   string            `json:"track"`
+		On      bool              `json:"on"`
+		Quality string            `json:"quality"` // rtc_subscribe: auto (default), high, medium or low
 	}
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return errs.Invalid("malformed signaling message")
@@ -182,17 +207,33 @@ func (s *SFU) Signal(_ context.Context, roomID, userID, typ string, data json.Ra
 		if msg.Track != media.Camera && msg.Track != media.Screen {
 			return errs.Invalid("only camera and screen are subscribed on demand")
 		}
-		key := msg.UserID + "/" + msg.Track
-		if msg.On {
-			p.wants[key] = true
-			if t := r.tracks[key]; t != nil && t.owner != p {
-				s.attachLocked(p, key, t)
-			}
-		} else {
-			delete(p.wants, key)
-			detach(p, key)
+		if msg.Quality == "" {
+			msg.Quality = "auto"
 		}
-		s.negotiateLocked(p)
+		if _, ok := qualityLevel[msg.Quality]; !ok {
+			return errs.Invalid("quality must be auto, high, medium or low")
+		}
+		key := msg.UserID + "/" + msg.Track
+		if !msg.On {
+			delete(p.wants, key)
+			if p.sends[key] != nil {
+				detach(p, key)
+				s.negotiateLocked(p)
+			}
+			return nil
+		}
+		p.wants[key] = msg.Quality
+		if d := p.sends[key]; d != nil { // already watching: only the layer changes, no renegotiation
+			d.t.mu.Lock()
+			d.quality = msg.Quality
+			d.t.retargetLocked(d)
+			d.t.mu.Unlock()
+			return nil
+		}
+		if t := r.tracks[key]; t != nil && t.owner != p {
+			s.attachLocked(p, key, t)
+			s.negotiateLocked(p)
+		}
 		return nil
 	}
 	return errs.Invalid("unknown signaling message")
@@ -273,50 +314,98 @@ func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote, receiv
 	if !allowed {
 		return // unknown name or no permission: the track is simply never forwarded
 	}
-	local, err := webrtc.NewTrackLocalStaticRTP(remote.Codec().RTPCodecCapability, name, p.userID)
-	if err != nil {
-		slog.Warn("sfu: creating forward track", "err", err)
-		return
-	}
-	key := p.userID + "/" + name
-	t := &track{owner: p, name: name, local: local, remote: remote}
+	key, rid := p.userID+"/"+name, remote.RID()
 
 	s.mu.Lock()
 	r := s.rooms[roomID]
-	if p.closed || r == nil || r.tracks[key] != nil {
+	if p.closed || r == nil {
 		s.mu.Unlock()
 		return
 	}
-	r.tracks[key] = t
-	for _, other := range r.peers {
-		if other != p && (audio || other.wants[key]) {
-			s.attachLocked(other, key, t)
-			s.negotiateLocked(other)
+	t := r.tracks[key]
+	switch {
+	case t == nil: // the track's first layer (or its only one)
+		t = &track{owner: p, name: name, kind: remote.Kind(), codec: remote.Codec().RTPCodecCapability, receiver: receiver, pub: p.pub,
+			layers: map[string]*webrtc.TrackRemote{rid: remote}, downs: map[*peer]*down{}, lastKF: map[string]time.Time{}}
+		r.tracks[key] = t
+		for _, other := range r.peers {
+			if other == p {
+				continue
+			}
+			if _, wants := other.wants[key]; audio || wants {
+				s.attachLocked(other, key, t)
+				s.negotiateLocked(other)
+			}
 		}
+		published := r.published(p.userID)
+		s.mu.Unlock()
+		s.onTracks(roomID, p.userID, published)
+	case t.receiver == receiver: // another simulcast layer of it
+		t.mu.Lock()
+		t.layers[rid] = remote
+		for _, d := range t.downs {
+			t.retargetLocked(d)
+		}
+		t.mu.Unlock()
+		s.mu.Unlock()
+	default: // a second track with the same name
+		s.mu.Unlock()
+		return
 	}
-	published := r.published(p.userID)
-	s.mu.Unlock()
-	s.onTracks(roomID, p.userID, published)
 
 	for {
 		pkt, _, err := remote.ReadRTP()
 		if err != nil {
 			break // the publisher stopped the track or left
 		}
-		if err := local.WriteRTP(pkt); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-			break
-		}
+		t.write(rid, pkt)
 	}
 
 	s.mu.Lock()
-	if r := s.rooms[roomID]; r != nil && r.tracks[key] == t {
+	t.mu.Lock()
+	delete(t.layers, rid)
+	gone := len(t.layers) == 0
+	for _, d := range t.downs {
+		t.retargetLocked(d)
+	}
+	t.mu.Unlock()
+	if r := s.rooms[roomID]; gone && r != nil && r.tracks[key] == t {
 		s.unpublishLocked(r, key)
-		published = r.published(p.userID)
+		published := r.published(p.userID)
 		s.mu.Unlock()
 		s.onTracks(roomID, p.userID, published)
 		return
 	}
 	s.mu.Unlock()
+}
+
+// write forwards one packet of a layer to the subscribers on it, and moves those waiting for this layer onto it at a keyframe.
+func (t *track) write(rid string, pkt *rtp.Packet) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now, checked, key := time.Now(), false, false
+	for _, d := range t.downs {
+		if d.want == rid && (!d.on || d.cur != rid) {
+			if !checked {
+				checked, key = true, t.kind == webrtc.RTPCodecTypeAudio || isKeyframe(t.codec.MimeType, pkt.Payload)
+			}
+			// Starting can happen anywhere (the decoder waits for the keyframe we asked for); a switch waits for
+			// one, or the decoder would apply the new layer's deltas to the old layer's pictures.
+			if key || !d.on {
+				d.cur, d.on = rid, true
+				d.rw.switchTo(pkt.SequenceNumber, pkt.Timestamp, t.codec.ClockRate, now)
+			}
+		}
+		if !d.on || d.cur != rid {
+			continue
+		}
+		out := *pkt
+		out.SequenceNumber, out.Timestamp = d.rw.rewrite(pkt.SequenceNumber, pkt.Timestamp, now)
+		// The publisher's header extension IDs mean nothing on the subscriber's connection (and its mid/rid would misroute);
+		// the subscriber connection's interceptors add their own.
+		out.Extension, out.Extensions = false, nil
+		_ = d.local.WriteRTP(&out) // a subscriber's failing connection must not stop the others
+	}
 }
 
 // trackName is what the client called a track in its offer ("tracks", by mid). Browsers cannot
@@ -348,49 +437,83 @@ func (s *SFU) attachLocked(p *peer, key string, t *track) {
 	if p.sends[key] != nil {
 		return
 	}
-	sender, err := p.sub.AddTrack(t.local)
+	local, err := webrtc.NewTrackLocalStaticRTP(t.codec, t.name, t.owner.userID)
+	if err != nil {
+		slog.Warn("sfu: creating forward track", "err", err)
+		return
+	}
+	sender, err := p.sub.AddTrack(local)
 	if err != nil {
 		slog.Warn("sfu: adding track", "err", err)
 		return
 	}
-	p.sends[key] = sender
-	if t.remote.Kind() == webrtc.RTPCodecTypeVideo {
-		s.keyframeLocked(t) // a new viewer cannot decode until the next keyframe
-	}
-	// RTCP from the viewer: a lost-picture report becomes a keyframe request to the publisher.
+	d := &down{t: t, local: local, sender: sender, quality: p.wants[key]}
+	p.sends[key] = d
+	t.mu.Lock()
+	t.downs[p] = d
+	t.retargetLocked(d) // for video, also asks for the keyframe a new viewer needs to start decoding
+	t.mu.Unlock()
+	// RTCP from the viewer: a lost picture becomes a keyframe request to the publisher, and loss drives "auto" quality.
 	go func() {
 		for {
 			pkts, _, err := sender.ReadRTCP()
 			if err != nil {
 				return
 			}
+			t.mu.Lock()
 			for _, pkt := range pkts {
-				switch pkt.(type) {
+				switch pkt := pkt.(type) {
 				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-					s.mu.Lock()
-					s.keyframeLocked(t)
-					s.mu.Unlock()
+					t.keyframeLocked(d.want)
+				case *rtcp.ReceiverReport:
+					for _, rep := range pkt.Reports {
+						if d.quality == "auto" && d.auto.report(rep.FractionLost) {
+							t.retargetLocked(d)
+						}
+					}
 				}
 			}
+			t.mu.Unlock()
 		}
 	}()
 }
 
-func detach(p *peer, key string) {
-	if sender := p.sends[key]; sender != nil {
-		if err := p.sub.RemoveTrack(sender); err != nil {
-			slog.Warn("sfu: removing track", "err", err)
-		}
-		delete(p.sends, key)
+// retargetLocked picks the layer a subscriber should get and, if it changes, asks for a keyframe on it to switch.
+func (t *track) retargetLocked(d *down) {
+	if len(t.layers) == 0 {
+		return
+	}
+	level := qualityLevel[d.quality]
+	if d.quality == "auto" {
+		level = d.auto.level
+	}
+	d.want = pickLayer(t.layers, level)
+	if t.kind == webrtc.RTPCodecTypeVideo && (!d.on || d.cur != d.want) {
+		t.keyframeLocked(d.want)
 	}
 }
 
-func (s *SFU) keyframeLocked(t *track) {
-	if t.owner.pub == nil || time.Since(t.lastKF) < 300*time.Millisecond {
+func detach(p *peer, key string) {
+	d := p.sends[key]
+	if d == nil {
 		return
 	}
-	t.lastKF = time.Now()
-	_ = t.owner.pub.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(t.remote.SSRC())}})
+	d.t.mu.Lock()
+	delete(d.t.downs, p)
+	d.t.mu.Unlock()
+	if err := p.sub.RemoveTrack(d.sender); err != nil {
+		slog.Warn("sfu: removing track", "err", err)
+	}
+	delete(p.sends, key)
+}
+
+func (t *track) keyframeLocked(rid string) {
+	layer := t.layers[rid]
+	if t.pub == nil || layer == nil || time.Since(t.lastKF[rid]) < 300*time.Millisecond {
+		return
+	}
+	t.lastKF[rid] = time.Now()
+	_ = t.pub.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(layer.SSRC())}})
 }
 
 // unpublishLocked stops forwarding a track to everyone.

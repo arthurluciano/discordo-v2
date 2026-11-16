@@ -15,6 +15,8 @@ import (
 	"discordo/server/internal/auth"
 	"discordo/server/internal/blob"
 	"discordo/server/internal/config"
+	"discordo/server/internal/media"
+	"discordo/server/internal/media/livekit"
 	"discordo/server/internal/media/pion"
 	"discordo/server/internal/postgres"
 	"discordo/server/internal/web"
@@ -47,12 +49,18 @@ func run() error {
 	if err := retry(ctx, func() (err error) { blobs, err = blob.NewS3(ctx, cfg.S3); return }); err != nil {
 		return fmt.Errorf("object storage: %w", err)
 	}
-	sfu, err := pion.New(cfg.Media)
-	if err != nil {
-		return fmt.Errorf("media: %w", err)
+	var provider media.Provider
+	if cfg.MediaProvider == "livekit" {
+		provider = livekit.New(cfg.LiveKit)
+	} else {
+		sfu, err := pion.New(cfg.Media)
+		if err != nil {
+			return fmt.Errorf("media: %w", err)
+		}
+		defer sfu.Close()
+		provider = sfu
 	}
-	defer sfu.Close()
-	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs, Media: sfu, Web: web.Handler()})
+	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs, Media: provider, Web: web.Handler()})
 	go hub.Run(ctx)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}

@@ -28,7 +28,7 @@ export const AppUpdatePrompt = () => {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 16, scale: 0.98 }}
           transition={transition}
-          className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-surface-floating p-3 text-snow shadow-2xl"
+          className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-surface-floating p-3 text-snow shadow-2xl glass:glass-panel glass:glass-float glass:rounded-2xl"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-blurple/15 text-blurple-soft"><RefreshCw aria-hidden className="size-4" /></span>
           <span className="min-w-0 flex-1 text-sm leading-tight">

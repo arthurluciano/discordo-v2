@@ -10,6 +10,7 @@ import { Composer, useUploads } from './composer'
 import type { People } from './message-item'
 import { Transcript } from './transcript'
 import { TypingIndicator } from './typing-indicator'
+import { roleColors } from './role-color'
 
 export type ChannelChatProps = {
   channelId: string
@@ -53,6 +54,7 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
     return people.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   }, [guild, dm, me])
 
+  const colors = useMemo(() => (guild ? roleColors(guild) : undefined), [guild])
   const people: People = useMemo(() => new Map(mentionable.map((p) => [p.user.id, p.name])), [mentionable])
 
   const canAttach = has(permissions, Permission.AttachFiles)
@@ -81,12 +83,12 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
           </div>
         </div>
       ) : (
-        <Transcript log={log} title={title} isDM={!guildId} meId={me.id} people={people} canReact={has(permissions, Permission.AddReactions)} canManage={has(permissions, Permission.ManageMessages)} onLoadOlder={loadMore} />
+        <Transcript log={log} title={title} isDM={!guildId} meId={me.id} people={people} colors={colors} canReact={has(permissions, Permission.AddReactions)} canManage={has(permissions, Permission.ManageMessages)} onLoadOlder={loadMore} />
       )}
       <TypingIndicator channelId={channelId} meId={me.id} people={people} />
       <Composer channelId={channelId} placeholder={guildId ? `Conversar em #${title}` : `Conversar com ${title}`} canSend={has(permissions, Permission.SendMessages)} canAttach={canAttach} uploads={uploads} mentionable={mentionable} />
       {dragging ? (
-        <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-xl border-2 border-dashed border-blurple bg-surface-content/90">
+        <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-xl border-2 border-dashed border-blurple bg-surface-content/90 glass:bg-(--canvas)/90 glass:backdrop-blur-md">
           <p className="flex items-center gap-2 font-semibold text-snow"><Paperclip aria-hidden />Solte para anexar</p>
         </div>
       ) : null}

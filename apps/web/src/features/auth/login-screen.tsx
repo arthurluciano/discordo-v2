@@ -28,7 +28,7 @@ export const LoginScreen = () => {
 
   return (
     <main className="relative h-full min-h-0 overflow-y-auto bg-surface-cosmic text-snow">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden glass:hidden" aria-hidden>
         <div className="absolute -left-40 -top-56 size-[38rem] rounded-full bg-blurple/25 blur-3xl" />
         <div className="absolute -bottom-72 right-0 size-[42rem] rounded-full bg-fuchsia/10 blur-3xl" />
         <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:28px_28px]" />
@@ -44,7 +44,7 @@ export const LoginScreen = () => {
           <p className="mt-7 max-w-xl text-lg leading-8 text-fog">Entre para conversar por texto, voz ou vídeo — com a espontaneidade de estar na mesma sala.</p>
         </motion.section>
 
-        <motion.div variants={FADE_UP} initial="hidden" animate="visible" transition={enter} className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-surface-sidebar p-6 shadow-2xl shadow-black/30 sm:p-8">
+        <motion.div variants={FADE_UP} initial="hidden" animate="visible" transition={enter} className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-surface-sidebar p-6 shadow-2xl shadow-black/30 sm:p-8 glass:glass-panel glass:glass-strong glass:rounded-[2rem]">
           <div className="mb-6 text-center sm:mb-8">
             <BrandLogo className="mx-auto mb-4 size-14 sm:mb-5 sm:size-16 lg:hidden" />
             <h2 className="text-xl font-bold sm:text-2xl">Boas-vindas!</h2>

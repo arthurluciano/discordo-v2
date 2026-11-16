@@ -12,10 +12,11 @@ import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { RESOLUTIONS, type Resolution } from '@/lib/media/presets'
+import { encoderDetails, encoderLabel, encoderStats, type EncoderStats } from '@/lib/media/stats'
 import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { callPermissions } from './call'
+import { callPermissions, senderStats } from './call'
 import { useVoice } from './voice-session'
 
 type Icon = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
@@ -70,12 +71,62 @@ const ShareMenu = () => {
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         {sharing ? (
-          <DropdownMenuItem variant="destructive" onSelect={() => void v.stopScreen()}>Parar compartilhamento</DropdownMenuItem>
+          <>
+            <DropdownMenuItem onSelect={() => void v.switchScreen()}>Trocar tela</DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onSelect={() => void v.stopScreen()}>Parar compartilhamento</DropdownMenuItem>
+          </>
         ) : (
           <DropdownMenuItem onSelect={() => void v.startScreen()}>Compartilhar tela</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+const STATS_INTERVAL_MS = 2_000
+
+/** Polls the encoder of one of our videos while it is being sent. */
+const useEncoderStats = (name: 'screen' | 'camera', active: boolean) => {
+  const [stats, setStats] = useState<EncoderStats | null>(null)
+  useEffect(() => {
+    if (!active) return
+    let previous: EncoderStats | null = null
+    let stopped = false
+    const poll = async () => {
+      const report = await senderStats(name).catch(() => null)
+      if (stopped || !report) return
+      previous = encoderStats(report, previous)
+      setStats(previous)
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), STATS_INTERVAL_MS)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      setStats(null)
+    }
+  }, [name, active])
+  return active ? stats : null
+}
+
+/** "Codificação: GPU (…)" for each video we send; sent resolution, frame rate and bitrate on hover. */
+export const EncoderInfo = ({ className }: { className?: string }) => {
+  const v = useVoice()
+  const screen = useEncoderStats('screen', v.screen !== null)
+  const camera = useEncoderStats('camera', v.camera !== null)
+  const rows = [['Tela', screen] as const, ['Câmera', camera] as const].flatMap(([what, s]) => (s ? [{ what, s }] : []))
+  if (rows.length === 0) return null
+  return (
+    <div className={cn('flex min-w-0 flex-col gap-0.5 text-[11px] text-greyple', className)}>
+      {rows.map(({ what, s }) => (
+        <Tooltip key={what}>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="truncate" data-numeric>{what} · {encoderLabel(s)}</span>
+          </TooltipTrigger>
+          <TooltipContent>{encoderLabel(s)}<br />{encoderDetails(s)}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
   )
 }
 
@@ -166,6 +217,7 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
         <TooltipContent>Sair da chamada</TooltipContent>
       </Tooltip>
       <DeviceSettings open={settings} onOpenChange={setSettings} />
+      <EncoderInfo className="basis-full items-center" />
     </div>
   )
 }

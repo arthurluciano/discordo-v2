@@ -56,7 +56,14 @@ func New(store *postgres.Store, provider auth.Provider, opt Options) (http.Handl
 		Web:           opt.Web,
 		SecureCookies: strings.HasPrefix(opt.PublicURL, "https://"),
 	}
-	return api.Handler(), hub
+	handler := api.Handler()
+	if webhooks, ok := opt.Media.(http.Handler); ok { // LiveKit reports what participants publish this way
+		mux := http.NewServeMux()
+		mux.Handle("POST /livekit/webhook", webhooks)
+		mux.Handle("/", handler)
+		handler = mux
+	}
+	return handler, hub
 }
 
 // channels lets the message service treat guild channels and DMs alike.

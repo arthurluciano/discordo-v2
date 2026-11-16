@@ -14,12 +14,13 @@ type TranscriptProps = {
   isDM: boolean
   meId: string
   people: People
+  colors: Map<string, string> | undefined
   canReact: boolean
   canManage: boolean
   onLoadOlder: () => void
 }
 
-export const Transcript = ({ log, title, isDM, meId, people, canReact, canManage, onLoadOlder }: TranscriptProps) => {
+export const Transcript = ({ log, title, isDM, meId, people, colors, canReact, canManage, onLoadOlder }: TranscriptProps) => {
   const scroller = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLOListElement>(null)
   const atBottom = useRef(true)
@@ -78,7 +79,7 @@ export const Transcript = ({ log, title, isDM, meId, people, canReact, canManage
                 <span className="h-px flex-1 bg-white/10" />{DAY_FORMAT.format(new Date(message.created_at))}<span className="h-px flex-1 bg-white/10" />
               </li>
             ) : null,
-            <MessageItem key={message.id} message={message} grouped={!startsNewGroup(message, prev)} meId={meId} people={people} canReact={canReact} canManage={canManage} />,
+            <MessageItem key={message.id} message={message} grouped={!startsNewGroup(message, prev)} meId={meId} people={people} color={colors?.get(message.author.id)} canReact={canReact} canManage={canManage} />,
           ]
         })}
       </ol>

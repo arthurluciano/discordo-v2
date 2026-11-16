@@ -111,22 +111,40 @@ func (s *Service) join(ctx context.Context, userID, sessionID, channelID string,
 	}
 	s.leave(userID, "") // one call per user: joining here hangs up anywhere else
 
-	// VOICE_READY goes first so the client knows the transport before any media signaling reaches it.
-	conn := media.Connection{Kind: "pion"}
 	c := &call{sessionID: sessionID, recipients: recipients,
 		State: State{UserID: userID, ChannelID: channelID, GuildID: guildID, Tracks: []string{}}}
 	s.mu.Lock()
 	s.calls[userID] = c
 	s.mu.Unlock()
-	send("VOICE_READY", map[string]any{"channel_id": channelID, "connection": conn})
 
+	// VOICE_READY carries what Join returns, yet must reach the client before any signaling Join itself sends.
+	var held sync.Mutex
+	var early []func()
+	ready := false
+	relay := func(typ string, data any) {
+		held.Lock()
+		defer held.Unlock()
+		if ready {
+			send(typ, data)
+		} else {
+			early = append(early, func() { send(typ, data) })
+		}
+	}
 	grants := media.Grants{Speak: perms.Has(permission.Speak), Stream: perms.Has(permission.Stream)}
-	if _, err := s.media.Join(ctx, channelID, userID, grants, send); err != nil {
+	conn, err := s.media.Join(ctx, channelID, userID, grants, relay)
+	if err != nil {
 		s.mu.Lock()
 		delete(s.calls, userID)
 		s.mu.Unlock()
 		return err
 	}
+	held.Lock()
+	send("VOICE_READY", map[string]any{"channel_id": channelID, "connection": conn})
+	for _, f := range early {
+		f()
+	}
+	ready = true
+	held.Unlock()
 	s.publish(c, c.State)
 	return nil
 }

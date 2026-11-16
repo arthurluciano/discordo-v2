@@ -1,7 +1,7 @@
 // A guild's header (menu, settings, invites) and channel list, with who is in each voice channel.
 import { useMemo, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, Copy, Hash, HeadphoneOff, LogOut, MicOff, Plus, Settings, UserPlus, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -81,7 +81,11 @@ const InviteDialog = ({ guild, open, onOpenChange }: { guild: Guild; open: boole
   const [maxUses, setMaxUses] = useState('0')
   const [maxAge, setMaxAge] = useState(String(INVITE_EXPIRY[3].seconds))
   const [copied, setCopied] = useState(false)
-  const create = useMutation({ mutationFn: () => api.createInvite(guild.id, { max_uses: Number(maxUses), max_age: Number(maxAge) }) })
+  const queryClient = useQueryClient()
+  const create = useMutation({
+    mutationFn: () => api.createInvite(guild.id, { max_uses: Number(maxUses), max_age: Number(maxAge) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invites', guild.id] }),
+  })
   const link = create.data ? inviteLink(create.data.code) : ''
   const copy = async () => {
     await navigator.clipboard.writeText(link).catch(() => {})

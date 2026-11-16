@@ -2,7 +2,7 @@
 // Two connections, so offers never collide: we offer on `pub` whenever what we send changes,
 // the server offers on `sub` whenever what we receive changes. No trickle ICE: SDPs go out complete.
 import type { TrackName } from '@/lib/wire'
-import { preferH264, type Encoding } from './presets'
+import { preferH264, sendEncodings, updateEncodings, type Encoding } from './presets'
 import { nameTracks, parseOfferTracks } from './sdp'
 import type { RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
@@ -26,7 +26,7 @@ const applyEncoding = async (sender: RTCRtpSender, encoding: Encoding | undefine
   if (!encoding) return
   const params = sender.getParameters()
   if (!params.encodings?.length) return // not negotiated yet: addTransceiver's sendEncodings already has it
-  params.encodings = params.encodings.map((e) => ({ ...e, ...encoding }))
+  params.encodings = updateEncodings(params.encodings, encoding)
   await sender.setParameters(params)
 }
 
@@ -126,12 +126,21 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         pub = peer()
         reportState()
       }
-      const transceiver = pub.addTransceiver(track, { direction: 'sendonly', ...(encoding ? { sendEncodings: [encoding] } : {}) })
+      // Video is simulcast (rids h/m/l, see presets) so the SFU can give each viewer the layer it can take.
+      const encodings = encoding ? sendEncodings(encoding, track.kind === 'video' ? track.getSettings?.().height : undefined) : undefined
+      let transceiver: RTCRtpTransceiver
+      try {
+        transceiver = pub.addTransceiver(track, { direction: 'sendonly', ...(encodings ? { sendEncodings: encodings } : {}) })
+      } catch (cause) {
+        if (!encoding || encodings?.length === 1) throw cause
+        transceiver = pub.addTransceiver(track, { direction: 'sendonly', sendEncodings: sendEncodings(encoding, undefined) }) // no simulcast here
+      }
       if (track.kind === 'video') preferHardwareCodec(transceiver)
       published.set(name, transceiver)
       return negotiate()
     },
-    subscribe: (userId, track, on) => void send('rtc_subscribe', { user_id: userId, track, on }),
+    subscribe: (userId, track, on, quality) => void send('rtc_subscribe', { user_id: userId, track, on, ...(quality ? { quality } : {}) }),
+    getStats: async (name) => (await published.get(name)?.sender.getStats()) ?? null,
     handle: (e) => {
       if (closed) return
       if (e.t === 'RTC_ANSWER') {

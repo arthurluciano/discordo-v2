@@ -60,6 +60,7 @@ Attachment   {id, filename, content_type, size}
 DM           {id, type, name, recipients: [User]}   // type 2 conversa, 3 grupo
 Relationship {user, status, online}   // 1 amigo, 2 pedido recebido, 3 pedido enviado, 4 bloqueado
 VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome]}
+Invite       {code, guild_id, creator_id, max_uses, uses, expires_at}   // max_uses 0 = sem limite; expires_at null = nunca
 ```
 
 Menções vão no texto como `<@id-do-usuário>`; `@everyone` só conta para quem tem a permissão.
@@ -84,9 +85,12 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 | `PATCH /guilds/{guild}` | `{name?, icon_url?, banner_url?}` (imagens: `""` ou uma `url` de `POST /images`) | |
 | `DELETE /guilds/{guild}` | | só o dono |
 | `POST /guilds/{guild}/invites` | `{max_uses?, max_age?}` (segundos; 0 = sem limite) | `{code, ...}` |
+| `GET /guilds/{guild}/invites` | | `[Invite]` com `creator: User`, só os não expirados (gerenciar servidor) |
 | `POST /invites/{code}` | | `Snapshot` (entra no servidor) |
+| `DELETE /invites/{code}` | | revoga (quem criou ou gerenciar servidor) |
 | `DELETE /guilds/{guild}/members/@me` | | sair |
 | `DELETE /guilds/{guild}/members/{user}` | | expulsar |
+| `GET /guilds/{guild}/bans` | | `[{user: User}]` (banir) |
 | `PUT` / `DELETE /guilds/{guild}/bans/{user}` | | banir / desbanir |
 | `PUT` / `DELETE /guilds/{guild}/members/{user}/roles/{role}` | | dar / tirar cargo |
 | `POST /guilds/{guild}/roles` | `{name?, color?, permissions?, position?}` | `Role` |
@@ -125,9 +129,11 @@ Cliente → servidor (`{"op", "d"}`):
 | `voice_state` | `{muted, deafened}` | só informativo para os outros; quem muta de verdade é o cliente |
 | `rtc_offer` | `{sdp, tracks: {mid: nome}}` | oferta da conexão de **envio**; `tracks` nomeia cada faixa pelo `mid` do transceiver |
 | `rtc_answer` | `{sdp}` | resposta à oferta da conexão de **recepção** |
-| `rtc_subscribe` | `{user_id, track, on}` | começa/para de receber `camera` ou `screen` de alguém |
+| `rtc_subscribe` | `{user_id, track, on, quality?}` | começa/para de receber `camera` ou `screen` de alguém; `quality`: `auto` (padrão), `high`, `medium` ou `low` |
 
-Servidor → cliente: `VOICE_READY {channel_id, connection: {kind}}`, `VOICE_ERROR {op, error}`, `RTC_ANSWER {sdp}`, `RTC_OFFER {sdp}`.
+Servidor → cliente: `VOICE_READY {channel_id, connection: {kind, url?, token?}}`, `VOICE_ERROR {op, error}`, `RTC_ANSWER {sdp}`, `RTC_OFFER {sdp}`.
+
+O `VOICE_READY` chega antes de qualquer outra mensagem da chamada; `connection.kind` diz como a mídia trafega (abaixo).
 
 ### Mídia (`connection.kind == "pion"`)
 
@@ -143,3 +149,23 @@ O **nome** da faixa (em `tracks`, pelo `mid`; sem ele, o ID da faixa) diz o que 
 Nas ofertas de recepção, cada seção tem `a=msid:<id do usuário dono> <nome da faixa>`; use o `mid` para saber de quem é cada faixa recebida.
 
 Áudio chega de todos automaticamente. Vídeo só depois de `rtc_subscribe`: use `tracks` do `VoiceState` para saber quem está transmitindo o quê.
+
+**Simulcast.** Uma faixa de vídeo pode ir em até três camadas (`a=simulcast` com rids `h` completa, `m` ~720p, `l` ~360p;
+o servidor também aceita uma camada só, sem rid). Cada camada precisa levar as extensões RTP `sdes:mid` e `sdes:rtp-stream-id`.
+Quem assiste recebe **uma** faixa com uma camada: `high`/`medium`/`low` escolhem `h`/`m`/`l` (se faltar, a mais próxima abaixo,
+senão acima); `auto` começa em `h`, desce uma camada quando os relatórios de recepção (RTCP RR) de quem assiste mostram mais de ~10%
+de perda e sobe de volta depois de ~10 relatórios seguidos abaixo de ~2%. Para mudar a qualidade, mande `rtc_subscribe` com `on: true`
+de novo: não há renegociação. A troca acontece no próximo quadro-chave da nova camada, com números de sequência e timestamps
+reescritos para formar um fluxo contínuo. As extensões de cabeçalho de quem envia não são repassadas.
+
+### Mídia (`connection.kind == "livekit"`)
+
+O cliente conecta a um servidor LiveKit em `url` com `token` (válido por 2 minutos, só para entrar; a sala é o ID do canal
+e a identidade é o seu ID de usuário). Nada de `rtc_*`: esses ops respondem `VOICE_ERROR`.
+
+A fonte (`source`) de cada faixa no LiveKit é o nome dela aqui: `microphone` = `mic`, `camera` = `camera`,
+`screen_share` = `screen`, `screen_share_audio` = `screen-audio`. O token só deixa publicar `microphone` com a permissão
+falar e as demais com transmitir vídeo; o servidor sabe o que cada um publica pelos webhooks do LiveKit e repassa em `tracks` do `VoiceState`.
+
+Entre sem assinatura automática e assine áudio de todos e vídeo só de quem você quer ver. `voice_leave` (ou cair o gateway)
+tira você da sala do LiveKit; permissões novas valem a partir do próximo `voice_join`.

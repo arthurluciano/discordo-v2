@@ -10,7 +10,7 @@ import { SPRING_SOFT, useTransition } from '@/design/motion'
 import { displayName } from '@/features/identity/users'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { Control } from './voice-controls'
+import { Control, EncoderInfo } from './voice-controls'
 import { useVoice } from './voice-session'
 
 /** "channel / guild" for a voice channel, the DM's name (or its people) for a DM. */
@@ -71,6 +71,7 @@ export const VoiceDock = () => {
             )}
             <IconButton label="Sair da chamada" variant="destructive" onClick={v.leave}><PhoneOff aria-hidden /></IconButton>
           </div>
+          <EncoderInfo className="px-3 pb-2" />
           {v.error ? <p role="alert" className="px-3 pb-3 text-xs text-ekko-red">{v.error}</p> : null}
         </motion.section>
       ) : null}

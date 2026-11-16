@@ -1,8 +1,9 @@
-import { useState, type KeyboardEvent } from 'react'
-import { FileText, Pencil, SmilePlus, Trash2 } from 'lucide-react'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { Copy, FileText, Pencil, SmilePlus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar } from '@/design/avatar'
 import { api, attachmentUrl, errorMessage } from '@/lib/api'
@@ -87,15 +88,20 @@ type MessageItemProps = {
   grouped: boolean
   meId: string
   people: People
+  /** Author's role color in a guild; undefined in DMs or without a colored role. */
+  color: string | undefined
   canReact: boolean
   canManage: boolean
 }
 
-export const MessageItem = ({ message, grouped, meId, people, canReact, canManage }: MessageItemProps) => {
+export const MessageItem = ({ message, grouped, meId, people, color, canReact, canManage }: MessageItemProps) => {
   const { openProfile } = useProfileViewer()
   const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [pressing, setPressing] = useState(false)
+  const pressTimer = useRef<number | undefined>(undefined)
   const own = message.author.id === meId
   const name = people.get(message.author.id) ?? displayName(message.author)
   const at = new Date(message.created_at)
@@ -105,6 +111,24 @@ export const MessageItem = ({ message, grouped, meId, people, canReact, canManag
   const toggle = (emoji: string) => {
     const mine = message.reactions.find((r) => r.emoji === emoji)?.users.includes(meId) ?? false
     void run(api.react(message.channel_id, message.id, emoji, !mine))
+  }
+
+  const canDelete = own || canManage
+  const cancelPress = () => {
+    window.clearTimeout(pressTimer.current)
+    setPressing(false)
+  }
+  const onTouchStart = () => {
+    if (editing) return
+    setPressing(true)
+    pressTimer.current = window.setTimeout(() => {
+      setPressing(false)
+      setSheetOpen(true)
+    }, 450)
+  }
+  const fromSheet = (action: () => void) => () => {
+    setSheetOpen(false)
+    action()
   }
 
   const body = editing ? <Editor message={message} onDone={() => setEditing(false)} /> : (
@@ -133,7 +157,14 @@ export const MessageItem = ({ message, grouped, meId, people, canReact, canManag
   )
 
   return (
-    <li className={cn('group relative -mx-4 px-4 py-0.5 hover:bg-black/10', !grouped && 'mt-4 pt-1 first:mt-1', highlighted && 'border-l-2 border-ember-orange bg-ember-orange/10 hover:bg-ember-orange/15')}>
+    <li
+      onTouchStart={onTouchStart}
+      onTouchMove={cancelPress}
+      onTouchEnd={cancelPress}
+      onTouchCancel={cancelPress}
+      // Long-press opens the sheet; suppress the native menu so it doesn't compete.
+      onContextMenu={(e) => { if (pressing || sheetOpen) e.preventDefault() }}
+      className={cn('group relative -mx-4 px-4 py-0.5 hover:bg-black/10', pressing && 'select-none [-webkit-touch-callout:none]', !grouped && 'mt-4 pt-1 first:mt-1', highlighted && 'border-l-2 border-ember-orange bg-ember-orange/10 hover:bg-ember-orange/15')}>
       {grouped ? (
         <div className="flex gap-4">
           <time dateTime={message.created_at} className="w-10 shrink-0 pt-1 text-right text-[0.65rem] text-greyple opacity-0 group-hover:opacity-100">{TIME_FORMAT.format(at)}</time>
@@ -143,7 +174,7 @@ export const MessageItem = ({ message, grouped, meId, people, canReact, canManag
         <div className="flex gap-4">
           <button type="button" onClick={() => openProfile(message.author.id)} className="h-fit shrink-0"><Avatar userId={message.author.id} displayName={name} avatarUrl={message.author.avatar_url} size="medium" ringClass="ring-surface-content" /></button>
           <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-baseline gap-x-2"><button type="button" onClick={() => openProfile(message.author.id)} className="text-sm font-semibold text-snow hover:underline">{name}</button><time dateTime={message.created_at} className="text-[0.68rem] text-greyple">{DATE_FORMAT.format(at)} às {TIME_FORMAT.format(at)}</time></p>
+            <p className="flex flex-wrap items-baseline gap-x-2"><button type="button" onClick={() => openProfile(message.author.id)} style={{ color }} className="text-sm font-semibold text-snow hover:underline">{name}</button><time dateTime={message.created_at} className="text-[0.68rem] text-greyple">{DATE_FORMAT.format(at)} às {TIME_FORMAT.format(at)}</time></p>
             {body}
           </div>
         </div>
@@ -153,9 +184,24 @@ export const MessageItem = ({ message, grouped, meId, people, canReact, canManag
         <div className="absolute -top-3 right-4 hidden items-center rounded-md border border-white/10 bg-surface-secondary shadow-sm group-hover:flex has-[[data-state=open]]:flex">
           {canReact ? <ReactionPicker onPick={toggle} /> : null}
           {own ? <Button variant="ghost" size="icon-xs" aria-label="Editar mensagem" onClick={() => setEditing(true)}><Pencil aria-hidden /></Button> : null}
-          {own || canManage ? <Button variant="ghost" size="icon-xs" aria-label="Excluir mensagem" onClick={() => setConfirming(true)} className="hover:text-destructive"><Trash2 aria-hidden /></Button> : null}
+          {canDelete ? <Button variant="ghost" size="icon-xs" aria-label="Excluir mensagem" onClick={() => setConfirming(true)} className="hover:text-destructive"><Trash2 aria-hidden /></Button> : null}
         </div>
       )}
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="bottom" showCloseButton={false} className="gap-1 rounded-t-xl p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <SheetTitle className="sr-only">Ações da mensagem</SheetTitle>
+          <SheetDescription className="sr-only">Mensagem de {name}</SheetDescription>
+          {canReact ? (
+            <div className="mb-2 flex justify-between">
+              {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={fromSheet(() => toggle(emoji))} aria-label={`Reagir com ${emoji}`} className="rounded-full p-2 text-2xl active:bg-surface-hover">{emoji}</button>)}
+            </div>
+          ) : null}
+          {message.content ? <Button variant="ghost" className="justify-start" onClick={fromSheet(() => void navigator.clipboard.writeText(message.content).catch(() => setError('Não foi possível copiar o texto.')))}><Copy aria-hidden />Copiar texto</Button> : null}
+          {own ? <Button variant="ghost" className="justify-start" onClick={fromSheet(() => setEditing(true))}><Pencil aria-hidden />Editar</Button> : null}
+          {canDelete ? <Button variant="ghost" className="justify-start text-destructive" onClick={fromSheet(() => setConfirming(true))}><Trash2 aria-hidden />Apagar</Button> : null}
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="max-w-sm">

@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar } from '@/design/avatar'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
+import { roleColors } from '../chat/role-color'
 import { useProfileViewer } from '../identity/profile-viewer'
 import { displayName } from '../identity/users'
 
@@ -12,12 +13,9 @@ export const MemberList = ({ guildId }: { guildId: string }) => {
   const { openProfile } = useProfileViewer()
 
   const groups = useMemo(() => {
-    const colored = [...(guild?.roles ?? [])].filter((r) => r.color).sort((a, b) => b.position - a.position)
+    const colors = guild ? roleColors(guild) : new Map<string, string>()
     const members = (guild?.members ?? [])
-      .map((m) => {
-        const color = colored.find((r) => m.roles.includes(r.id))?.color
-        return { ...m, name: displayName(m.user, m.nickname), color: color ? `#${color.toString(16).padStart(6, '0')}` : undefined }
-      })
+      .map((m) => ({ ...m, name: displayName(m.user, m.nickname), color: colors.get(m.user.id) }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     return [
       { label: 'Online', online: true, members: members.filter((m) => m.online) },

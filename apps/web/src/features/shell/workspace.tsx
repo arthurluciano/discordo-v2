@@ -76,10 +76,13 @@ export const Workspace = () => {
 
   return (
     <>
-      <div ref={paneScope} className="flex h-full overflow-hidden bg-surface-content">
-        <div className={cn('flex h-full min-w-0 shrink-0', pane === 'content' ? 'max-md:hidden' : 'max-md:flex-1')}>
-          <ServerRail activeGuildId={place.kind === 'guild' ? place.guildId : null} />
-          <motion.aside key={sidebarKey} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={sidebarTransition} className="flex h-full min-w-0 flex-1 flex-col border-r border-white/10 bg-surface-secondary md:w-60 md:flex-none">
+      <div ref={paneScope} className="flex h-full overflow-hidden bg-surface-content glass:gap-2 glass:bg-transparent glass:p-2">
+        <div className={cn('flex h-full min-w-0 shrink-0 glass:gap-2', pane === 'content' ? 'max-md:hidden' : 'max-md:flex-1')}>
+          {/* `contents` keeps the default layout untouched; glass turns the rail into its own pane. */}
+          <div className="contents glass:flex glass:overflow-hidden glass:glass-panel glass:rounded-[1.75rem]">
+            <ServerRail activeGuildId={place.kind === 'guild' ? place.guildId : null} />
+          </div>
+          <motion.aside key={sidebarKey} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={sidebarTransition} className="flex h-full min-w-0 flex-1 flex-col border-r border-white/10 bg-surface-secondary md:w-60 md:flex-none glass:overflow-hidden glass:glass-panel glass:rounded-[1.75rem]">
             <div className="dock-clearance flex min-h-0 flex-1 flex-col">
               <ErrorBoundary label="Barra lateral">
                 {place.kind === 'guild' ? <GuildSidebar guildId={place.guildId} channelId={place.channelId} /> : <HomeSidebar dmId={place.dmId} />}
@@ -89,7 +92,7 @@ export const Workspace = () => {
           </motion.aside>
         </div>
 
-        <main className={cn('flex min-w-0 flex-1 flex-col overflow-hidden', pane === 'navigation' && 'max-md:hidden')}>
+        <main className={cn('flex min-w-0 flex-1 flex-col overflow-hidden glass:glass-strong glass:glass-panel glass:rounded-[1.75rem]', pane === 'navigation' && 'max-md:hidden')}>
           {place.kind === 'guild' ? (
             <GuildMain guildId={place.guildId} channelId={place.channelId} onBack={back} />
           ) : (

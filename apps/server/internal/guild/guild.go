@@ -68,6 +68,11 @@ type Invite struct {
 	MaxUses   int        `json:"max_uses"` // 0 = unlimited
 	Uses      int        `json:"uses"`
 	ExpiresAt *time.Time `json:"expires_at"` // nil = never
+	Creator   *user.User `json:"creator,omitempty"`
+}
+
+type Ban struct {
+	User user.User `json:"user"`
 }
 
 type Store interface {
@@ -88,6 +93,7 @@ type Store interface {
 	// Ban records the ban and removes the membership, reporting whether there was one.
 	Ban(ctx context.Context, guildID, userID string) (wasMember bool, err error)
 	Unban(ctx context.Context, guildID, userID string) error
+	Bans(ctx context.Context, guildID string) ([]Ban, error)
 
 	Channels(ctx context.Context, guildID string) ([]Channel, error)
 	Channel(ctx context.Context, channelID string) (Channel, error)
@@ -97,6 +103,10 @@ type Store interface {
 	DeleteOverwrite(ctx context.Context, channelID, targetID string) error
 
 	CreateInvite(ctx context.Context, inv Invite) error
+	// Invites lists the guild's invites that have not expired by now, with their creators.
+	Invites(ctx context.Context, guildID string, now time.Time) ([]Invite, error)
+	Invite(ctx context.Context, code string) (Invite, error)
+	DeleteInvite(ctx context.Context, code string) error
 	// UseInvite adds the user to the invite's guild. ErrNotFound if the invite is unusable,
 	// ErrForbidden if the user is banned. joined is false if they were already a member.
 	UseInvite(ctx context.Context, code, userID string, now time.Time) (guildID string, joined bool, err error)

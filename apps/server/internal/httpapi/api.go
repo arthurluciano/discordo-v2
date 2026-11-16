@@ -129,6 +129,9 @@ func (a *API) Handler() http.Handler {
 	h("PUT /guilds/{guild}/bans/{user}", func(r *http.Request, u user.User) (any, error) {
 		return nil, g.Ban(r.Context(), u.ID, r.PathValue("guild"), r.PathValue("user"))
 	})
+	h("GET /guilds/{guild}/bans", func(r *http.Request, u user.User) (any, error) {
+		return g.Bans(r.Context(), u.ID, r.PathValue("guild"))
+	})
 	h("DELETE /guilds/{guild}/bans/{user}", func(r *http.Request, u user.User) (any, error) {
 		return nil, g.Unban(r.Context(), u.ID, r.PathValue("guild"), r.PathValue("user"))
 	})
@@ -166,6 +169,12 @@ func (a *API) Handler() http.Handler {
 			return nil, err
 		}
 		return g.CreateInvite(r.Context(), u.ID, r.PathValue("guild"), in.MaxUses, time.Duration(in.MaxAge)*time.Second)
+	})
+	h("GET /guilds/{guild}/invites", func(r *http.Request, u user.User) (any, error) {
+		return g.Invites(r.Context(), u.ID, r.PathValue("guild"))
+	})
+	h("DELETE /invites/{code}", func(r *http.Request, u user.User) (any, error) {
+		return nil, g.RevokeInvite(r.Context(), u.ID, r.PathValue("code"))
 	})
 	h("POST /invites/{code}", func(r *http.Request, u user.User) (any, error) {
 		return g.Join(r.Context(), u.ID, r.PathValue("code"))

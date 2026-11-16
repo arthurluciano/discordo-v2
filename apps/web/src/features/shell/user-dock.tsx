@@ -27,7 +27,7 @@ export const UserDock = () => {
   const isMobile = useIsMobile()
   if (isMobile) return null
   return (
-    <div className="border-t border-white/10 bg-surface-rail">
+    <div className="border-t border-white/10 bg-surface-rail glass:m-2 glass:mt-0 glass:rounded-2xl glass:border-0 glass:bg-surface-raised">
       <DockContents />
     </div>
   )
@@ -67,7 +67,7 @@ const FloatingDockPanel = () => {
       exit={DOCK_HIDDEN}
       transition={transition}
       style={{ originY: 1 }}
-      className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 overflow-hidden rounded-2xl border border-white/10 bg-surface-floating/95 shadow-2xl ios:rounded-[1.75rem] ios:dock-glass"
+      className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 overflow-hidden rounded-2xl border border-white/10 bg-surface-floating/95 shadow-2xl ios:rounded-[1.75rem] ios:dock-glass glass:glass-panel glass:glass-float glass:rounded-[1.75rem]"
     >
       <DockContents />
     </motion.div>

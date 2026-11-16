@@ -4,10 +4,10 @@ App de comunidades com chat, voz e transmissão em tempo real. Monorepo:
 
 | Pasta | O quê | Estado |
 |---|---|---|
-| `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos (transmissão em camadas e LiveKit a fazer) |
+| `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos, ou LiveKit no lugar do SFU (transmissão em camadas a fazer) |
 | `apps/web` | App web (React + Vite), servido pelo próprio servidor Go | login, servidores, canais, chat, amigos, DMs, chamadas de voz, câmera e transmissão de tela (480p a 4K) |
 | `docs/protocol.md` | Contrato entre cliente e servidor | |
-| `deploy/` | Infra local (Postgres, MinIO) | |
+| `deploy/` | Infra local (Postgres, MinIO; LiveKit opcional) | |
 
 ## Rodando o servidor
 
@@ -33,8 +33,11 @@ Precisa de Go e Docker.
 | `S3_BUCKET` | `discordo` | criado ao iniciar se não existir |
 | `S3_SECURE` | `false` | `true` para TLS |
 | `HTTP_ADDR` | `:8080` | |
-| `MEDIA_UDP_PORT` | `7882` | toda a mídia passa por esta porta UDP; libere-a no firewall |
-| `MEDIA_PUBLIC_IP` | vazio | IP pelo qual os clientes alcançam o servidor; vazio só serve para desenvolvimento na mesma máquina/rede |
+| `MEDIA_PROVIDER` | `pion` | `pion` (SFU embutido) ou `livekit` (um servidor LiveKit leva a mídia) |
+| `MEDIA_UDP_PORT` | `7882` | só `pion`: toda a mídia passa por esta porta UDP; libere-a no firewall |
+| `MEDIA_PUBLIC_IP` | vazio | só `pion`: IP pelo qual os clientes alcançam o servidor; vazio só serve para desenvolvimento na mesma máquina/rede |
+| `LIVEKIT_URL` | obrigatória com `livekit` | como o navegador alcança o LiveKit (`wss://...`); o servidor usa a mesma para a API dele |
+| `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | obrigatórias com `livekit` | assinam os tokens e validam os webhooks |
 | `PUBLIC_URL` | `http://localhost:8080` | como o navegador alcança o servidor |
 
 ## Rodando o app web
@@ -47,6 +50,19 @@ então o login precisa voltar pelo Vite para o cookie de sessão ficar no endere
    PUBLIC_URL=http://localhost:5173 make run   # num terminal
    make web                                     # noutro; abra http://localhost:5173
    ```
+
+### Com LiveKit
+
+O LiveKit precisa mandar webhooks para `<servidor>/livekit/webhook` (assinados com a mesma chave); é por eles que
+o servidor sabe o que cada um transmite. O compose tem um LiveKit de desenvolvimento já configurado assim:
+
+```sh
+docker compose -f deploy/docker-compose.yml --profile livekit up -d livekit
+MEDIA_PROVIDER=livekit LIVEKIT_URL=ws://localhost:7880 LIVEKIT_API_KEY=devkey \
+  LIVEKIT_API_SECRET=devsecret-local-development-only make run
+```
+
+Ele usa a mesma porta UDP (7882) que o SFU embutido: pare-o (`docker compose -f deploy/docker-compose.yml --profile livekit stop livekit`) antes de voltar ao `pion`.
 
 Em produção o build do app (`npm run build`) é embutido no binário do servidor (ver `apps/server/Dockerfile`).
 

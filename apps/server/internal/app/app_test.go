@@ -469,8 +469,52 @@ func TestGuildRealtimeFlow(t *testing.T) {
 		t.Fatalf("bob kicking the owner: status %d", status)
 	}
 
+	// Invites: only ManageGuild lists them; the creator or ManageGuild revokes.
+	var bobInvite, aliceInvite struct{ Code string }
+	e.must(bob, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{"max_uses": 5}, &bobInvite)
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{"max_age": 3600}, &aliceInvite)
+	if status := e.call(bob, "GET", "/guilds/"+guild.ID+"/invites", nil, nil); status != http.StatusForbidden {
+		t.Fatalf("bob listing invites: status %d", status)
+	}
+	var invites []struct {
+		Code      string
+		MaxUses   int     `json:"max_uses"`
+		ExpiresAt *string `json:"expires_at"`
+		Creator   struct{ Username string }
+	}
+	e.must(alice, "GET", "/guilds/"+guild.ID+"/invites", nil, &invites)
+	found := map[string]string{}
+	for _, inv := range invites {
+		found[inv.Code] = inv.Creator.Username
+	}
+	if len(invites) != 3 || found[bobInvite.Code] != "bob" || found[aliceInvite.Code] != "alice" {
+		t.Fatalf("invites: %+v", invites)
+	}
+	if status := e.call(bob, "DELETE", "/invites/"+aliceInvite.Code, nil, nil); status != http.StatusForbidden {
+		t.Fatalf("bob revoking alice's invite: status %d", status)
+	}
+	if dave, _ := e.login("dave"); e.call(dave, "DELETE", "/invites/"+bobInvite.Code, nil, nil) != http.StatusNotFound {
+		t.Fatal("outsider revoked an invite")
+	}
+	e.must(bob, "DELETE", "/invites/"+bobInvite.Code, nil, nil)
+	e.must(alice, "DELETE", "/invites/"+aliceInvite.Code, nil, nil)
+	if status := e.call(alice, "DELETE", "/invites/"+aliceInvite.Code, nil, nil); status != http.StatusNotFound {
+		t.Fatalf("revoking twice: status %d", status)
+	}
+	e.must(alice, "GET", "/guilds/"+guild.ID+"/invites", nil, &invites)
+	if len(invites) != 1 || invites[0].Code != invite.Code {
+		t.Fatalf("invites after revoking: %+v", invites)
+	}
+	if status := e.call(bob, "GET", "/guilds/"+guild.ID+"/bans", nil, nil); status != http.StatusForbidden {
+		t.Fatalf("bob listing bans: status %d", status)
+	}
+
 	// Banned: Bob is told, loses access, and a fresh invite does not let him back in.
 	e.must(alice, "PUT", "/guilds/"+guild.ID+"/bans/"+bobID, nil, nil)
+	var bans []struct{ User struct{ ID string } }
+	if e.must(alice, "GET", "/guilds/"+guild.ID+"/bans", nil, &bans); len(bans) != 1 || bans[0].User.ID != bobID {
+		t.Fatalf("bans: %+v", bans)
+	}
 	bobWS.next("GUILD_DELETE", nil)
 	if status := e.call(bob, "GET", "/channels/"+general+"/messages", nil, nil); status != http.StatusNotFound {
 		t.Fatalf("banned bob reading: status %d", status)
@@ -478,6 +522,10 @@ func TestGuildRealtimeFlow(t *testing.T) {
 	e.must(alice, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{}, &invite)
 	if status := e.call(bob, "POST", "/invites/"+invite.Code, nil, nil); status != http.StatusForbidden {
 		t.Fatalf("banned bob rejoining: status %d", status)
+	}
+	e.must(alice, "DELETE", "/guilds/"+guild.ID+"/bans/"+bobID, nil, nil)
+	if e.must(alice, "GET", "/guilds/"+guild.ID+"/bans", nil, &bans); len(bans) != 0 {
+		t.Fatalf("bans after unban: %+v", bans)
 	}
 
 	// Junk IDs are a 404, not a database error.

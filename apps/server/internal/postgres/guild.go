@@ -9,6 +9,7 @@ import (
 	"discordo/server/internal/errs"
 	"discordo/server/internal/guild"
 	"discordo/server/internal/permission"
+	"discordo/server/internal/user"
 )
 
 func (s *Store) CreateGuild(ctx context.Context, g guild.Guild, everyone guild.Role, channels []guild.Channel) error {
@@ -134,6 +135,18 @@ func (s *Store) Unban(ctx context.Context, guildID, userID string) error {
 	return execOne(ctx, s.db, `delete from bans where guild_id = $1 and user_id = $2`, guildID, userID)
 }
 
+func (s *Store) Bans(ctx context.Context, guildID string) ([]guild.Ban, error) {
+	rows, _ := s.db.Query(ctx, `
+		select u.id, u.username, u.display_name, u.avatar_url
+		from bans b join users u on u.id = b.user_id
+		where b.guild_id = $1 order by b.created_at`, guildID)
+	bans, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (b guild.Ban, err error) {
+		err = row.Scan(&b.User.ID, &b.User.Username, &b.User.DisplayName, &b.User.AvatarURL)
+		return
+	})
+	return bans, mapErr(err)
+}
+
 // Channels
 
 const (
@@ -188,6 +201,32 @@ func (s *Store) DeleteOverwrite(ctx context.Context, channelID, targetID string)
 func (s *Store) CreateInvite(ctx context.Context, inv guild.Invite) error {
 	return exec(ctx, s.db, `insert into invites (code, guild_id, creator_id, max_uses, expires_at) values ($1, $2, $3, $4, $5)`,
 		inv.Code, inv.GuildID, inv.CreatorID, inv.MaxUses, inv.ExpiresAt)
+}
+
+func (s *Store) Invites(ctx context.Context, guildID string, now time.Time) ([]guild.Invite, error) {
+	rows, _ := s.db.Query(ctx, `
+		select i.code, i.guild_id, i.creator_id, i.max_uses, i.uses, i.expires_at,
+			u.id, u.username, u.display_name, u.avatar_url
+		from invites i join users u on u.id = i.creator_id
+		where i.guild_id = $1 and (i.expires_at is null or i.expires_at > $2)
+		order by i.expires_at nulls last, i.code`, guildID, now)
+	invites, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (inv guild.Invite, err error) {
+		inv.Creator = &user.User{}
+		err = row.Scan(&inv.Code, &inv.GuildID, &inv.CreatorID, &inv.MaxUses, &inv.Uses, &inv.ExpiresAt,
+			&inv.Creator.ID, &inv.Creator.Username, &inv.Creator.DisplayName, &inv.Creator.AvatarURL)
+		return
+	})
+	return invites, mapErr(err)
+}
+
+func (s *Store) Invite(ctx context.Context, code string) (inv guild.Invite, err error) {
+	err = s.db.QueryRow(ctx, `select code, guild_id, creator_id, max_uses, uses, expires_at from invites where code = $1`, code).
+		Scan(&inv.Code, &inv.GuildID, &inv.CreatorID, &inv.MaxUses, &inv.Uses, &inv.ExpiresAt)
+	return inv, mapErr(err)
+}
+
+func (s *Store) DeleteInvite(ctx context.Context, code string) error {
+	return execOne(ctx, s.db, `delete from invites where code = $1`, code)
 }
 
 func (s *Store) UseInvite(ctx context.Context, code, userID string, now time.Time) (guildID string, joined bool, err error) {

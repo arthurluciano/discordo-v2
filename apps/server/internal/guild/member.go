@@ -61,6 +61,13 @@ func (s *Service) Unban(ctx context.Context, userID, guildID, targetID string) e
 	return s.store.Unban(ctx, guildID, targetID)
 }
 
+func (s *Service) Bans(ctx context.Context, userID, guildID string) ([]Ban, error) {
+	if _, err := s.require(ctx, guildID, userID, permission.BanMembers); err != nil {
+		return nil, err
+	}
+	return s.store.Bans(ctx, guildID)
+}
+
 // outranks fails unless the actor may moderate the target. ErrNotFound if the target is not a member.
 func (s *Service) outranks(ctx context.Context, a actor, targetID string) error {
 	if targetID == a.guild.OwnerID {
@@ -106,6 +113,29 @@ func (s *Service) CreateInvite(ctx context.Context, userID, guildID string, maxU
 		inv.ExpiresAt = &t
 	}
 	return inv, s.store.CreateInvite(ctx, inv)
+}
+
+func (s *Service) Invites(ctx context.Context, userID, guildID string) ([]Invite, error) {
+	if _, err := s.require(ctx, guildID, userID, permission.ManageGuild); err != nil {
+		return nil, err
+	}
+	return s.store.Invites(ctx, guildID, time.Now())
+}
+
+// RevokeInvite is allowed for the invite's creator or anyone with ManageGuild.
+func (s *Service) RevokeInvite(ctx context.Context, userID, code string) error {
+	inv, err := s.store.Invite(ctx, code)
+	if err != nil {
+		return err
+	}
+	a, err := s.actor(ctx, inv.GuildID, userID)
+	if err != nil {
+		return err
+	}
+	if inv.CreatorID != userID && !a.perms.Has(permission.ManageGuild) {
+		return errs.ErrForbidden
+	}
+	return s.store.DeleteInvite(ctx, code)
 }
 
 func (s *Service) Join(ctx context.Context, userID, code string) (Snapshot, error) {

@@ -51,3 +51,36 @@ export const preferH264 = <C extends Codec>(codecs: readonly C[]): C[] => {
   }
   return [...codecs].sort((a, b) => rank(a) - rank(b))
 }
+
+/** Simulcast layers under the full one (rid `h`), lowest first: ~360p and ~720p, at their own bitrates. */
+const LOWER_LAYERS = [
+  { rid: 'l', height: 360, mbps: 0.6 },
+  { rid: 'm', height: 720, mbps: RESOLUTIONS['720p'].mbps },
+] as const
+
+/** What to send for a video of this height: the full encoding plus the lower layers at least 1.5x smaller
+ * (so a 480p video sends a single encoding). Without a height, a single encoding. */
+export const sendEncodings = ({ maxBitrate, maxFramerate }: Encoding, height: number | undefined): RTCRtpEncodingParameters[] => {
+  const top = { maxBitrate, ...(maxFramerate ? { maxFramerate } : {}) }
+  const layers = LOWER_LAYERS.filter((l) => height && l.height * 1.5 <= height)
+  if (!height || layers.length === 0) return [top]
+  const motion = maxFramerate === 60 ? 1.5 : 1
+  return [
+    ...layers.map((l) => ({
+      ...top,
+      rid: l.rid,
+      scaleResolutionDownBy: height / l.height,
+      maxBitrate: Math.min(maxBitrate, Math.round(l.mbps * motion * 1_000_000)),
+    })),
+    { ...top, rid: 'h' },
+  ]
+}
+
+/** A new encoding for what is already being sent: the full layer (rid `h`, or the only one) takes its bitrate,
+ * every layer its frame rate. The layer count cannot change without renegotiating, so lower layers keep theirs. */
+export const updateEncodings = (current: RTCRtpEncodingParameters[], { maxBitrate, maxFramerate }: Encoding) =>
+  current.map((e) => ({
+    ...e,
+    ...(maxFramerate ? { maxFramerate } : {}),
+    ...(!e.rid || e.rid === 'h' ? { maxBitrate } : {}),
+  }))

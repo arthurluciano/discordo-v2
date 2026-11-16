@@ -1,13 +1,18 @@
 // CONTRACT (implemented by the voice area): the call view of a voice channel or DM.
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useTransform } from 'motion/react'
-import { ArrowLeft, Eye, EyeOff, HeadphoneOff, LayoutGrid, Maximize2, MicOff, Minimize2, MonitorUp, PhoneCall } from 'lucide-react'
+import { ArrowLeft, Ellipsis, Eye, EyeOff, HeadphoneOff, LayoutGrid, Maximize2, MicOff, Minimize2, MonitorUp, PhoneCall } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar } from '@/design/avatar'
 import { SPRING_SNAP, useTransition } from '@/design/motion'
 import { displayName, useMe, useUser } from '@/features/identity/users'
+import type { Quality } from '@/lib/media/transport'
 import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -44,7 +49,7 @@ const LAYOUT: Record<Layout, string> = { focal: 'size-full rounded-2xl', grid: '
 const StageButton = ({ icon: Icon, label, onClick }: { icon: Icon; label: string; onClick: () => void }) => (
   <Tooltip>
     <TooltipTrigger asChild>
-      <Button variant="outline" size="icon-sm" onClick={onClick} aria-label={label} className="border-white/10 bg-black/60 text-snow backdrop-blur-sm hover:bg-black/80">
+      <Button variant="outline" size="icon-sm" onClick={onClick} aria-label={label} className="border-white/10 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80">
         <Icon aria-hidden />
       </Button>
     </TooltipTrigger>
@@ -66,9 +71,56 @@ const VideoView = ({ track, contain, mirror }: { track: MediaStreamTrack; contai
 const useMemberNickname = (state: VoiceState) =>
   useStore((s) => (state.guild_id ? s.guilds.find((g) => g.id === state.guild_id)?.members.find((m) => m.user.id === state.user_id)?.nickname ?? '' : ''))
 
-type TileProps = { item: TileItem; layout: Layout; speech: MediaStreamTrack | null; onFocus?: (() => void) | undefined; onWatch: () => void }
+const QUALITIES: [Quality, string][] = [['auto', 'Auto'], ['high', 'Alta'], ['medium', 'Média'], ['low', 'Baixa']]
 
-const Tile = ({ item, layout, speech, onFocus, onWatch }: TileProps) => {
+/** Per-tile options, also on right-click: someone's volume, and which quality of their video to receive. */
+type TileOptions = {
+  /** Null: not adjustable (our own tile, a screen, or not in the call). */
+  volume: number | null
+  onVolume: (volume: number) => void
+  /** Null: not receiving this video. */
+  quality: Quality | null
+  onQuality: (quality: Quality) => void
+}
+
+const TileMenu = ({ name, open, onOpenChange, volume, onVolume, quality, onQuality }: TileOptions & { name: string; open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const id = useId()
+  const percent = Math.round((volume ?? 1) * 100)
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon-sm" aria-label={`Opções de ${name}`}
+          className="absolute right-2 top-2 z-20 border-white/10 bg-black/60 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/80 focus-visible:opacity-100 group-hover/tile:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100">
+          <Ellipsis aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {volume !== null ? (
+          <div className="grid gap-1.5 px-2 py-1.5">
+            <label htmlFor={id} className="flex justify-between text-xs font-semibold">Volume<span data-numeric>{percent}%</span></label>
+            <input id={id} type="range" min={0} max={200} step={5} value={percent} aria-valuetext={`${percent}%`}
+              onChange={(e) => onVolume(Number(e.target.value) / 100)} className="w-full accent-blurple" />
+          </div>
+        ) : null}
+        {volume !== null && quality !== null ? <DropdownMenuSeparator /> : null}
+        {quality !== null ? (
+          <>
+            <DropdownMenuLabel>Qualidade do vídeo</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={quality} onValueChange={(q) => onQuality(q as Quality)}>
+              {QUALITIES.map(([q, label]) => <DropdownMenuRadioItem key={q} value={q} onSelect={(e) => e.preventDefault()}>{label}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+type TileProps = { item: TileItem; layout: Layout; speech: MediaStreamTrack | null; onFocus?: (() => void) | undefined; onWatch: () => void; options: TileOptions }
+
+const Tile = ({ item, layout, speech, onFocus, onWatch, options }: TileProps) => {
+  const [menu, setMenu] = useState(false)
+  const hasMenu = options.volume !== null || options.quality !== null
   const user = useUser(item.state.user_id)
   const nickname = useMemberNickname(item.state)
   const name = user ? displayName(user, nickname) : 'Alguém'
@@ -80,7 +132,8 @@ const Tile = ({ item, layout, speech, onFocus, onWatch }: TileProps) => {
 
   return (
     <motion.article layout="position" layoutId={`tile-${item.id}`} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={transition}
-      aria-label={label} className={cn('group/tile relative isolate overflow-hidden bg-surface-sidebar', screen && 'bg-surface-floating', LAYOUT[layout])}>
+      aria-label={label} onContextMenu={hasMenu ? (e) => { e.preventDefault(); setMenu(true) } : undefined}
+      className={cn('group/tile relative isolate overflow-hidden bg-surface-sidebar', screen && 'bg-surface-floating', LAYOUT[layout])}>
       {item.video ? (
         <VideoView track={item.video} contain={screen} mirror={item.own && !screen} />
       ) : (
@@ -101,6 +154,8 @@ const Tile = ({ item, layout, speech, onFocus, onWatch }: TileProps) => {
           <MonitorUp aria-hidden className="size-3" />Tela
         </span>
       ) : null}
+
+      {hasMenu ? <TileMenu name={name} open={menu} onOpenChange={setMenu} {...options} /> : null}
 
       {item.watchable ? (
         <span className="absolute inset-x-0 bottom-10 z-20 flex justify-center">
@@ -192,8 +247,18 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
     setPinned(on ? t.id : null)
   }
 
+  const optionsOf = (t: TileItem): TileOptions => {
+    const track = t.kind === 'screen' ? 'screen' : 'camera'
+    return {
+      volume: !t.own && inCall && t.kind === 'person' ? (v.volumes[t.state.user_id] ?? 1) : null,
+      onVolume: (volume) => v.setVolume(t.state.user_id, volume),
+      quality: t.watched ? (v.qualities[watchKey(t.state.user_id, track)] ?? 'auto') : null,
+      onQuality: (quality) => v.setQuality(t.state.user_id, track, quality),
+    }
+  }
+
   const renderTile = (t: TileItem, layout: Layout) => (
-    <Tile key={t.id} item={t} layout={layout} speech={speechOf(t)} onWatch={() => watchTile(t, true)} onFocus={t.video ? () => setPinned(t.id) : undefined} />
+    <Tile key={t.id} item={t} layout={layout} speech={speechOf(t)} onWatch={() => watchTile(t, true)} onFocus={t.video ? () => setPinned(t.id) : undefined} options={optionsOf(t)} />
   )
 
   const canConnect = has(perms, Permission.Connect)

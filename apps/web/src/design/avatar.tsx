@@ -19,6 +19,6 @@ export const Avatar = ({ userId, displayName, avatarUrl, size = 'small', state, 
       {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
       <AvatarFallback className={cn('font-bold text-white', colorOf(userId))}>{initialOf(displayName)}</AvatarFallback>
     </AvatarRoot>
-    {state ? <motion.span aria-hidden layout initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING_SNAP} className={cn('absolute rounded-full ring-[3px]', state === 'online' ? 'bg-spring-green' : state === 'away' ? 'bg-ember-orange' : 'bg-greyple', DOT_POSITION[size], ringClass)} /> : null}
+    {state ? <motion.span aria-hidden layout initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING_SNAP} className={cn('absolute rounded-full ring-[3px] glass:ring-(--canvas)', state === 'online' ? 'bg-spring-green' : state === 'away' ? 'bg-ember-orange' : 'bg-greyple', DOT_POSITION[size], ringClass)} /> : null}
   </span>
 )

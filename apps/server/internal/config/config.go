@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"discordo/server/internal/blob"
+	"discordo/server/internal/media/livekit"
 	"discordo/server/internal/media/pion"
 )
 
@@ -15,13 +16,16 @@ type Config struct {
 	PublicURL           string // how browsers reach this server; used for the OAuth redirect
 	DiscordClientID     string
 	DiscordClientSecret string
-	S3                  blob.Config // uploaded files
-	Media               pion.Config // built-in SFU
+	S3                  blob.Config    // uploaded files
+	MediaProvider       string         // "pion" or "livekit"
+	Media               pion.Config    // built-in SFU
+	LiveKit             livekit.Config // MediaProvider "livekit"
 }
 
 func Load() (Config, error) {
-	if p := env("MEDIA_PROVIDER", "pion"); p != "pion" {
-		return Config{}, fmt.Errorf("MEDIA_PROVIDER %q is not available yet (only pion)", p)
+	provider := env("MEDIA_PROVIDER", "pion")
+	if provider != "pion" && provider != "livekit" {
+		return Config{}, fmt.Errorf("MEDIA_PROVIDER %q: want pion or livekit", provider)
 	}
 	port, err := strconv.Atoi(env("MEDIA_UDP_PORT", "7882"))
 	if err != nil {
@@ -33,6 +37,12 @@ func Load() (Config, error) {
 		PublicURL:           env("PUBLIC_URL", "http://localhost:8080"),
 		DiscordClientID:     os.Getenv("DISCORD_CLIENT_ID"),
 		DiscordClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
+		MediaProvider:       provider,
+		LiveKit: livekit.Config{
+			URL:       os.Getenv("LIVEKIT_URL"),
+			APIKey:    os.Getenv("LIVEKIT_API_KEY"),
+			APISecret: os.Getenv("LIVEKIT_API_SECRET"),
+		},
 		Media: pion.Config{
 			UDPPort:  port,
 			PublicIP: os.Getenv("MEDIA_PUBLIC_IP"),
@@ -45,10 +55,14 @@ func Load() (Config, error) {
 			Secure:    os.Getenv("S3_SECURE") == "true",
 		},
 	}
-	for name, v := range map[string]string{
+	required := map[string]string{
 		"DATABASE_URL": c.DatabaseURL, "DISCORD_CLIENT_ID": c.DiscordClientID, "DISCORD_CLIENT_SECRET": c.DiscordClientSecret,
 		"S3_ACCESS_KEY": c.S3.AccessKey, "S3_SECRET_KEY": c.S3.SecretKey,
-	} {
+	}
+	if provider == "livekit" {
+		required["LIVEKIT_URL"], required["LIVEKIT_API_KEY"], required["LIVEKIT_API_SECRET"] = c.LiveKit.URL, c.LiveKit.APIKey, c.LiveKit.APISecret
+	}
+	for name, v := range required {
 		if v == "" {
 			return c, fmt.Errorf("missing env %s", name)
 		}

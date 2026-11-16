@@ -9,19 +9,27 @@
     <meta name="apple-mobile-web-app-title" content="Discordo" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <script>
+      // Paints the stored skin and mode before the first frame; mirrors SKINS in components/theme-provider.tsx.
       (() => {
-        let preference = 'system'
-        try {
-          const stored = window.localStorage.getItem('discordo-theme')
-          if (stored === 'light' || stored === 'dark' || stored === 'system') preference = stored
-        } catch {
-          // Storage pode estar indisponível em webviews restritas; segue a preferência do sistema.
+        const read = (key) => {
+          try {
+            return window.localStorage.getItem(key)
+          } catch {
+            return null // Restricted webviews: fall back to the defaults.
+          }
         }
-        const resolved = preference === 'system'
-          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          : preference
-        document.documentElement.classList.toggle('dark', resolved === 'dark')
-        document.documentElement.dataset.theme = resolved
+        const prefers = (query) => window.matchMedia(query).matches
+        const themeColors = { default: { dark: '#1e1f22' }, glass: { dark: '#0b0c1a', light: '#eef0f8' } }
+        const skin = read('discordo-skin') === 'glass' ? 'glass' : 'default'
+        const stored = read('discordo-theme')
+        const wanted = stored === 'light' || stored === 'dark' ? stored : prefers('(prefers-color-scheme: dark)') ? 'dark' : 'light'
+        const resolved = themeColors[skin][wanted] ? wanted : 'dark'
+        const root = document.documentElement
+        root.dataset.skin = skin
+        root.dataset.theme = resolved
+        root.classList.toggle('dark', resolved === 'dark')
+        if (read('discordo-reduce-transparency') === 'true' || prefers('(prefers-reduced-transparency: reduce)')) root.dataset.transparency = 'reduced'
+        document.querySelector('meta[name="theme-color"]').content = themeColors[skin][resolved]
       })()
     </script>
     <link rel="icon" type="image/png" href="/favicon.png" />

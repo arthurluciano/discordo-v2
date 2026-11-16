@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut } from 'lucide-react'
+import { LogOut, Palette } from 'lucide-react'
+import { ThemeDialog } from '@/components/theme-dialog'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar } from '@/design/avatar'
@@ -8,12 +10,13 @@ import { useSignOut } from '../auth/use-sign-out'
 import { useProfileViewer } from './profile-viewer'
 import { displayName, useMe } from './users'
 
-/** The bottom of the sidebar: who you are, your profile, signing out. */
+/** The bottom of the sidebar: who you are, your profile, appearance, signing out. */
 export const UserPanel = () => {
   const me = useMe()
   const { openProfile } = useProfileViewer()
   const signOut = useSignOut()
   const press = useTransition(QUICK_EASE)
+  const [appearance, setAppearance] = useState(false)
   if (!me) return null
   return (
     <div className="flex h-14 items-center gap-2 px-2 text-fog max-md:h-16 max-md:px-3">
@@ -24,6 +27,13 @@ export const UserPanel = () => {
           <span className="block truncate text-[11px] text-greyple">@{me.username}</span>
         </span>
       </motion.button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => setAppearance(true)} aria-label="Aparência"><Palette aria-hidden /></Button>
+        </TooltipTrigger>
+        <TooltipContent>Aparência</TooltipContent>
+      </Tooltip>
+      <ThemeDialog open={appearance} onOpenChange={setAppearance} />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button type="button" variant="ghost" size="icon-sm" onClick={() => signOut.mutate()} disabled={signOut.isPending} aria-label="Sair"><LogOut aria-hidden /></Button>

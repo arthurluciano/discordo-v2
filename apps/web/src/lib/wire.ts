@@ -68,7 +68,12 @@ export type VoiceState = {
 
 export type TrackName = 'mic' | 'screen-audio' | 'camera' | 'screen'
 
-export type Invite = { code: string; guild_id: string; creator_id: string; max_uses: number; uses: number; expires_at: string | null }
+/** How to reach the call's media: "pion" signals over the gateway; "livekit" connects to `url` with `token`. */
+export type MediaConnection = { kind: string; url?: string; token?: string }
+
+export type Invite = { code: string; guild_id: string; creator_id: string; max_uses: number; uses: number; expires_at: string | null; creator?: User }
+
+export type Ban = { user: User }
 
 export type Ready = { user: User; guilds: Guild[]; dms: DM[]; relationships: Relationship[]; voice_states: VoiceState[] }
 
@@ -92,7 +97,7 @@ export type GatewayEvents = {
   DM_DELETE: { id: string }
   RELATIONSHIP_UPDATE: Relationship
   VOICE_STATE_UPDATE: VoiceState
-  VOICE_READY: { channel_id: string; connection: { kind: string } }
+  VOICE_READY: { channel_id: string; connection: MediaConnection }
   VOICE_ERROR: { op: string; error: string }
   RTC_OFFER: { sdp: string }
   RTC_ANSWER: { sdp: string }

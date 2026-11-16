@@ -1,5 +1,5 @@
 // The REST API. Same origin as the app, authenticated by the session cookie (see docs/protocol.md).
-import type { Attachment, Channel, DM, Guild, Invite, Message, Role, User } from './wire'
+import type { Attachment, Ban, Channel, DM, Guild, Invite, Message, Role, User } from './wire'
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -56,6 +56,7 @@ export const api = {
   kick: (guildId: string, userId: string) => request<void>('DELETE', `/guilds/${guildId}/members/${userId}`),
   ban: (guildId: string, userId: string) => request<void>('PUT', `/guilds/${guildId}/bans/${userId}`),
   unban: (guildId: string, userId: string) => request<void>('DELETE', `/guilds/${guildId}/bans/${userId}`),
+  bans: (guildId: string) => request<Ban[]>('GET', `/guilds/${guildId}/bans`),
   setMemberRole: (guildId: string, userId: string, roleId: string, on: boolean) =>
     request<void>(on ? 'PUT' : 'DELETE', `/guilds/${guildId}/members/${userId}/roles/${roleId}`),
 
@@ -69,6 +70,9 @@ export const api = {
   createInvite: (guildId: string, input: { max_uses?: number; max_age?: number } = {}) =>
     request<Invite>('POST', `/guilds/${guildId}/invites`, input),
   joinInvite: (code: string) => request<Guild>('POST', `/invites/${enc(code)}`),
+  /** The guild's unexpired invites, with their creators. */
+  invites: (guildId: string) => request<Invite[]>('GET', `/guilds/${guildId}/invites`),
+  revokeInvite: (code: string) => request<void>('DELETE', `/invites/${enc(code)}`),
 
   createChannel: (guildId: string, input: { name: string; type?: Channel['type']; topic?: string; position?: number }) =>
     request<Channel>('POST', `/guilds/${guildId}/channels`, input),

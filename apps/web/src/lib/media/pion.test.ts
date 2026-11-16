@@ -63,4 +63,22 @@ describe('pion transport', () => {
     expect(send).toHaveBeenCalledWith('rtc_answer', { sdp: 'local-1' })
     expect(onRemoteTracks).toHaveBeenCalledWith([{ userId: 'user-a', name: 'mic', track: 'remote-mic' }])
   })
+
+  it('publishes video simulcast, falling back to one encoding when the browser refuses', async () => {
+    const calls: unknown[] = []
+    vi.stubGlobal('RTCPeerConnection', class extends FakePeer {
+      override addTransceiver(track: unknown, init?: { sendEncodings?: unknown[] }) {
+        calls.push(init?.sendEncodings)
+        if ((init?.sendEncodings?.length ?? 0) > 1) throw new DOMException('no simulcast', 'OperationError')
+        return super.addTransceiver(track)
+      }
+    })
+    const t = createPionTransport(vi.fn(() => true), { onRemoteTracks: vi.fn(), onState: vi.fn(), onError: vi.fn() })
+    const screen = { kind: 'video', getSettings: () => ({ height: 1080 }) } as unknown as MediaStreamTrack
+    void t.publish('screen', screen, { maxBitrate: 6_000_000, maxFramerate: 30 })
+    await flush()
+    expect((calls[0] as { rid: string }[]).map((e) => e.rid)).toEqual(['l', 'm', 'h'])
+    expect(calls[1]).toEqual([{ maxBitrate: 6_000_000, maxFramerate: 30 }])
+    t.close()
+  })
 })

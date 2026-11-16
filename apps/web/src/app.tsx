@@ -22,7 +22,7 @@ const Loading = ({ label }: { label: string }) => (
 
 /** `fixed inset-0` instead of `h-dvh`: on iOS with a translucent status bar, 100dvh leaves a strip at the bottom. */
 const AppFrame = ({ children }: { children: ReactNode }) => (
-  <div className="fixed inset-0 flex flex-col overflow-hidden bg-surface-rail pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
+  <div className="fixed inset-0 flex flex-col overflow-hidden wallpaper pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
     <div className="min-h-0 flex-1">{children}</div>
   </div>
 )

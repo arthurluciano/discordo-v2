@@ -206,3 +206,126 @@ func TestForwarding(t *testing.T) {
 		t.Fatal("bob is still being sent alice's tracks")
 	}
 }
+
+// publishSimulcast sends a video track in three layers, like a browser with sendEncodings. Each packet's payload is an
+// H.264 NAL header (an SPS every 10th packet, so there are keyframes to switch on) followed by its layer's rid.
+func (c *client) publishSimulcast(name string, rids ...string) {
+	c.t.Helper()
+	var layers []*webrtc.TrackLocalStaticRTP
+	for _, rid := range rids {
+		l, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "random-"+name, c.userID, webrtc.WithRTPStreamID(rid))
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		layers = append(layers, l)
+	}
+	sender, err := c.pub.AddTrack(layers[0])
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	for _, l := range layers[1:] {
+		if err := sender.AddEncoding(l); err != nil {
+			c.t.Fatal(err)
+		}
+	}
+	offer, err := c.pub.CreateOffer(nil)
+	if err == nil {
+		err = setLocal(c.pub, offer)
+	}
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	mid := transceiverOf(c.pub, sender).Mid()
+	c.names[mid] = name
+	c.signal("rtc_offer", map[string]any{"sdp": c.pub.LocalDescription().SDP, "tracks": c.names})
+
+	// pion does not stamp mid and rid on what it sends; the SFU needs them to tell the layers apart.
+	var midExt, ridExt uint8
+	for _, ext := range sender.GetParameters().HeaderExtensions {
+		switch ext.URI {
+		case "urn:ietf:params:rtp-hdrext:sdes:mid":
+			midExt = uint8(ext.ID)
+		case "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id":
+			ridExt = uint8(ext.ID)
+		}
+	}
+	ctx := c.t.Context()
+	go func() {
+		for seq := uint16(0); ctx.Err() == nil; seq++ {
+			nal := byte(0x41) // non-IDR slice
+			if seq%10 == 0 {
+				nal = 0x67 // SPS: a keyframe starts here
+			}
+			for i, l := range layers {
+				pkt := &rtp.Packet{
+					// Each layer numbers its packets differently, as browsers do.
+					Header:  rtp.Header{Version: 2, SequenceNumber: seq + uint16(i)*20000, Timestamp: uint32(seq) * 3000},
+					Payload: []byte{nal, rids[i][0]},
+				}
+				_ = pkt.Header.SetExtension(midExt, []byte(mid))
+				_ = pkt.Header.SetExtension(ridExt, []byte(l.RID()))
+				_ = l.WriteRTP(pkt)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+}
+
+func TestSimulcast(t *testing.T) {
+	sfu, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sfu.Close() })
+	all := media.Grants{Speak: true, Stream: true}
+	alice := join(t, sfu, "alice", all)
+	bob := join(t, sfu, "bob", all)
+
+	alice.publishSimulcast(media.Screen, "h", "m", "l")
+	bob.signal("rtc_subscribe", map[string]any{"user_id": "alice", "track": media.Screen, "on": true, "quality": "high"})
+	var tr *webrtc.TrackRemote
+	select {
+	case tr = <-bob.tracks:
+	case <-time.After(15 * time.Second):
+		t.Fatal("bob never received alice's screen")
+	}
+
+	// read returns the layer of the next packet, checking it continues the stream bob has seen so far.
+	var lastSeq uint16
+	var lastTS uint32
+	started := false
+	read := func() byte {
+		t.Helper()
+		tr.SetReadDeadline(time.Now().Add(10 * time.Second))
+		pkt, _, err := tr.ReadRTP()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if started && (pkt.SequenceNumber != lastSeq+1 || int32(pkt.Timestamp-lastTS) < 0) {
+			t.Fatalf("stream jumped from seq %d ts %d to seq %d ts %d", lastSeq, lastTS, pkt.SequenceNumber, pkt.Timestamp)
+		}
+		started, lastSeq, lastTS = true, pkt.SequenceNumber, pkt.Timestamp
+		return pkt.Payload[1]
+	}
+	// switchTo reads until the stream is on the layer, then checks it stays there.
+	switchTo := func(layer byte) {
+		t.Helper()
+		for i := 0; read() != layer; i++ {
+			if i > 300 {
+				t.Fatalf("never switched to layer %c", layer)
+			}
+		}
+		for range 30 {
+			if got := read(); got != layer {
+				t.Fatalf("got a packet of layer %c while on %c", got, layer)
+			}
+		}
+	}
+	// The layers may reach the SFU in any order, so bob may start on a lower one before high arrives.
+	switchTo('h')
+	bob.signal("rtc_subscribe", map[string]any{"user_id": "alice", "track": media.Screen, "on": true, "quality": "low"})
+	switchTo('l')
+	bob.signal("rtc_subscribe", map[string]any{"user_id": "alice", "track": media.Screen, "on": true, "quality": "medium"})
+	switchTo('m')
+	bob.expectNothing() // changing quality is not a new track
+}

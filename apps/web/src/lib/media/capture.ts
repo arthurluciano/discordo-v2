@@ -5,6 +5,8 @@ import { CAMERA_CONSTRAINTS, screenConstraints, type ScreenPreset } from './pres
 export type Microphone = {
   /** What gets published (the noise gate's output when it is on). */
   track: MediaStreamTrack
+  /** The device's own track: it ends when the device is unplugged (the noise gate's output never does). */
+  device: MediaStreamTrack
   stop: () => void
 }
 
@@ -40,6 +42,7 @@ const withNoiseGate = async (raw: MediaStreamTrack): Promise<Microphone> => {
     if (!track) throw new Error('no output track')
     return {
       track,
+      device: raw,
       stop: () => {
         track.stop()
         raw.stop()
@@ -48,7 +51,7 @@ const withNoiseGate = async (raw: MediaStreamTrack): Promise<Microphone> => {
     }
   } catch {
     void context.close()
-    return { track: raw, stop: () => raw.stop() } // the browser's own noise suppression still applies
+    return { track: raw, device: raw, stop: () => raw.stop() } // the browser's own noise suppression still applies
   }
 }
 
@@ -56,7 +59,7 @@ export const captureMicrophone = async (deviceId: string | null, noiseGate: bool
   const stream = await getUserMedia({ echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 'audio', deviceId)
   const [raw] = stream.getAudioTracks()
   if (!raw) throw new DOMException('no audio track', 'NotFoundError')
-  return noiseGate ? withNoiseGate(raw) : { track: raw, stop: () => raw.stop() }
+  return noiseGate ? withNoiseGate(raw) : { track: raw, device: raw, stop: () => raw.stop() }
 }
 
 export const captureCamera = async (deviceId: string | null) => {

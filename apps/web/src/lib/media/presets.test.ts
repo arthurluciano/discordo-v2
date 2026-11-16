@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isScreenPreset, preferH264, screenConstraints, screenContentHint, screenEncoding } from './presets'
+import { isScreenPreset, preferH264, screenConstraints, screenContentHint, screenEncoding, sendEncodings, updateEncodings } from './presets'
 
 describe('screen presets', () => {
   it('caps capture at the preset', () => {
@@ -44,5 +44,37 @@ describe('preferH264', () => {
       'video/rtx apt=96',
       'video/AV1',
     ])
+  })
+})
+
+describe('simulcast encodings', () => {
+  it('sends three layers for 1080p and above', () => {
+    expect(sendEncodings({ maxBitrate: 6_000_000, maxFramerate: 30 }, 1080)).toEqual([
+      { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 600_000, maxFramerate: 30 },
+      { rid: 'm', scaleResolutionDownBy: 1.5, maxBitrate: 3_000_000, maxFramerate: 30 },
+      { rid: 'h', maxBitrate: 6_000_000, maxFramerate: 30 },
+    ])
+  })
+
+  it('gives 60 fps layers more bitrate, never above the full one', () => {
+    const [low, mid] = sendEncodings({ maxBitrate: 4_000_000, maxFramerate: 60 }, 2160)
+    expect(low?.maxBitrate).toBe(900_000)
+    expect(mid?.maxBitrate).toBe(4_000_000)
+  })
+
+  it('only adds layers clearly smaller than the video', () => {
+    expect(sendEncodings({ maxBitrate: 3_000_000 }, 720).map((e) => e.rid)).toEqual(['l', 'h'])
+    expect(sendEncodings({ maxBitrate: 1_500_000, maxFramerate: 30 }, 480)).toEqual([{ maxBitrate: 1_500_000, maxFramerate: 30 }])
+    expect(sendEncodings({ maxBitrate: 1_500_000 }, undefined)).toEqual([{ maxBitrate: 1_500_000 }])
+  })
+
+  it('updates the full layer bitrate and every frame rate', () => {
+    const current = sendEncodings({ maxBitrate: 6_000_000, maxFramerate: 30 }, 1080)
+    expect(updateEncodings(current, { maxBitrate: 9_000_000, maxFramerate: 60 })).toEqual([
+      { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 600_000, maxFramerate: 60 },
+      { rid: 'm', scaleResolutionDownBy: 1.5, maxBitrate: 3_000_000, maxFramerate: 60 },
+      { rid: 'h', maxBitrate: 9_000_000, maxFramerate: 60 },
+    ])
+    expect(updateEncodings([{ active: true }], { maxBitrate: 1 })).toEqual([{ active: true, maxBitrate: 1 }])
   })
 })

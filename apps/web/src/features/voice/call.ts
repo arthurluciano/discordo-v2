@@ -5,11 +5,11 @@ import {
   CAMERA_ENCODING, DEFAULT_SCREEN_PRESET, isScreenPreset, SCREEN_AUDIO_ENCODING, screenConstraints, screenContentHint,
   screenEncoding, type ScreenPreset,
 } from '@/lib/media/presets'
-import { createTransport, type RemoteTrack, type TransportState, type VoiceTransport } from '@/lib/media/transport'
+import { createTransport, type Quality, type RemoteTrack, type TransportState, type VoiceTransport } from '@/lib/media/transport'
 import { sendOp } from '@/lib/gateway'
 import { ALL, channelPermissions, has, Permission } from '@/lib/permissions'
 import { getState, type State } from '@/lib/store'
-import type { GatewayEvent, GatewayEvents } from '@/lib/wire'
+import type { GatewayEvent, GatewayEvents, TrackName } from '@/lib/wire'
 
 export type Connection = 'idle' | 'connecting' | 'connected' | 'failed'
 
@@ -36,12 +36,18 @@ export type CallState = {
   remote: RemoteTrack[]
   /** `${userId}/${track}` -> watching that video. */
   watching: Record<string, boolean>
+  /** `${userId}/${track}` -> the layer asked for (auto when absent). */
+  qualities: Record<string, Quality>
+  /** User ID -> how loud we play them, 0 to 2 (1 when absent). Kept across sessions. */
+  volumes: Record<string, number>
   prefs: Prefs
 }
 
 const CONNECT_TIMEOUT_MS = 15_000
 const UDP_BLOCKED = 'Não conectou: a porta UDP de mídia do servidor pode estar bloqueada.'
 const PREFS_KEY = 'discordo:voice-prefs'
+const VOLUMES_KEY = 'discordo:voice-volumes'
+const MIC_LOST = 'Seu microfone foi desconectado. Conecte um microfone para voltar a falar.'
 
 const loadPrefs = (): Prefs => {
   const prefs: Prefs = { input: null, output: null, camera: null, noiseGate: true, screen: DEFAULT_SCREEN_PRESET }
@@ -58,11 +64,23 @@ const loadPrefs = (): Prefs => {
   return prefs
 }
 
+export const clampVolume = (v: number) => (Number.isFinite(v) ? Math.min(2, Math.max(0, v)) : 1)
+
+const loadVolumes = (): Record<string, number> => {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(VOLUMES_KEY) ?? '{}')
+    if (typeof saved !== 'object' || saved === null) return {}
+    return Object.fromEntries(Object.entries(saved).flatMap(([id, v]) => (typeof v === 'number' ? [[id, clampVolume(v)]] : [])))
+  } catch {
+    return {}
+  }
+}
+
 const IDLE = {
-  connection: 'idle', error: null, listenOnly: false, mic: null, camera: null, screen: null, remote: [], watching: {},
+  connection: 'idle', error: null, listenOnly: false, mic: null, camera: null, screen: null, remote: [], watching: {}, qualities: {},
 } as const satisfies Partial<CallState>
 
-let state: CallState = { ...IDLE, channelId: null, selfMuted: false, deafened: false, prefs: loadPrefs() }
+let state: CallState = { ...IDLE, channelId: null, selfMuted: false, deafened: false, volumes: loadVolumes(), prefs: loadPrefs() }
 const listeners = new Set<() => void>()
 
 const set = (patch: Partial<CallState>) => {
@@ -98,6 +116,8 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let mediaState: TransportState = 'connecting'
 let micDone = false
 let everConnected = false
+/** The microphone was unplugged and no other one could be opened yet. */
+let micLost = false
 
 const muted = () => state.selfMuted || state.deafened || state.listenOnly
 
@@ -115,6 +135,8 @@ const stopMedia = () => {
   screenAudio?.stop()
   screenAudio = null
   micDone = false
+  micLost = false
+  navigator.mediaDevices?.removeEventListener('devicechange', onDeviceChange)
 }
 
 const fail = (error: string) => {
@@ -167,6 +189,7 @@ const startMicrophone = async (gen: number, t: VoiceTransport, channelId: string
       if (gen !== generation) return mic.stop()
       mic.track.enabled = !muted()
       microphone = mic
+      watchMicrophone(mic)
       set({ mic: mic.track })
       void t.publish('mic', mic.track) // creates the publish connection synchronously; negotiation continues in the background
     } catch (cause) {
@@ -187,7 +210,7 @@ const onVoiceReady = (d: GatewayEvents['VOICE_READY']) => {
   transport?.close()
   const gen = ++generation
   mediaState = 'connecting'
-  const t = createTransport(d.connection.kind, sendOp, {
+  const t = createTransport(d.connection, sendOp, {
     onRemoteTracks: (remote) => { if (gen === generation) set({ remote }) },
     onState: (s) => {
       if (gen !== generation) return
@@ -198,6 +221,7 @@ const onVoiceReady = (d: GatewayEvents['VOICE_READY']) => {
   })
   if (!t) return fail(`Este app não suporta o tipo de conexão de mídia do servidor ("${d.connection.kind}").`)
   transport = t
+  navigator.mediaDevices?.addEventListener('devicechange', onDeviceChange)
   void startMicrophone(gen, t, d.channel_id)
 }
 
@@ -316,6 +340,37 @@ export const startScreen = async () => {
   }
 }
 
+/** Shares another screen or window in place of the current one, on the same senders (no renegotiation, same encodings). */
+export const switchScreen = async () => {
+  const t = transport
+  const old = state.screen
+  if (!t || !old) return
+  const gen = generation
+  const preset = state.prefs.screen
+  try {
+    const { video, audio } = await captureScreen(preset)
+    if (gen !== generation || state.screen !== old) {
+      video.stop()
+      audio?.stop()
+      return
+    }
+    video.contentHint = screenContentHint(preset)
+    video.addEventListener('ended', () => { if (state.screen === video) void stopScreen() })
+    const oldAudio = screenAudio
+    screenAudio = audio
+    set({ screen: video, error: null })
+    await t.publish('screen', video, screenEncoding(preset))
+    // The new source may bring audio where the old one had none, or the other way around.
+    if (audio) await t.publish('screen-audio', audio, SCREEN_AUDIO_ENCODING)
+    else if (oldAudio) await t.publish('screen-audio', null)
+    old.stop() // after the swap: its "ended" no longer stops sharing, since it is not state.screen
+    oldAudio?.stop()
+  } catch (cause) {
+    // Closing the picker keeps the current share.
+    if (!(cause instanceof DOMException && cause.name === 'NotAllowedError')) set({ error: captureError(cause, 'screen') })
+  }
+}
+
 const savePrefs = (patch: Partial<Prefs>) => {
   set({ prefs: { ...state.prefs, ...patch } })
   try {
@@ -338,10 +393,12 @@ export const setScreenPreset = async (screen: ScreenPreset) => {
   }
 }
 
+/** Opens the microphone again (another device, the noise gate toggled, or the device unplugged) and swaps
+ * it into the sender: replaceTrack, no renegotiation. */
 const restartMicrophone = async () => {
   const t = transport
   const old = microphone
-  if (!t || !old) return
+  if (!t || (!old && !micLost)) return
   const gen = generation
   try {
     const mic = await captureMicrophone(state.prefs.input, state.prefs.noiseGate)
@@ -349,11 +406,35 @@ const restartMicrophone = async () => {
     mic.track.enabled = !muted()
     await t.publish('mic', mic.track)
     microphone = mic
-    old.stop()
-    set({ mic: mic.track })
+    micLost = false
+    watchMicrophone(mic)
+    old?.stop()
+    set({ mic: mic.track, ...(state.error === MIC_LOST ? { error: null } : {}) })
   } catch (cause) {
-    set({ error: captureError(cause, 'microphone') })
+    set({ error: micLost ? MIC_LOST : captureError(cause, 'microphone') })
   }
+}
+
+/** An unplugged device ends its track: fall back to the default one (captureMicrophone does), or wait for one. */
+const watchMicrophone = (mic: Microphone) => {
+  mic.device.addEventListener('ended', () => {
+    if (microphone !== mic) return
+    micLost = true
+    microphone = null
+    mic.stop()
+    set({ mic: null })
+    void restartMicrophone()
+  })
+}
+
+/** A device plugged in: the microphone we lost, or the chosen one back after a fallback to the default. */
+const onDeviceChange = async () => {
+  if (!transport) return
+  if (micLost) return restartMicrophone()
+  const chosen = state.prefs.input
+  if (!chosen || !microphone || microphone.device.getSettings().deviceId === chosen) return
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+  if (devices.some((d) => d.kind === 'audioinput' && d.deviceId === chosen)) await restartMicrophone()
 }
 
 export const setNoiseGate = (noiseGate: boolean) => {
@@ -383,8 +464,27 @@ export const watchKey = (userId: string, track: 'camera' | 'screen') => `${userI
 
 export const watch = (userId: string, track: 'camera' | 'screen', on: boolean) => {
   if (!transport) return
-  set({ watching: { ...state.watching, [watchKey(userId, track)]: on } })
-  transport.subscribe(userId, track, on)
+  const key = watchKey(userId, track)
+  set({ watching: { ...state.watching, [key]: on } })
+  transport.subscribe(userId, track, on, state.qualities[key] ?? 'auto')
 }
+
+export const setQuality = (userId: string, track: 'camera' | 'screen', quality: Quality) => {
+  const key = watchKey(userId, track)
+  set({ qualities: { ...state.qualities, [key]: quality } })
+  if (transport && state.watching[key]) transport.subscribe(userId, track, true, quality)
+}
+
+export const setVolume = (userId: string, volume: number) => {
+  set({ volumes: { ...state.volumes, [userId]: clampVolume(volume) } })
+  try {
+    localStorage.setItem(VOLUMES_KEY, JSON.stringify(state.volumes))
+  } catch {
+    // Still applies for this session.
+  }
+}
+
+/** Sender stats of one of our published videos, for the encoder indicator. */
+export const senderStats = (name: TrackName) => transport?.getStats?.(name) ?? Promise.resolve(null)
 
 export const dismissError = () => set({ error: null })
