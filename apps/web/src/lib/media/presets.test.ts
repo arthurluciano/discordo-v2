@@ -25,6 +25,8 @@ describe('screen presets', () => {
     expect(isScreenPreset({ resolution: '8k', fps: 60 })).toBe(false)
     expect(isScreenPreset({ resolution: '720p', fps: 24 })).toBe(false)
     expect(isScreenPreset(null)).toBe(false)
+    expect(isScreenPreset({ resolution: '720p', fps: 30, codec: 'av1' })).toBe(true)
+    expect(isScreenPreset({ resolution: '720p', fps: 30, codec: 'hevc' })).toBe(false)
   })
 })
 

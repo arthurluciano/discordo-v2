@@ -7,10 +7,10 @@ class FakePeer {
   iceGatheringState = 'complete'
   localDescription: { sdp: string } | null = null
   remote: string[] = []
-  transceivers: { mid: string | null; sender: { track: unknown }; receiver: { track: unknown }; stop: () => void }[] = []
+  transceivers: { mid: string | null; sender: { track: unknown; getParameters?: () => unknown }; receiver: { track: unknown }; stop: () => void }[] = []
   addEventListener() {}
   addTransceiver(track: unknown) {
-    const t = { mid: null, sender: { track }, receiver: { track: {} }, stop: vi.fn() }
+    const t = { mid: null, sender: { track, getParameters: () => ({ encodings: [] }) }, receiver: { track: {} }, stop: vi.fn() }
     this.transceivers.push(t)
     return t
   }
@@ -79,6 +79,28 @@ describe('pion transport', () => {
     await flush()
     expect((calls[0] as { rid: string }[]).map((e) => e.rid)).toEqual(['l', 'm', 'h'])
     expect(calls[1]).toEqual([{ maxBitrate: 6_000_000, maxFramerate: 30 }])
+    t.close()
+  })
+
+  it('publishes the video again when its codec changes', async () => {
+    let peer: FakePeer | null = null
+    vi.stubGlobal('RTCPeerConnection', class extends FakePeer { constructor() { super(); peer = this } })
+    const send = vi.fn(() => true)
+    const t = createPionTransport(send, { onRemoteTracks: vi.fn(), onState: vi.fn(), onError: vi.fn() })
+    const screen = { kind: 'video', getSettings: () => ({}) } as unknown as MediaStreamTrack
+    void t.publish('screen', screen, { maxBitrate: 1 })
+    await flush()
+    t.handle({ t: 'RTC_ANSWER', d: { sdp: 'answer-1' } })
+    await flush()
+    void t.publish('screen', screen, { maxBitrate: 1 }) // same codec: no new offer
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    void t.publish('screen', screen, { maxBitrate: 1, codec: 'av1' })
+    await flush()
+    const [first, second] = peer!.transceivers
+    expect(first?.stop).toHaveBeenCalled()
+    expect(second?.sender.track).toBe(screen)
+    expect(send).toHaveBeenCalledTimes(2)
     t.close()
   })
 })

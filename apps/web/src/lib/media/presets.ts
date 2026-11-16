@@ -1,4 +1,5 @@
 // Screen share quality presets.
+import { isCodecChoice, type CodecChoice } from './codecs'
 
 export const RESOLUTIONS = {
   '480p': { label: '480p', width: 854, height: 480, mbps: 1.5 },
@@ -9,13 +10,14 @@ export const RESOLUTIONS = {
 } as const
 
 export type Resolution = keyof typeof RESOLUTIONS
-export type ScreenPreset = { resolution: Resolution; fps: 30 | 60 }
+export type ScreenPreset = { resolution: Resolution; fps: 30 | 60; codec?: CodecChoice }
 
 export const DEFAULT_SCREEN_PRESET: ScreenPreset = { resolution: '1080p', fps: 30 }
 
 export const isScreenPreset = (v: unknown): v is ScreenPreset =>
   typeof v === 'object' && v !== null && 'resolution' in v && 'fps' in v &&
-  typeof v.resolution === 'string' && v.resolution in RESOLUTIONS && (v.fps === 30 || v.fps === 60)
+  typeof v.resolution === 'string' && v.resolution in RESOLUTIONS && (v.fps === 30 || v.fps === 60) &&
+  (!('codec' in v) || v.codec === undefined || isCodecChoice(v.codec))
 
 export const presetLabel = (p: ScreenPreset) => `${RESOLUTIONS[p.resolution].label} ${p.fps} fps`
 
@@ -25,12 +27,14 @@ export const screenConstraints = ({ resolution, fps }: ScreenPreset): MediaTrack
   return { width: { ideal: width, max: width }, height: { ideal: height, max: height }, frameRate: { ideal: fps, max: fps } }
 }
 
-export type Encoding = { maxBitrate: number; maxFramerate?: number }
+/** `codec` only matters for video; absent means 'auto'. */
+export type Encoding = { maxBitrate: number; maxFramerate?: number; codec?: CodecChoice }
 
 /** 60 fps gets ~1.5x the bitrate of 30 fps at the same resolution. */
-export const screenEncoding = ({ resolution, fps }: ScreenPreset): Encoding => ({
+export const screenEncoding = ({ resolution, fps, codec }: ScreenPreset): Encoding => ({
   maxBitrate: Math.round(RESOLUTIONS[resolution].mbps * (fps === 60 ? 1.5 : 1) * 1_000_000),
   maxFramerate: fps,
+  ...(codec && codec !== 'auto' ? { codec } : {}),
 })
 
 /** Text stays sharp at 30 fps ('detail' keeps resolution under pressure); 60 fps is for motion (keeps the frame rate). */

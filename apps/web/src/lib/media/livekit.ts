@@ -13,7 +13,7 @@ import {
   type VideoCodec,
 } from 'livekit-client'
 import type { MediaConnection, TrackName } from '@/lib/wire'
-import { probeFor, videoCodecs } from './codecs'
+import { CODECS, probeFor, videoCodecs, type CodecChoice, type VideoCodecId } from './codecs'
 import type { Encoding } from './presets'
 import type { Quality, RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
@@ -29,24 +29,21 @@ export const sourceOf = (name: TrackName): Track.Source => SOURCES[name]
 export const nameOf = (source: Track.Source): TrackName | undefined =>
   (Object.keys(SOURCES) as TrackName[]).find((name) => SOURCES[name] === source)
 
-const LIVEKIT_CODECS = ['h264', 'vp8', 'vp9', 'av1'] as const
-
 /** The best codec this browser can send (GPU first, see codecs.ts) that LiveKit takes; VP8 is its own default. */
-const bestCodec = async (track: MediaStreamTrack, encoding: Encoding | undefined): Promise<VideoCodec> => {
-  for (const c of await videoCodecs(probeFor(track, encoding?.maxBitrate))) {
-    const name = LIVEKIT_CODECS.find((n) => c.mimeType.toLowerCase() === `video/${n}`)
-    if (name) return name
-  }
-  return 'vp8'
+const bestCodec = async (track: MediaStreamTrack, maxBitrate: number | undefined, choice: CodecChoice | undefined): Promise<VideoCodec> => {
+  const [first] = await videoCodecs(probeFor(track, maxBitrate), choice)
+  const id = first?.mimeType.toLowerCase().replace('video/', '')
+  return id && id in CODECS ? (id as VideoCodecId) : 'vp8'
 }
 
 const publishOptions = async (name: TrackName, track: MediaStreamTrack, encoding: Encoding | undefined): Promise<TrackPublishOptions> => {
   const options: TrackPublishOptions = { source: SOURCES[name] }
   if (name === 'mic' || name === 'screen-audio') return encoding ? { ...options, audioPreset: { maxBitrate: encoding.maxBitrate } } : options
   // VP9/AV1 go out as SVC; LiveKit then also sends a VP8 backup for viewers that cannot decode them.
-  const video = { ...options, simulcast: true, videoCodec: await bestCodec(track, encoding) }
-  if (name === 'camera') return { ...video, ...(encoding && { videoEncoding: encoding }) }
-  return { ...video, ...(encoding && { screenShareEncoding: encoding }) }
+  const video = { ...options, simulcast: true, videoCodec: await bestCodec(track, encoding?.maxBitrate, encoding?.codec) }
+  if (!encoding) return video
+  const { codec: _, ...limits } = encoding
+  return { ...video, ...(name === 'camera' ? { videoEncoding: limits } : { screenShareEncoding: limits }) }
 }
 
 const QUALITIES: Record<Quality, VideoQuality> = {

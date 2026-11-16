@@ -11,7 +11,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { RESOLUTIONS, type Resolution } from '@/lib/media/presets'
+import { CODECS, hardwareCodecs, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
+import { RESOLUTIONS, screenEncoding, type Resolution } from '@/lib/media/presets'
 import { encoderDetails, encoderLabel, encoderStats, type EncoderStats } from '@/lib/media/stats'
 import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
@@ -43,8 +44,17 @@ const ShareMenu = () => {
   const v = useVoice()
   const preset = v.prefs.screen
   const sharing = v.screen !== null
+  const [hardware, setHardware] = useState<ReadonlySet<string> | null>(null)
+  // Asked each time the menu opens, for the preset in use: GPU support depends on resolution and frame rate.
+  const probe = (open: boolean) => {
+    if (!open) return
+    const { width, height } = RESOLUTIONS[preset.resolution]
+    void hardwareCodecs({ width, height, framerate: preset.fps, bitrate: screenEncoding(preset).maxBitrate }).then(setHardware)
+  }
+  const codecLabel = (id: keyof typeof CODECS) =>
+    `${CODECS[id]}${hardware === null ? '' : hardware.has(`video/${id}`) ? ' (GPU)' : ' (CPU)'}`
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={probe}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -68,6 +78,14 @@ const ShareMenu = () => {
         <DropdownMenuRadioGroup value={String(preset.fps)} onValueChange={(fps) => void v.setScreenPreset({ ...preset, fps: fps === '60' ? 60 : 30 })}>
           <DropdownMenuRadioItem value="30" onSelect={(e) => e.preventDefault()}>30 fps (texto nítido)</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="60" onSelect={(e) => e.preventDefault()}>60 fps (movimento)</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Codec</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={preset.codec ?? 'auto'} onValueChange={(codec) => void v.setScreenPreset({ ...preset, codec: codec as CodecChoice })}>
+          <DropdownMenuRadioItem value="auto" onSelect={(e) => e.preventDefault()}>Automático (GPU primeiro)</DropdownMenuRadioItem>
+          {sendableCodecs().map((id) => (
+            <DropdownMenuRadioItem key={id} value={id} onSelect={(e) => e.preventDefault()}>{codecLabel(id)}</DropdownMenuRadioItem>
+          ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         {sharing ? (

@@ -23,6 +23,10 @@ describe('orderCodecs', () => {
     ])
   })
 
+  it('puts the chosen codec first, even over the GPU ones', () => {
+    expect(orderCodecs(codecs, new Set(['video/h264']), 'av1')[0]?.mimeType).toBe('video/AV1')
+  })
+
   it('prefers H.264 when nothing is on the GPU', () => {
     expect(order([])[0]).toBe('video/H264 packetization-mode=1;profile-level-id=42e01f')
   })

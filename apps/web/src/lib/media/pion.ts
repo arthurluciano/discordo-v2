@@ -46,6 +46,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   let pub: RTCPeerConnection | null = null
   let sub: RTCPeerConnection | null = null
   const published = new Map<TrackName, RTCRtpTransceiver>()
+  const chosen = new Map<TrackName, string>() // the codec choice each video was published with
   let pubQueue = Promise.resolve()
   let subQueue = Promise.resolve()
   let onAnswer: ((sdp: string) => void) | null = null
@@ -111,15 +112,19 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   return {
     publish: async (name, track, encoding) => {
       if (closed) return
+      const choice = encoding?.codec ?? 'auto'
+      // The SFU forwards in the codec a track started with, so another codec means publishing it again.
+      const recodec = track?.kind === 'video' && published.has(name) && chosen.get(name) !== choice
       // Probed before anything else so the rest stays synchronous (no offer can slip in between).
-      const codecs = track?.kind === 'video' && !published.has(name) ? await videoCodecs(probeFor(track, encoding?.maxBitrate)) : null
+      const codecs = track?.kind === 'video' && (!published.has(name) || recodec) ? await videoCodecs(probeFor(track, encoding?.maxBitrate), choice) : null
       if (closed) return
-      const current = published.get(name)
-      if (!track) {
+      let current = published.get(name)
+      if (!track || recodec) {
         if (!current) return
         published.delete(name)
         current.stop() // the m-section goes inactive and the SFU stops forwarding it
-        return negotiate()
+        current = undefined
+        if (!track) return negotiate()
       }
       if (current) {
         if (current.sender.track !== track) await current.sender.replaceTrack(track)
@@ -139,6 +144,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         transceiver = pub.addTransceiver(track, { direction: 'sendonly', sendEncodings: sendEncodings(encoding, undefined) }) // no simulcast here
       }
       if (codecs) setCodecs(transceiver, codecs)
+      chosen.set(name, choice)
       published.set(name, transceiver)
       return negotiate()
     },
