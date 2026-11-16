@@ -13,11 +13,13 @@ import (
 	"discordo/server/internal/gateway"
 	"discordo/server/internal/guild"
 	"discordo/server/internal/httpapi"
+	"discordo/server/internal/image"
 	"discordo/server/internal/media"
 	"discordo/server/internal/message"
 	"discordo/server/internal/permission"
 	"discordo/server/internal/postgres"
 	"discordo/server/internal/relation"
+	"discordo/server/internal/user"
 	"discordo/server/internal/voice"
 )
 
@@ -25,6 +27,7 @@ type Options struct {
 	PublicURL string
 	Blobs     message.Blobs
 	Media     media.Provider
+	Web       http.Handler // the web app, served for every path the API does not own
 }
 
 // New returns the HTTP handler and the hub, whose Run the caller must start.
@@ -48,6 +51,9 @@ func New(store *postgres.Store, provider auth.Provider, opt Options) (http.Handl
 		Relations:     relations,
 		DMs:           dms,
 		Gateway:       hub,
+		Users:         user.NewService(store, audience{store, relations, dms}, hub),
+		Images:        image.NewService(opt.Blobs),
+		Web:           opt.Web,
 		SecureCookies: strings.HasPrefix(opt.PublicURL, "https://"),
 	}
 	return api.Handler(), hub
@@ -106,4 +112,30 @@ func (s social) Private(ctx context.Context, userID string) (map[string]any, err
 
 func (s social) FriendIDs(ctx context.Context, userID string) ([]string, error) {
 	return s.relations.FriendIDs(ctx, userID)
+}
+
+// audience is who sees a user's profile change.
+type audience struct {
+	store     *postgres.Store
+	relations *relation.Service
+	dms       *dm.Service
+}
+
+func (a audience) UserGuildIDs(ctx context.Context, userID string) ([]string, error) {
+	return a.store.UserGuildIDs(ctx, userID)
+}
+
+// Contacts are friends plus everyone in a DM with the user.
+func (a audience) Contacts(ctx context.Context, userID string) ([]string, error) {
+	ids, err := a.relations.FriendIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	dms, err := a.dms.List(ctx, userID)
+	for _, c := range dms {
+		for _, r := range c.Recipients {
+			ids = append(ids, r.ID)
+		}
+	}
+	return ids, err
 }

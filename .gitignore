@@ -1,10 +1,6 @@
 .env
 # Go
 apps/server/discordo
-# Rust
-target/
-# .NET
-bin/
-obj/
-.vs/
-*.user
+# Web
+node_modules/
+apps/web/dist/

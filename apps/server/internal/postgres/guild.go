@@ -33,13 +33,13 @@ func (s *Store) CreateGuild(ctx context.Context, g guild.Guild, everyone guild.R
 }
 
 func (s *Store) Guild(ctx context.Context, guildID string) (g guild.Guild, err error) {
-	err = s.db.QueryRow(ctx, `select id, name, icon_url, owner_id from guilds where id = $1`, guildID).
-		Scan(&g.ID, &g.Name, &g.IconURL, &g.OwnerID)
+	err = s.db.QueryRow(ctx, `select id, name, icon_url, banner_url, owner_id from guilds where id = $1`, guildID).
+		Scan(&g.ID, &g.Name, &g.IconURL, &g.BannerURL, &g.OwnerID)
 	return g, mapErr(err)
 }
 
 func (s *Store) UpdateGuild(ctx context.Context, g guild.Guild) error {
-	return execOne(ctx, s.db, `update guilds set name = $2, icon_url = $3 where id = $1`, g.ID, g.Name, g.IconURL)
+	return execOne(ctx, s.db, `update guilds set name = $2, icon_url = $3, banner_url = $4 where id = $1`, g.ID, g.Name, g.IconURL, g.BannerURL)
 }
 
 func (s *Store) DeleteGuild(ctx context.Context, guildID string) error {

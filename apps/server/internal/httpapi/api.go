@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"discordo/server/internal/errs"
 	"discordo/server/internal/guild"
 	"discordo/server/internal/id"
+	"discordo/server/internal/image"
 	"discordo/server/internal/message"
 	"discordo/server/internal/permission"
 	"discordo/server/internal/relation"
@@ -33,7 +35,10 @@ type API struct {
 	Messages      *message.Service
 	Relations     *relation.Service
 	DMs           *dm.Service
+	Users         *user.Service
+	Images        *image.Service
 	Gateway       http.Handler
+	Web           http.Handler // nil: no web app (API only)
 	SecureCookies bool
 }
 
@@ -45,16 +50,57 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /auth/discord/login", a.login)
 	mux.HandleFunc("GET /auth/discord/callback", a.callback)
-	mux.HandleFunc("POST /auth/token", a.token)
 	mux.Handle("GET /gateway", a.Gateway)
+	if a.Web != nil {
+		mux.Handle("GET /", a.Web) // the most general pattern: every API route above and below wins over it
+	}
 
 	h := func(pattern string, fn handler) { mux.HandleFunc(pattern, a.authed(1<<20, fn)) }
 	g, m, rel, dms := a.Guilds, a.Messages, a.Relations, a.DMs
 
-	h("POST /auth/logout", func(r *http.Request, _ user.User) (any, error) {
-		return nil, a.Auth.Logout(r.Context(), bearer(r))
+	mux.HandleFunc("POST /auth/logout", func(w http.ResponseWriter, r *http.Request) {
+		if !sameOrigin(r) {
+			fail(w, errs.ErrForbidden)
+			return
+		}
+		if err := a.Auth.Logout(r.Context(), sessionToken(r)); err != nil {
+			fail(w, err)
+			return
+		}
+		a.setSession(w, "", -1)
+		w.WriteHeader(http.StatusNoContent)
 	})
 	h("GET /users/@me", func(_ *http.Request, u user.User) (any, error) { return u, nil })
+	h("PATCH /users/@me", func(r *http.Request, u user.User) (any, error) {
+		var in user.ProfileInput
+		if err := decode(r, &in); err != nil {
+			return nil, err
+		}
+		return a.Users.UpdateProfile(r.Context(), u.ID, in)
+	})
+
+	// multipart/form-data with one part named "file"; returns {"url"} for an avatar, icon or banner.
+	mux.HandleFunc("POST /images", a.authed(image.MaxSize+1<<20, func(r *http.Request, _ user.User) (any, error) {
+		part, err := filePart(r)
+		if err != nil {
+			return nil, err
+		}
+		url, err := a.Images.Upload(r.Context(), part)
+		return map[string]string{"url": url}, err
+	}))
+	// Public: avatars and icons are shown to anyone who sees the user or server, like any profile picture.
+	mux.HandleFunc("GET /images/{image}", func(w http.ResponseWriter, r *http.Request) {
+		content, contentType, err := a.Images.Open(r.Context(), r.PathValue("image"))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		defer content.Close()
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // an image never changes; a new one gets a new ID
+		http.ServeContent(w, r, "", time.Time{}, content)
+	})
 
 	h("POST /guilds", func(r *http.Request, u user.User) (any, error) {
 		var in struct{ Name string }
@@ -190,19 +236,11 @@ func (a *API) Handler() http.Handler {
 
 	// multipart/form-data with one part named "file"; the returned ID goes in a message's "attachments".
 	mux.HandleFunc("POST /channels/{channel}/attachments", a.authed(message.MaxUploadSize+1<<20, func(r *http.Request, u user.User) (any, error) {
-		parts, err := r.MultipartReader()
+		part, err := filePart(r)
 		if err != nil {
-			return nil, errs.Invalid("expected multipart/form-data")
+			return nil, err
 		}
-		for {
-			part, err := parts.NextPart()
-			if err != nil {
-				return nil, errs.Invalid(`missing "file" part`)
-			}
-			if part.FormName() == "file" {
-				return m.Upload(r.Context(), u.ID, r.PathValue("channel"), part.FileName(), part)
-			}
-		}
+		return m.Upload(r.Context(), u.ID, r.PathValue("channel"), part.FileName(), part)
 	}))
 	h("GET /attachments/{attachment}", func(r *http.Request, u user.User) (any, error) {
 		att, content, err := m.OpenAttachment(r.Context(), u.ID, r.PathValue("attachment"))
@@ -266,70 +304,76 @@ type file struct {
 // Auth endpoints
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
-	challenge := r.URL.Query().Get("challenge")
-	// The desktop app listens on this loopback port for the result (RFC 8252). Only the port is
-	// client-controlled, so the redirect can never leave the user's own machine.
-	port, _ := strconv.Atoi(r.URL.Query().Get("port"))
-	if port < 1024 || port > 65535 {
-		fail(w, errs.Invalid("port must be the app's loopback port"))
-		return
-	}
-	target, state, verifier, err := a.Auth.Begin(challenge)
-	if err != nil {
-		fail(w, err)
-		return
-	}
+	target, state, verifier := a.Auth.Begin()
 	// The browser carries the flow state; Lax lets it come back on the provider's redirect.
 	http.SetCookie(w, &http.Cookie{
-		Name: oauthCookie, Value: state + "." + verifier + "." + challenge + "." + strconv.Itoa(port), Path: "/auth", MaxAge: 600,
+		Name: oauthCookie, Value: state + "." + verifier, Path: "/auth", MaxAge: 600,
 		HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (a *API) callback(w http.ResponseWriter, r *http.Request) {
+	// A person is looking at this response: failures go back to the app's login screen, which explains them.
+	back := func(reason string) { http.Redirect(w, r, "/?login_error="+reason, http.StatusFound) }
 	c, err := r.Cookie(oauthCookie)
 	if err != nil {
-		fail(w, errs.Invalid("login expired, start again from the app"))
+		back("expired")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Path: "/auth", MaxAge: -1})
-	parts := strings.Split(c.Value, ".")
+	state, verifier, _ := strings.Cut(c.Value, ".")
 	q := r.URL.Query()
-	if len(parts) != 4 || q.Get("code") == "" || subtle.ConstantTimeCompare([]byte(parts[0]), []byte(q.Get("state"))) != 1 {
-		fail(w, errs.Invalid("login was cancelled or its state does not match"))
+	if q.Get("code") == "" || subtle.ConstantTimeCompare([]byte(state), []byte(q.Get("state"))) != 1 {
+		back("cancelled")
 		return
 	}
-	loginCode, err := a.Auth.Callback(r.Context(), q.Get("code"), parts[1], parts[2])
+	token, _, err := a.Auth.Callback(r.Context(), q.Get("code"), verifier)
 	if err != nil {
-		fail(w, err)
+		slog.Warn("login failed", "err", err)
+		back("failed")
 		return
 	}
-	http.Redirect(w, r, "http://127.0.0.1:"+parts[3]+"/?code="+url.QueryEscape(loginCode), http.StatusFound)
+	a.setSession(w, token, int(auth.SessionTTL.Seconds()))
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func (a *API) token(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
-	var in struct{ Code, Verifier string }
-	if err := decode(r, &in); err != nil {
-		fail(w, err)
-		return
-	}
-	token, u, err := a.Auth.Exchange(r.Context(), in.Code, in.Verifier)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	write(w, http.StatusOK, map[string]any{"token": token, "user": u})
+// setSession sets (or with maxAge < 0 clears) the session cookie the web app runs on.
+func (a *API) setSession(w http.ResponseWriter, token string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.SessionCookie, Value: token, Path: "/", MaxAge: maxAge,
+		HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // Plumbing
 
+// filePart returns the "file" part of a multipart/form-data body.
+func filePart(r *http.Request) (*multipart.Part, error) {
+	parts, err := r.MultipartReader()
+	if err != nil {
+		return nil, errs.Invalid("expected multipart/form-data")
+	}
+	for {
+		part, err := parts.NextPart()
+		if err != nil {
+			return nil, errs.Invalid(`missing "file" part`)
+		}
+		if part.FormName() == "file" {
+			return part, nil
+		}
+	}
+}
+
 func (a *API) authed(maxBody int64, fn handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u, err := a.Auth.Authenticate(r.Context(), bearer(r))
+		u, err := a.Auth.Authenticate(r.Context(), sessionToken(r))
 		if err != nil {
 			fail(w, err)
+			return
+		}
+		if !sameOrigin(r) {
+			fail(w, errs.ErrForbidden)
 			return
 		}
 		// Every ID in a path is a UUID; rejecting junk here keeps it from reaching SQL as a cast error.
@@ -360,9 +404,25 @@ func (a *API) authed(maxBody int64, fn handler) http.HandlerFunc {
 	}
 }
 
-func bearer(r *http.Request) string {
-	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	return token
+// sessionToken is the bearer token when there is one (API clients), else the browser's session cookie.
+func sessionToken(r *http.Request) string {
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		return token
+	}
+	if c, err := r.Cookie(auth.SessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+// sameOrigin guards cookie-authenticated writes against cross-site requests (CSRF): browsers
+// always send Origin on them. Bearer requests carry no ambient credentials, so they pass.
+func sameOrigin(r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Header.Get("Authorization") != "" {
+		return true
+	}
+	origin, err := url.Parse(r.Header.Get("Origin"))
+	return err == nil && origin.Host == r.Host
 }
 
 func decode(r *http.Request, v any) error {

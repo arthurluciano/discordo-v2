@@ -17,6 +17,7 @@ import (
 	"discordo/server/internal/config"
 	"discordo/server/internal/media/pion"
 	"discordo/server/internal/postgres"
+	"discordo/server/internal/web"
 )
 
 func main() {
@@ -51,7 +52,7 @@ func run() error {
 		return fmt.Errorf("media: %w", err)
 	}
 	defer sfu.Close()
-	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs, Media: sfu})
+	handler, hub := app.New(store, discord, app.Options{PublicURL: cfg.PublicURL, Blobs: blobs, Media: sfu, Web: web.Handler()})
 	go hub.Run(ctx)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}

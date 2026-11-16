@@ -21,11 +21,12 @@ type client struct {
 	pub    *webrtc.PeerConnection
 	sub    *webrtc.PeerConnection
 	tracks chan *webrtc.TrackRemote
+	names  map[string]string // what we publish: mid -> track name
 }
 
 func join(t *testing.T, sfu *SFU, userID string, grants media.Grants) *client {
 	t.Helper()
-	c := &client{t: t, sfu: sfu, userID: userID, tracks: make(chan *webrtc.TrackRemote, 8)}
+	c := &client{t: t, sfu: sfu, userID: userID, tracks: make(chan *webrtc.TrackRemote, 8), names: map[string]string{}}
 	var err error
 	if c.pub, err = webrtc.NewPeerConnection(webrtc.Configuration{}); err != nil {
 		t.Fatal(err)
@@ -69,6 +70,15 @@ func join(t *testing.T, sfu *SFU, userID string, grants media.Grants) *client {
 	return c
 }
 
+func transceiverOf(pc *webrtc.PeerConnection, sender *webrtc.RTPSender) *webrtc.RTPTransceiver {
+	for _, tr := range pc.GetTransceivers() {
+		if tr.Sender() == sender {
+			return tr
+		}
+	}
+	panic("sender without a transceiver")
+}
+
 func (c *client) signal(typ string, data map[string]any) {
 	raw, _ := json.Marshal(data)
 	if err := c.sfu.Signal(context.Background(), "room", c.userID, typ, raw); err != nil {
@@ -84,14 +94,16 @@ func (c *client) fail(err error) {
 	}
 }
 
-// publish starts sending a track with synthetic RTP until the test ends.
+// publish starts sending a track with synthetic RTP until the test ends. Like a browser, the
+// client cannot choose its track IDs, so it names the track by mid in the offer.
 func (c *client) publish(name, mime string) {
 	c.t.Helper()
-	local, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: mime}, name, c.userID)
+	local, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: mime}, "random-"+name, c.userID)
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	if _, err := c.pub.AddTrack(local); err != nil {
+	sender, err := c.pub.AddTrack(local)
+	if err != nil {
 		c.t.Fatal(err)
 	}
 	offer, err := c.pub.CreateOffer(nil)
@@ -101,7 +113,8 @@ func (c *client) publish(name, mime string) {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	c.signal("rtc_offer", map[string]any{"sdp": c.pub.LocalDescription().SDP})
+	c.names[transceiverOf(c.pub, sender).Mid()] = name
+	c.signal("rtc_offer", map[string]any{"sdp": c.pub.LocalDescription().SDP, "tracks": c.names})
 
 	ctx := c.t.Context()
 	go func() {

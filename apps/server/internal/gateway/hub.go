@@ -1,6 +1,6 @@
 // Package gateway is the realtime side: one WebSocket per client, fed by domain events.
 //
-// Protocol: the client's first message is {"token": "..."}; every server message is
+// Protocol: the client's first message is {"token": "..."} (or {} to use the session cookie); every server message is
 // {"t": TYPE, "d": DATA}, starting with READY. After that the client may send {"op": OP, "d": DATA}
 // for calls (see the voice package). Delivery is at-least-once around (re)connects,
 // so clients must apply events idempotently (by ID).
@@ -17,6 +17,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"discordo/server/internal/auth"
 	"discordo/server/internal/event"
 	"discordo/server/internal/id"
 	"discordo/server/internal/user"
@@ -232,6 +233,11 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	helloCancel()
 	if err != nil {
 		return
+	}
+	if hello.Token == "" { // the web app: its session cookie came with the upgrade request
+		if c, err := r.Cookie(auth.SessionCookie); err == nil {
+			hello.Token = c.Value
+		}
 	}
 	u, err := h.auth.Authenticate(ctx, hello.Token)
 	if err != nil {

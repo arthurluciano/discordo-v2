@@ -3,7 +3,6 @@ package app_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -113,14 +112,11 @@ func (e env) must(token, method, path string, body, out any) {
 	}
 }
 
-// login walks the browser + app flow and returns the one-time login code and its PKCE verifier.
-func (e env) loginCode(name string) (code, verifier string) {
+// login walks the browser flow and returns the session token (the cookie's value) and the user's ID.
+func (e env) login(name string) (token, userID string) {
 	e.t.Helper()
-	verifier = "verifier-of-" + name
-	sum := sha256.Sum256([]byte(verifier))
 	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-
-	resp, err := browser.Get(e.url + "/auth/discord/login?port=4242&challenge=" + base64.RawURLEncoding.EncodeToString(sum[:]))
+	resp, err := browser.Get(e.url + "/auth/discord/login")
 	if err != nil || resp.StatusCode != http.StatusFound {
 		e.t.Fatalf("login: %v %v", err, resp)
 	}
@@ -131,25 +127,36 @@ func (e env) loginCode(name string) (code, verifier string) {
 		req.AddCookie(c)
 	}
 	resp, err = browser.Do(req)
-	if err != nil || resp.StatusCode != http.StatusFound {
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/" {
 		e.t.Fatalf("callback: %v %v", err, resp)
 	}
-	toApp, _ := url.Parse(resp.Header.Get("Location"))
-	if toApp.Scheme != "http" || toApp.Host != "127.0.0.1:4242" {
-		e.t.Fatalf("callback redirected to %s", toApp)
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.SessionCookie && c.HttpOnly {
+			token = c.Value
+		}
 	}
-	return toApp.Query().Get("code"), verifier
+	var me struct{ ID string }
+	e.must(token, "GET", "/users/@me", nil, &me)
+	return token, me.ID
 }
 
-func (e env) login(name string) (token, userID string) {
+// browserCall makes a request the way the web app does: session cookie, optional Origin, no Authorization.
+func (e env) browserCall(token, origin, method, path string, body io.Reader, contentType string) *http.Response {
 	e.t.Helper()
-	code, verifier := e.loginCode(name)
-	var out struct {
-		Token string
-		User  struct{ ID string }
+	req, _ := http.NewRequest(method, e.url+path, body)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: token})
+	if origin != "" {
+		req.Header.Set("Origin", origin)
 	}
-	e.must("", "POST", "/auth/token", map[string]string{"code": code, "verifier": verifier}, &out)
-	return out.Token, out.User.ID
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.t.Cleanup(func() { resp.Body.Close() })
+	return resp
 }
 
 type frame struct {
@@ -206,18 +213,148 @@ type snapshot struct {
 	}
 }
 
-func TestLoginRejectsWrongVerifierAndReuse(t *testing.T) {
+func TestWebSession(t *testing.T) {
 	e := start(t)
-	code, verifier := e.loginCode("mallory")
-	if status := e.call("", "POST", "/auth/token", map[string]string{"code": code, "verifier": "stolen"}, nil); status != http.StatusUnauthorized {
-		t.Fatalf("wrong verifier: status %d", status)
+	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	// A callback whose state is not the one in the flow cookie is refused.
+	resp, _ := browser.Get(e.url + "/auth/discord/login")
+	req, _ := http.NewRequest("GET", e.url+"/auth/discord/callback?code=mallory&state=forged", nil)
+	for _, c := range resp.Cookies() {
+		req.AddCookie(c)
 	}
-	// The failed attempt burned the code, so even the right verifier is too late.
-	if status := e.call("", "POST", "/auth/token", map[string]string{"code": code, "verifier": verifier}, nil); status != http.StatusUnauthorized {
-		t.Fatalf("reused code: status %d", status)
+	if resp, _ = browser.Do(req); resp.Header.Get("Location") != "/?login_error=cancelled" || len(resp.Cookies()) != 1 {
+		t.Fatalf("forged state: %v, cookies %v", resp.Header.Get("Location"), resp.Cookies()) // only the flow cookie, cleared
+	}
+
+	token, _ := e.login("alice")
+	origin := e.url // httptest serves on the same host the requests go to
+	if resp := e.browserCall(token, "", "GET", "/users/@me", nil, ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("cookie GET: status %d", resp.StatusCode)
+	}
+	// Writes with the cookie need our own Origin: another site cannot make the browser do them (CSRF).
+	body := `{"name":"Oficina"}`
+	if resp := e.browserCall(token, "https://evil.example", "POST", "/guilds", strings.NewReader(body), "application/json"); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site POST: status %d", resp.StatusCode)
+	}
+	if resp := e.browserCall(token, "", "POST", "/guilds", strings.NewReader(body), "application/json"); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST without Origin: status %d", resp.StatusCode)
+	}
+	if resp := e.browserCall(token, origin, "POST", "/guilds", strings.NewReader(body), "application/json"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("same-origin POST: status %d", resp.StatusCode)
+	}
+
+	// The gateway takes the cookie when the hello has no token.
+	header := http.Header{}
+	header.Add("Cookie", auth.SessionCookie+"="+token)
+	c, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(e.url, "http")+"/gateway", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetReadLimit(1 << 20)
+	t.Cleanup(func() { c.CloseNow() })
+	if err := wsjson.Write(t.Context(), c, map[string]string{}); err != nil {
+		t.Fatal(err)
+	}
+	socket{t, c}.next("READY", nil)
+
+	// Logging out ends the session and clears the cookie.
+	resp = e.browserCall(token, origin, "POST", "/auth/logout", nil, "")
+	if resp.StatusCode != http.StatusNoContent || len(resp.Cookies()) != 1 || resp.Cookies()[0].MaxAge >= 0 {
+		t.Fatalf("logout: status %d, cookies %v", resp.StatusCode, resp.Cookies())
+	}
+	if status := e.call(token, "GET", "/users/@me", nil, nil); status != http.StatusUnauthorized {
+		t.Fatalf("after logout: status %d", status)
 	}
 	if status := e.call("not-a-token", "GET", "/users/@me", nil, nil); status != http.StatusUnauthorized {
 		t.Fatalf("bad token: status %d", status)
+	}
+}
+
+// pngBytes is the smallest valid PNG: one transparent pixel.
+var pngBytes, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+
+// uploadImage posts a picture to /images and returns its URL.
+func (e env) uploadImage(token string, content []byte) (int, string) {
+	e.t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, _ := w.CreateFormFile("file", "picture")
+	part.Write(content)
+	w.Close()
+	req, _ := http.NewRequest("POST", e.url+"/images", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct{ URL string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out.URL
+}
+
+func TestProfilesAndImages(t *testing.T) {
+	e := start(t)
+	alice, aliceID := e.login("alice")
+	bob, _ := e.login("bob")
+	var guild snapshot
+	e.must(alice, "POST", "/guilds", map[string]string{"name": "Oficina"}, &guild)
+	var invite struct{ Code string }
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{}, &invite)
+	e.must(bob, "POST", "/invites/"+invite.Code, nil, nil)
+	bobWS := e.connect(bob)
+	bobWS.next("READY", nil)
+
+	if status, _ := e.uploadImage(alice, []byte("not an image at all")); status != http.StatusBadRequest {
+		t.Fatalf("non-image upload: status %d", status)
+	}
+	status, picture := e.uploadImage(alice, pngBytes)
+	if status != http.StatusOK || !strings.HasPrefix(picture, "/images/") {
+		t.Fatalf("upload: status %d, url %q", status, picture)
+	}
+	// Images are public: <img> tags carry no credentials.
+	resp, err := http.Get(e.url + picture)
+	if err != nil || resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("GET image: %v %v", err, resp)
+	}
+	resp.Body.Close()
+
+	// Avatars must be our own uploads; a third-party URL would make every viewer fetch from it.
+	if status := e.call(alice, "PATCH", "/users/@me", map[string]string{"avatar_url": "https://tracker.example/a.png"}, nil); status != http.StatusBadRequest {
+		t.Fatalf("outside avatar: status %d", status)
+	}
+	e.must(alice, "PATCH", "/users/@me", map[string]string{"avatar_url": picture, "display_name": "Alice A."}, nil)
+	var updated struct {
+		ID          string
+		DisplayName string `json:"display_name"`
+		AvatarURL   string `json:"avatar_url"`
+	}
+	if bobWS.next("USER_UPDATE", &updated); updated.ID != aliceID || updated.AvatarURL != picture || updated.DisplayName != "Alice A." {
+		t.Fatalf("USER_UPDATE: %+v", updated)
+	}
+	// Logging in again does not bring back the name and avatar from Discord.
+	again, _ := e.login("alice")
+	var me struct {
+		DisplayName string `json:"display_name"`
+		AvatarURL   string `json:"avatar_url"`
+	}
+	if e.must(again, "GET", "/users/@me", nil, &me); me.AvatarURL != picture || me.DisplayName != "Alice A." {
+		t.Fatalf("profile after login: %+v", me)
+	}
+
+	// Server icon and banner.
+	e.must(alice, "PATCH", "/guilds/"+guild.ID, map[string]string{"banner_url": picture, "icon_url": picture}, nil)
+	var synced struct {
+		IconURL   string `json:"icon_url"`
+		BannerURL string `json:"banner_url"`
+	}
+	if bobWS.next("GUILD_SYNC", &synced); synced.BannerURL != picture || synced.IconURL != picture {
+		t.Fatalf("GUILD_SYNC: %+v", synced)
+	}
+	if status := e.call(bob, "PATCH", "/guilds/"+guild.ID, map[string]string{"banner_url": ""}, nil); status != http.StatusForbidden {
+		t.Fatalf("banner without permission: status %d", status)
 	}
 }
 

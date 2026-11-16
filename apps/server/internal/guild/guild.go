@@ -13,15 +13,17 @@ import (
 	"discordo/server/internal/errs"
 	"discordo/server/internal/event"
 	"discordo/server/internal/id"
+	"discordo/server/internal/image"
 	"discordo/server/internal/permission"
 	"discordo/server/internal/user"
 )
 
 type Guild struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	IconURL string `json:"icon_url"`
-	OwnerID string `json:"owner_id"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IconURL   string `json:"icon_url"`
+	BannerURL string `json:"banner_url"`
+	OwnerID   string `json:"owner_id"`
 }
 
 // Role with ID == GuildID is @everyone: every member has it implicitly.
@@ -194,8 +196,9 @@ func (s *Service) Create(ctx context.Context, userID, name string) (Snapshot, er
 }
 
 type GuildInput struct {
-	Name    *string `json:"name"`
-	IconURL *string `json:"icon_url"`
+	Name      *string `json:"name"`
+	IconURL   *string `json:"icon_url"`
+	BannerURL *string `json:"banner_url"`
 }
 
 func (s *Service) Update(ctx context.Context, userID, guildID string, in GuildInput) error {
@@ -209,11 +212,13 @@ func (s *Service) Update(ctx context.Context, userID, guildID string, in GuildIn
 			return err
 		}
 	}
-	if in.IconURL != nil {
-		if len(*in.IconURL) > 500 || (*in.IconURL != "" && !strings.HasPrefix(*in.IconURL, "https://")) {
-			return errs.Invalid("icon_url must be an https URL")
+	for _, f := range []struct{ in, out *string }{{in.IconURL, &g.IconURL}, {in.BannerURL, &g.BannerURL}} {
+		if f.in != nil {
+			if !image.Valid(*f.in) {
+				return errs.Invalid("icon_url and banner_url must be empty or an uploaded image (POST /images)")
+			}
+			*f.out = *f.in
 		}
-		g.IconURL = *in.IconURL
 	}
 	if err := s.store.UpdateGuild(ctx, g); err != nil {
 		return err

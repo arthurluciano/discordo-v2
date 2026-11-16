@@ -9,27 +9,24 @@ import (
 )
 
 func (s *Store) UpsertUser(ctx context.Context, newID string, idn auth.Identity) (u user.User, err error) {
+	// A name or avatar the user set in Discordo wins over what Discord says.
 	err = s.db.QueryRow(ctx, `
 		insert into users (id, discord_id, username, display_name, avatar_url) values ($1, $2, $3, $4, $5)
 		on conflict (discord_id) do update set
-			username = excluded.username, display_name = excluded.display_name, avatar_url = excluded.avatar_url
+			username = excluded.username,
+			display_name = case when users.custom_name then users.display_name else excluded.display_name end,
+			avatar_url = case when users.custom_avatar then users.avatar_url else excluded.avatar_url end
 		returning id, username, display_name, avatar_url`,
 		newID, idn.ProviderID, idn.Username, idn.DisplayName, idn.AvatarURL,
 	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.AvatarURL)
 	return u, mapErr(err)
 }
 
-func (s *Store) SaveLoginCode(ctx context.Context, hash []byte, userID, challenge string, expires time.Time) error {
-	return exec(ctx, s.db, `insert into login_codes values ($1, $2, $3, $4)`, hash, userID, challenge, expires)
-}
-
-func (s *Store) TakeLoginCode(ctx context.Context, hash []byte, now time.Time) (userID, challenge string, err error) {
-	// Expired codes are swept here too, so the table cannot grow without bound.
-	err = s.db.QueryRow(ctx, `
-		with swept as (delete from login_codes where expires_at <= $2)
-		delete from login_codes where code_hash = $1 and expires_at > $2 returning user_id, challenge`,
-		hash, now).Scan(&userID, &challenge)
-	return userID, challenge, mapErr(err)
+// UpdateProfile sets the user's own name and avatar; from then on logins no longer overwrite them.
+func (s *Store) UpdateProfile(ctx context.Context, u user.User) error {
+	return execOne(ctx, s.db, `
+		update users set display_name = $2, avatar_url = $3, custom_name = true, custom_avatar = true where id = $1`,
+		u.ID, u.DisplayName, u.AvatarURL)
 }
 
 func (s *Store) CreateSession(ctx context.Context, hash []byte, userID string, expires time.Time) error {

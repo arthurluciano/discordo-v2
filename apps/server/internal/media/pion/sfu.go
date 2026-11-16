@@ -55,6 +55,7 @@ type peer struct {
 	send   media.Sender
 	pub    *webrtc.PeerConnection // created on the first rtc_offer
 	sub    *webrtc.PeerConnection
+	names  map[string]string            // publish transceiver mid -> track name, from the client's offers
 	sends  map[string]*webrtc.RTPSender // track key -> what we forward to this peer
 	wants  map[string]bool              // video track keys this peer asked for
 	dirty  bool                         // subscriptions changed while an offer was in flight
@@ -147,10 +148,11 @@ func (s *SFU) Leave(roomID, userID string) {
 
 func (s *SFU) Signal(_ context.Context, roomID, userID, typ string, data json.RawMessage) error {
 	var msg struct {
-		SDP    string `json:"sdp"`
-		UserID string `json:"user_id"`
-		Track  string `json:"track"`
-		On     bool   `json:"on"`
+		SDP    string            `json:"sdp"`
+		Tracks map[string]string `json:"tracks"` // rtc_offer: mid -> track name
+		UserID string            `json:"user_id"`
+		Track  string            `json:"track"`
+		On     bool              `json:"on"`
 	}
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return errs.Invalid("malformed signaling message")
@@ -165,6 +167,7 @@ func (s *SFU) Signal(_ context.Context, roomID, userID, typ string, data json.Ra
 
 	switch typ {
 	case "rtc_offer":
+		p.names = msg.Tracks
 		return s.answerLocked(roomID, p, msg.SDP)
 	case "rtc_answer":
 		if err := p.sub.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: msg.SDP}); err != nil {
@@ -202,7 +205,7 @@ func (s *SFU) answerLocked(roomID string, p *peer, sdp string) error {
 		if err != nil {
 			return err
 		}
-		pub.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { s.forward(roomID, p, remote) })
+		pub.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { s.forward(roomID, p, remote, receiver) })
 		p.pub = pub
 	}
 	if err := p.pub.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: sdp}); err != nil {
@@ -254,8 +257,10 @@ func setLocal(pc *webrtc.PeerConnection, desc webrtc.SessionDescription) error {
 }
 
 // forward runs for the lifetime of one published track.
-func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote) {
-	name, audio := remote.ID(), remote.Kind() == webrtc.RTPCodecTypeAudio
+func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	s.mu.Lock()
+	name, audio := p.trackName(remote, receiver), remote.Kind() == webrtc.RTPCodecTypeAudio
+	s.mu.Unlock()
 	var allowed bool
 	switch name {
 	case media.Mic:
@@ -312,6 +317,19 @@ func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote) {
 		return
 	}
 	s.mu.Unlock()
+}
+
+// trackName is what the client called a track in its offer ("tracks", by mid). Browsers cannot
+// choose their track IDs, so they name tracks that way; other clients may just use the msid track ID.
+func (p *peer) trackName(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) string {
+	for _, tr := range p.pub.GetTransceivers() {
+		if tr.Receiver() == receiver {
+			if name, ok := p.names[tr.Mid()]; ok {
+				return name
+			}
+		}
+	}
+	return remote.ID()
 }
 
 func (r *room) published(userID string) []string {
