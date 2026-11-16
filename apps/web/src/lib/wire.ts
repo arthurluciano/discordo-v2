@@ -3,6 +3,16 @@
 
 export type User = { id: string; username: string; display_name: string; avatar_url: string }
 
+/** A profile card (GET /users/{user}/profile). `banner_color` is 0xRRGGBB, or 0 for the theme's own banner. */
+export type UserProfile = User & {
+  bio: string
+  pronouns: string
+  banner_color: number
+  created_at: string
+  /** The servers we share with them (empty on our own profile). */
+  mutual_guild_ids: string[]
+}
+
 export type Role = { id: string; guild_id: string; name: string; color: number; permissions: number; position: number }
 
 export type Member = { user: User; nickname: string; roles: string[]; joined_at: string; online: boolean }

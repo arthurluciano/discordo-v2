@@ -29,6 +29,17 @@ func (s *Store) UpdateProfile(ctx context.Context, u user.User) error {
 		u.ID, u.DisplayName, u.AvatarURL)
 }
 
+func (s *Store) Details(ctx context.Context, userID string) (d user.Details, err error) {
+	err = s.db.QueryRow(ctx, `select bio, pronouns, banner_color, created_at from users where id = $1`, userID).
+		Scan(&d.Bio, &d.Pronouns, &d.BannerColor, &d.CreatedAt)
+	return d, mapErr(err)
+}
+
+func (s *Store) UpdateDetails(ctx context.Context, userID string, d user.Details) error {
+	return execOne(ctx, s.db, `update users set bio = $2, pronouns = $3, banner_color = $4 where id = $1`,
+		userID, d.Bio, d.Pronouns, d.BannerColor)
+}
+
 func (s *Store) CreateSession(ctx context.Context, hash []byte, userID string, expires time.Time) error {
 	return exec(ctx, s.db, `
 		with swept as (delete from sessions where expires_at <= now())

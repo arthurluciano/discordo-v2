@@ -347,6 +347,32 @@ func TestProfilesAndImages(t *testing.T) {
 		t.Fatalf("profile after login: %+v", me)
 	}
 
+	// Profile details: anyone who shares a server sees them, with the servers in common; strangers get not found.
+	if status := e.call(alice, "PATCH", "/users/@me", map[string]string{"bio": strings.Repeat("a", 191)}, nil); status != http.StatusBadRequest {
+		t.Fatalf("long bio: status %d", status)
+	}
+	if status := e.call(alice, "PATCH", "/users/@me", map[string]int{"banner_color": 0x1000000}, nil); status != http.StatusBadRequest {
+		t.Fatalf("bad banner color: status %d", status)
+	}
+	e.must(alice, "PATCH", "/users/@me", map[string]any{"bio": " Faz bolos. ", "pronouns": "ela/dela", "banner_color": 0xff2a6d}, nil)
+	var profile struct {
+		ID             string
+		DisplayName    string   `json:"display_name"`
+		Bio            string   `json:"bio"`
+		Pronouns       string   `json:"pronouns"`
+		BannerColor    int      `json:"banner_color"`
+		CreatedAt      string   `json:"created_at"`
+		MutualGuildIDs []string `json:"mutual_guild_ids"`
+	}
+	e.must(bob, "GET", "/users/"+aliceID+"/profile", nil, &profile)
+	if profile.ID != aliceID || profile.DisplayName != "Alice A." || profile.Bio != "Faz bolos." || profile.Pronouns != "ela/dela" ||
+		profile.BannerColor != 0xff2a6d || profile.CreatedAt == "" || len(profile.MutualGuildIDs) != 1 || profile.MutualGuildIDs[0] != guild.ID {
+		t.Fatalf("profile seen by bob: %+v", profile)
+	}
+	stranger, _ := e.login("carol")
+	if status := e.call(stranger, "GET", "/users/"+aliceID+"/profile", nil, nil); status != http.StatusNotFound {
+		t.Fatalf("stranger viewing a profile: status %d", status)
+	}
 	// Server icon and banner.
 	e.must(alice, "PATCH", "/guilds/"+guild.ID, map[string]string{"banner_url": picture, "icon_url": picture}, nil)
 	var synced struct {

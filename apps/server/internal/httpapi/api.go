@@ -78,6 +78,9 @@ func (a *API) Handler() http.Handler {
 		}
 		return a.Users.UpdateProfile(r.Context(), u.ID, in)
 	})
+	h("GET /users/{user}/profile", func(r *http.Request, u user.User) (any, error) {
+		return a.Users.Profile(r.Context(), u.ID, r.PathValue("user"))
+	})
 
 	// multipart/form-data with one part named "file"; returns {"url"} for an avatar, icon or banner.
 	mux.HandleFunc("POST /images", a.authed(image.MaxSize+1<<20, func(r *http.Request, _ user.User) (any, error) {

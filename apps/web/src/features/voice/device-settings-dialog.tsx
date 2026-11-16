@@ -106,85 +106,90 @@ const Section = ({ icon, title, children }: { icon: ReactNode; title: string; ch
 
 const supportsOutputChoice = () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
 
+/** Microphone, output, noise gate and camera: in the call's gear and in the user settings. */
+export const VoiceVideoSettings = ({ active = true }: { active?: boolean }) => {
+  const { prefs, mic, camera } = useVoice((s) => ({ prefs: s.prefs, mic: s.mic, camera: s.camera }))
+  const devices = useDevices(active)
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Section icon={<Mic className="size-4 text-blurple-soft" aria-hidden />} title="Voz">
+        <DeviceSelect
+          label="Microfone"
+          kind="audioinput"
+          devices={devices}
+          value={prefs.input}
+          onChange={(id) => void voice.setDevice('input', id)}
+        />
+
+        <MicLevel track={mic} />
+
+        {supportsOutputChoice() ? (
+          <DeviceSelect
+            label="Saída de áudio"
+            kind="audiooutput"
+            devices={devices}
+            value={prefs.output}
+            onChange={(id) => void voice.setDevice('output', id)}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">Este navegador não permite escolher a saída de áudio.</p>
+        )}
+
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="voice-noise-gate">Porta de ruído</FieldLabel>
+            <FieldDescription>
+              Fecha o microfone entre as frases, quando só o ventilador e o teclado estariam saindo.
+            </FieldDescription>
+          </FieldContent>
+
+          <Switch id="voice-noise-gate" checked={prefs.noiseGate} onCheckedChange={voice.setNoiseGate} />
+        </Field>
+      </Section>
+
+      <Section icon={<Video className="size-4 text-blurple-soft" aria-hidden />} title="Vídeo">
+        <DeviceSelect
+          label="Câmera"
+          kind="videoinput"
+          devices={devices}
+          value={prefs.camera}
+          onChange={(id) => void voice.setDevice('camera', id)}
+        />
+
+        <div className="aspect-video overflow-hidden rounded-lg border border-border bg-black">
+          <TrackPreview
+            track={camera}
+            placeholder={
+              <>
+                <Video className="size-8" aria-hidden />
+                Ligue a câmera na chamada para ver a prévia aqui.
+              </>
+            }
+          />
+        </div>
+      </Section>
+    </div>
+  )
+}
+
 export const DeviceSettingsDialog = ({
   open,
   onOpenChange,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-}) => {
-  const { prefs, mic, camera } = useVoice((s) => ({ prefs: s.prefs, mic: s.mic, camera: s.camera }))
-  const devices = useDevices(open)
+}) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-h-[92vh] overflow-y-auto bg-surface-content sm:max-w-4xl">
+      <DialogHeader>
+        <DialogTitle className="text-xl font-extrabold">Voz e vídeo</DialogTitle>
+        <DialogDescription>
+          Dispositivos e processamento do microfone. Tudo vale na hora, inclusive na chamada.
+        </DialogDescription>
+      </DialogHeader>
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto bg-surface-content sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-extrabold">Voz e vídeo</DialogTitle>
-          <DialogDescription>
-            Dispositivos e processamento do microfone. Tudo vale na hora, inclusive na chamada.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Section icon={<Mic className="size-4 text-blurple-soft" aria-hidden />} title="Voz">
-            <DeviceSelect
-              label="Microfone"
-              kind="audioinput"
-              devices={devices}
-              value={prefs.input}
-              onChange={(id) => void voice.setDevice('input', id)}
-            />
-
-            <MicLevel track={mic} />
-
-            {supportsOutputChoice() ? (
-              <DeviceSelect
-                label="Saída de áudio"
-                kind="audiooutput"
-                devices={devices}
-                value={prefs.output}
-                onChange={(id) => void voice.setDevice('output', id)}
-              />
-            ) : (
-              <p className="text-xs text-muted-foreground">Este navegador não permite escolher a saída de áudio.</p>
-            )}
-
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor="voice-noise-gate">Porta de ruído</FieldLabel>
-                <FieldDescription>
-                  Fecha o microfone entre as frases, quando só o ventilador e o teclado estariam saindo.
-                </FieldDescription>
-              </FieldContent>
-
-              <Switch id="voice-noise-gate" checked={prefs.noiseGate} onCheckedChange={voice.setNoiseGate} />
-            </Field>
-          </Section>
-
-          <Section icon={<Video className="size-4 text-blurple-soft" aria-hidden />} title="Vídeo">
-            <DeviceSelect
-              label="Câmera"
-              kind="videoinput"
-              devices={devices}
-              value={prefs.camera}
-              onChange={(id) => void voice.setDevice('camera', id)}
-            />
-
-            <div className="aspect-video overflow-hidden rounded-lg border border-border bg-black">
-              <TrackPreview
-                track={camera}
-                placeholder={
-                  <>
-                    <Video className="size-8" aria-hidden />
-                    Ligue a câmera na chamada para ver a prévia aqui.
-                  </>
-                }
-              />
-            </div>
-          </Section>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
+      <VoiceVideoSettings active={open} />
+    </DialogContent>
+  </Dialog>
+)

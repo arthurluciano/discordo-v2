@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut, Palette } from 'lucide-react'
-import { ThemeDialog } from '@/components/theme-dialog'
+import { LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar } from '@/design/avatar'
@@ -10,13 +8,12 @@ import { useSignOut } from '../auth/use-sign-out'
 import { useProfileViewer } from './profile-viewer'
 import { displayName, useMe } from './users'
 
-/** The bottom of the sidebar: who you are, your profile, appearance, signing out. */
+/** The bottom of the sidebar: who you are, your profile, settings, signing out. */
 export const UserPanel = () => {
   const me = useMe()
-  const { openProfile } = useProfileViewer()
+  const { openProfile, openSettings } = useProfileViewer()
   const signOut = useSignOut()
   const press = useTransition(QUICK_EASE)
-  const [appearance, setAppearance] = useState(false)
   if (!me) return null
 
   return (
@@ -47,15 +44,14 @@ export const UserPanel = () => {
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={() => setAppearance(true)}
-            aria-label="Aparência"
+            onClick={() => openSettings('profile')}
+            aria-label="Configurações"
           >
-            <Palette aria-hidden />
+            <Settings aria-hidden />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Aparência</TooltipContent>
+        <TooltipContent>Configurações</TooltipContent>
       </Tooltip>
-      <ThemeDialog open={appearance} onOpenChange={setAppearance} />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

@@ -1,5 +1,9 @@
 // The REST API. Same origin as the app, authenticated by the session cookie (see docs/protocol.md).
-import type { Attachment, Ban, Channel, DM, Guild, Invite, Message, Role, User } from './wire'
+import type { Attachment, Ban, Channel, DM, Guild, Invite, Message, Role, User, UserProfile } from './wire'
+
+export type ProfileInput = Partial<
+  Pick<UserProfile, 'display_name' | 'avatar_url' | 'bio' | 'pronouns' | 'banner_color'>
+>
 
 export class ApiError extends Error {
   constructor(
@@ -50,7 +54,8 @@ const enc = encodeURIComponent
 
 export const api = {
   me: () => request<User>('GET', '/users/@me'),
-  updateProfile: (input: { display_name?: string; avatar_url?: string }) => request<User>('PATCH', '/users/@me', input),
+  updateProfile: (input: ProfileInput) => request<User>('PATCH', '/users/@me', input),
+  profile: (userId: string) => request<UserProfile>('GET', `/users/${userId}/profile`),
   logout: () => request<void>('POST', '/auth/logout'),
   /** Stores a picture for an avatar, icon or banner and returns its URL. */
   uploadImage: async (file: File) => (await upload<{ url: string }>('/images', file)).url,

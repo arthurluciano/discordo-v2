@@ -17,7 +17,7 @@ A fonte da verdade são os tipos Go em `apps/server/internal`. Este documento é
    Em falha, redireciona para `/?login_error=expired|cancelled|failed`.
 3. `POST /auth/logout` invalida a sessão e apaga o cookie.
 
-Nome e avatar trocados no Discordo (`PATCH /users/@me`) prevalecem sobre os do Discord nos próximos logins.
+Nome e avatar trocados no Discordo (`PATCH /users/@me`) prevalecem sobre os do Discord nos próximos logins. Bio, pronomes e cor do banner não vão no `User` (nem em `USER_UPDATE`): o cartão de perfil busca `GET /users/{user}/profile` ao abrir.
 
 ## Gateway (tempo real)
 
@@ -80,7 +80,8 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 |---|---|---|
 | `GET /users/@me` | | `User` |
 | `POST /guilds` | `{name}` | `Snapshot` |
-| `PATCH /users/@me` | `{display_name?, avatar_url?}` | `User` |
+| `PATCH /users/@me` | `{display_name?, avatar_url?, bio?, pronouns?, banner_color?}` (bio até 190, pronomes até 40, cor `0xRRGGBB` ou `0` para o padrão) | `User` |
+| `GET /users/{user}/profile` | | `User` + `{bio, pronouns, banner_color, created_at, mutual_guild_ids}`; 404 para quem não divide servidor, amizade nem DM |
 | `POST /images` | `multipart/form-data`, parte `file` (PNG, JPEG, GIF ou WebP, até 8 MB) | `{url}` |
 | `GET /images/{image}` | | a imagem (pública) |
 | `PATCH /guilds/{guild}` | `{name?, icon_url?, banner_url?}` (imagens: `""` ou uma `url` de `POST /images`) | |
