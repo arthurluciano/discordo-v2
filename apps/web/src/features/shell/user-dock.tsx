@@ -16,13 +16,8 @@ const DockContents = () => (
   </>
 )
 
-/**
- * Perfil + controles de voz, sempre no mesmo lugar visual — servidor ou area social. Quem esta
- * numa chamada precisa continuar vendo os proprios controles ao navegar pro Inicial, do mesmo
- * jeito que a chamada em si continua tocando (ver `VoiceAudio`).
- *
- * No desktop mora no pe da barra lateral; no celular quem aparece e o `FloatingDock`.
- */
+/** Profile and call controls in the same spot on every screen, so a call stays controllable while navigating.
+ * At the foot of the sidebar on wide screens; phones get the `FloatingDock`. */
 export const UserDock = () => {
   const isMobile = useIsMobile()
   if (isMobile) return null
@@ -33,8 +28,7 @@ export const UserDock = () => {
   )
 }
 
-/** Publica a altura do dock para o `dock-clearance` das listas: com a chamada de voz aberta ele
- * cresce, e uma folga fixa deixaria controles por cima do ultimo canal. */
+/** Publishes the dock's height for the lists' `dock-clearance`: it grows during a call, so a fixed gap would hide the last item. */
 const useDockHeight = () => {
   const dockRef = useRef<HTMLDivElement>(null)
 
@@ -74,8 +68,7 @@ const FloatingDockPanel = () => {
   )
 }
 
-/** Dock do celular: flutua acima da barra de gestos (no iOS, em vidro) e so aparece nas telas
- * de navegacao — dentro de um canal ou conversa ele sai de cena deslizando para baixo. */
+/** The phone dock: floats above the gesture bar and only shows on navigation screens (it slides away inside a chat). */
 export const FloatingDock = ({ visible }: { visible: boolean }) => {
   const isMobile = useIsMobile()
   return <AnimatePresence>{isMobile && visible ? <FloatingDockPanel key="floating-dock" /> : null}</AnimatePresence>

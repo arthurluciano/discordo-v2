@@ -12,7 +12,7 @@ import { Transcript } from './transcript'
 import { TypingIndicator } from './typing-indicator'
 import { roleColors } from './role-color'
 
-export type ChannelChatProps = {
+type ChannelChatProps = {
   channelId: string
   /** Undefined for DMs. */
   guildId?: string

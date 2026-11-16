@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { api, errorMessage } from '@/lib/api'
+import { api } from '@/lib/api'
 import { CHANNEL_SCOPED, has, Permission } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { ChannelType, type Channel, type Guild } from '@/lib/wire'
@@ -56,11 +56,11 @@ const Overview = ({ channel, onDeleted }: { channel: Channel; onDeleted: () => v
           <Textarea id="channel-settings-topic" className="mt-2" maxLength={1024} placeholder="Do que se fala aqui?" value={topic} onChange={(e) => setTopic(e.target.value)} />
         </div>
       ) : null}
-      {save.error ? <FieldError>{errorMessage(save.error)}</FieldError> : null}
-      {remove.error ? <FieldError>{errorMessage(remove.error)}</FieldError> : null}
+      <FieldError error={save.error} />
+      <FieldError error={remove.error} />
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={save.isPending || !name.trim() || (name === channel.name && topic === channel.topic)}>
-          {save.isPending ? <Spinner aria-hidden /> : null}Salvar
+        <Button type="submit" disabled={!name.trim() || (name === channel.name && topic === channel.topic)} loading={save.isPending}>
+          Salvar
         </Button>
         <span className="flex-1" />
         {confirming ? (
@@ -136,7 +136,7 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
           <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-snow">{targetName(guild, selected)}</h3>
           {overwrite ? <Button type="button" size="xs" variant="ghost" onClick={() => clear.mutate()} disabled={clear.isPending}>Limpar</Button> : null}
         </div>
-        {change.error || clear.error ? <FieldError>{errorMessage(change.error ?? clear.error)}</FieldError> : null}
+        <FieldError error={change.error ?? clear.error} />
         <ul className="max-h-80 space-y-1 overflow-y-auto pr-1">
           {permissionList(CHANNEL_SCOPED).map(([bit, label]) => {
             const current = bitState(overwrite, bit)

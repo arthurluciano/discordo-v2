@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { Copy, FileText, Pencil, SmilePlus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,7 +15,7 @@ import { formatSize, splitMentions } from './format'
 
 const TIME_FORMAT = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' })
 const DATE_FORMAT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' })
-export const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
 
 /** user ID -> the name to show in this channel (nickname in a guild). */
 export type People = Map<string, string>
@@ -203,18 +203,9 @@ export const MessageItem = ({ message, grouped, meId, people, color, canReact, c
         </SheetContent>
       </Sheet>
 
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Excluir mensagem</DialogTitle>
-            <DialogDescription>Tem certeza de que quer excluir esta mensagem? Não dá para desfazer.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="ghost">Cancelar</Button></DialogClose>
-            <Button variant="destructive" onClick={() => { setConfirming(false); void run(api.deleteMessage(message.channel_id, message.id)) }}>Excluir</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Excluir mensagem"
+        description="Tem certeza de que quer excluir esta mensagem? Não dá para desfazer." confirmLabel="Excluir"
+        onConfirm={() => api.deleteMessage(message.channel_id, message.id)} />
     </li>
   )
 }

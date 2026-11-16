@@ -8,23 +8,23 @@ import { useMe } from '@/features/identity/users'
 import { useVoice, voice } from '@/features/voice/voice-session'
 import { VoiceStage } from '@/features/voice/voice-stage'
 import { api } from '@/lib/api'
-import { useStore } from '@/lib/store'
+import { useCallers, useStore } from '@/lib/store'
 import { ChannelType, type DM } from '@/lib/wire'
 import { navigate } from '../shell/navigation'
-import { ConfirmDialog, FriendPicker } from './dialogs'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { FriendPicker } from './dialogs'
 import { dmTitle } from './dm'
 import { FriendsView } from './friends-view'
 
-// CONTRACT (implemented by the social area): the friends screen when dmId is null, else the DM
-// (its ChannelChat, a call button, and the VoiceStage while in that DM's call).
-export type HomeContentProps = { dmId: string | null; onBack: () => void }
+// The friends screen when dmId is null, else the DM: its chat, a call button, and the stage while in its call.
+type HomeContentProps = { dmId: string | null; onBack: () => void }
 
 const GROUP_MAX = 10
 
 const DMView = ({ dm, onBack }: { dm: DM; onBack: () => void }) => {
   const me = useMe()
   const inCall = useVoice((s) => s.channelId === dm.id)
-  const callers = useStore((s) => Object.values(s.voice).filter((v) => v.channel_id === dm.id).length)
+  const callers = useCallers(dm.id).length
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const title = dmTitle(dm, me?.id)

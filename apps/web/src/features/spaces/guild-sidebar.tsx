@@ -1,161 +1,33 @@
 // A guild's header (menu, settings, invites) and channel list, with who is in each voice channel.
-import { useMemo, useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, Copy, Hash, HeadphoneOff, LogOut, MicOff, Plus, Settings, UserPlus, Volume2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ChevronDown, Hash, HeadphoneOff, LogOut, MicOff, Plus, Settings, UserPlus, Volume2 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { FieldError } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Spinner } from '@/components/ui/spinner'
 import { Avatar } from '@/design/avatar'
 import { QUICK_EASE, SPRING_SOFT, useTransition } from '@/design/motion'
-import { api, errorMessage } from '@/lib/api'
+import { api } from '@/lib/api'
 import { has, Permission } from '@/lib/permissions'
-import { inviteLink } from '@/lib/pending-invite'
-import { useStore } from '@/lib/store'
+import { useCallers, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { ChannelType, type Channel, type Guild, type GuildChannel } from '@/lib/wire'
+import { ChannelType, type Guild, type GuildChannel } from '@/lib/wire'
 import { displayName, useMe } from '../identity/users'
 import { useProfileViewer } from '../identity/profile-viewer'
 import { navigate } from '../shell/navigation'
 import { useVoice, voice } from '../voice/voice-session'
 import { ChannelSettingsDialog } from './channel-settings-dialog'
-import { INVITE_EXPIRY } from './logic'
-import { ServerSettingsDialog } from './server-settings-dialog'
+import { CreateChannelDialog, InviteDialog } from './guild-dialogs'
+import { ServerSettingsDialog, settingsSections } from './server-settings-dialog'
 
-export type GuildSidebarProps = { guildId: string; channelId: string | null }
+type GuildSidebarProps = { guildId: string; channelId: string | null }
 
 type Open = 'invite' | 'settings' | 'create' | 'leave' | null
-
-const SETTINGS_PERMISSIONS = [Permission.ManageGuild, Permission.ManageRoles, Permission.ManageChannels, Permission.KickMembers, Permission.BanMembers]
-
-const CreateChannelDialog = ({ guildId, open, onOpenChange }: { guildId: string; open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const [name, setName] = useState('')
-  const [type, setType] = useState<Channel['type']>(ChannelType.Text)
-  const create = useMutation({
-    mutationFn: () => api.createChannel(guildId, { name: name.trim(), type }),
-    onSuccess: () => {
-      setName('')
-      onOpenChange(false)
-    },
-  })
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    create.mutate()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-surface-content sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Criar canal</DialogTitle>
-          <DialogDescription>Canais de texto para conversar, de voz para chamadas.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de canal">
-            {([[ChannelType.Text, 'Texto', Hash], [ChannelType.Voice, 'Voz', Volume2]] as const).map(([value, label, Icon]) => (
-              <button key={value} type="button" role="radio" aria-checked={type === value} onClick={() => setType(value)} className={cn('flex items-center gap-2 rounded-lg border border-white/10 bg-surface-raised px-3 py-2.5 text-sm text-greyple transition-colors hover:text-snow', type === value && 'border-blurple-soft text-snow')}>
-                <Icon className="size-4" aria-hidden />{label}
-              </button>
-            ))}
-          </div>
-          <div>
-            <label htmlFor="channel-name" className="section-label">Nome do canal</label>
-            <Input id="channel-name" className="mt-2" placeholder="novo-canal" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </div>
-          {create.error ? <FieldError>{errorMessage(create.error)}</FieldError> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit" disabled={create.isPending || !name.trim()}>{create.isPending ? <Spinner aria-hidden /> : null}Criar canal</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-const InviteDialog = ({ guild, open, onOpenChange }: { guild: Guild; open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const [maxUses, setMaxUses] = useState('0')
-  const [maxAge, setMaxAge] = useState(String(INVITE_EXPIRY[3].seconds))
-  const [copied, setCopied] = useState(false)
-  const queryClient = useQueryClient()
-  const create = useMutation({
-    mutationFn: () => api.createInvite(guild.id, { max_uses: Number(maxUses), max_age: Number(maxAge) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invites', guild.id] }),
-  })
-  const link = create.data ? inviteLink(create.data.code) : ''
-  const copy = async () => {
-    await navigator.clipboard.writeText(link).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) create.reset(); onOpenChange(o) }}>
-      <DialogContent className="bg-surface-content sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><UserPlus className="size-5 text-blurple-soft" aria-hidden />Convidar para {guild.name}</DialogTitle>
-          <DialogDescription>Gere um link e envie para quem você quer chamar.</DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <span className="section-label">Expira em</span>
-            <Select value={maxAge} onValueChange={setMaxAge}>
-              <SelectTrigger className="mt-2 w-full" aria-label="Expira em"><SelectValue /></SelectTrigger>
-              <SelectContent>{INVITE_EXPIRY.map((o) => <SelectItem key={o.seconds} value={String(o.seconds)}>{o.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div>
-            <span className="section-label">Máximo de usos</span>
-            <Select value={maxUses} onValueChange={setMaxUses}>
-              <SelectTrigger className="mt-2 w-full" aria-label="Máximo de usos"><SelectValue /></SelectTrigger>
-              <SelectContent>{[0, 1, 5, 10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n === 0 ? 'Sem limite' : `${n} ${n === 1 ? 'uso' : 'usos'}`}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-        </div>
-        {link ? (
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-surface-raised p-2 pl-3">
-            <span className="min-w-0 flex-1 truncate font-mono text-sm text-blurple-soft">{link}</span>
-            <Button type="button" size="sm" onClick={() => void copy()}>{copied ? <Check aria-hidden /> : <Copy aria-hidden />}{copied ? 'Copiado' : 'Copiar'}</Button>
-          </div>
-        ) : null}
-        {create.error ? <FieldError>{errorMessage(create.error)}</FieldError> : null}
-        <Button type="button" variant={link ? 'secondary' : 'default'} onClick={() => create.mutate()} disabled={create.isPending}>
-          {create.isPending ? <Spinner aria-hidden /> : null}{link ? 'Gerar outro link' : 'Gerar link'}
-        </Button>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-const LeaveDialog = ({ guild, open, onOpenChange }: { guild: Guild; open: boolean; onOpenChange: (open: boolean) => void }) => {
-  // The GUILD_DELETE that follows makes the workspace go home.
-  const leave = useMutation({ mutationFn: () => api.leaveGuild(guild.id), onSuccess: () => onOpenChange(false) })
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-surface-content sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Sair de {guild.name}?</DialogTitle>
-          <DialogDescription>Você só volta com um novo convite.</DialogDescription>
-        </DialogHeader>
-        {leave.error ? <FieldError>{errorMessage(leave.error)}</FieldError> : null}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button type="button" variant="destructive" onClick={() => leave.mutate()} disabled={leave.isPending}>{leave.isPending ? <Spinner aria-hidden /> : null}Sair do servidor</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 const GuildHeader = ({ guild, onOpen }: { guild: Guild; onOpen: (what: Open) => void }) => {
   const me = useMe()
   const [menuOpen, setMenuOpen] = useState(false)
   const transition = useTransition(QUICK_EASE)
-  const canSettings = SETTINGS_PERMISSIONS.some((p) => has(guild.permissions, p))
+  const canSettings = me ? settingsSections(guild, me.id).length > 0 : false
 
   return (
     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -182,10 +54,9 @@ const GuildHeader = ({ guild, onOpen }: { guild: Guild; onOpen: (what: Open) => 
 }
 
 const VoiceOccupants = ({ guild, channelId }: { guild: Guild; channelId: string }) => {
-  const voice = useStore((s) => s.voice)
   const { openProfile } = useProfileViewer()
   const transition = useTransition(SPRING_SOFT)
-  const occupants = useMemo(() => Object.values(voice).filter((v) => v.channel_id === channelId), [voice, channelId])
+  const occupants = useCallers(channelId)
   if (occupants.length === 0) return null
 
   return (
@@ -279,7 +150,9 @@ export const GuildSidebar = ({ guildId, channelId }: GuildSidebarProps) => {
       <ChannelList guild={guild} channelId={channelId} onCreate={() => setOpen('create')} onSettings={setSettingsChannelId} />
       <InviteDialog guild={guild} {...dialog('invite')} />
       <CreateChannelDialog guildId={guild.id} {...dialog('create')} />
-      <LeaveDialog guild={guild} {...dialog('leave')} />
+      {/* The GUILD_DELETE that follows makes the workspace go home. */}
+      <ConfirmDialog {...dialog('leave')} title={`Sair de ${guild.name}?`} description="Você só volta com um novo convite."
+        confirmLabel="Sair do servidor" onConfirm={() => api.leaveGuild(guild.id)} />
       {open === 'settings' ? <ServerSettingsDialog guild={guild} onClose={() => setOpen(null)} /> : null}
       {settingsChannelId ? <ChannelSettingsDialog guild={guild} channelId={settingsChannelId} onClose={() => setSettingsChannelId(null)} /> : null}
     </>

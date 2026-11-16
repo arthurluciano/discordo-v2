@@ -1,6 +1,7 @@
 // The client's copy of the server state, fed by the gateway (READY replaces it, events patch it).
 // `reduce` is pure; components read through `useStore` with a selector (`useShallow` for derived objects).
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import type { DM, GatewayEvent, Guild, Message, Relationship, User, VoiceState } from './wire'
 
 export type MessageLog = {
@@ -142,6 +143,10 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
 // ---- the live store ----
 
 export const useStore = create<State>()(() => initialState)
+
+/** Who is in a call (voice channel or DM). */
+export const useCallers = (channelId: string) =>
+  useStore(useShallow((s) => Object.values(s.voice).filter((v) => v.channel_id === channelId)))
 
 export const getState = useStore.getState
 export const setState = (fn: (s: State) => State) => useStore.setState(fn, true)

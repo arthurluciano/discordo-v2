@@ -10,11 +10,8 @@ const SLIDE_OFFSET_PX = 32
 
 const paneFromHistory = (): MobilePane => window.history.state === CONTENT_HISTORY_STATE ? 'content' : 'navigation'
 
-/**
- * No celular so cabe um painel por vez: a navegacao (rail + canais/conversas) ou o conteudo.
- * Entrar no conteudo empilha uma entrada no historico para o gesto de voltar do sistema — no PWA
- * instalado, sem isso, voltar fecharia o app em vez de retornar a lista.
- */
+/** On a phone one pane fits at a time: navigation or content. Opening content pushes a history entry so the
+ * system back gesture returns to the list (in the installed PWA it would close the app otherwise). */
 export const useMobilePane = () => {
   const [pane, setPane] = useState<MobilePane>('navigation')
 
@@ -37,8 +34,7 @@ export const useMobilePane = () => {
   return { pane, showContent, showNavigation }
 }
 
-/** Troca de painel no celular desliza no sentido da navegacao: entrar vem da direita, voltar da
- * esquerda. No desktop os dois paineis estao sempre na tela e nada se mexe. */
+/** Slides the panes on a phone: opening comes from the right, going back from the left. Wide screens show both. */
 export const usePaneSlide = <Element extends HTMLElement>(pane: MobilePane) => {
   const [scope, animate] = useAnimate<Element>()
   const reducedMotion = useReducedMotion()

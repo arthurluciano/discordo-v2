@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-/** Mesmo corte do `md` do Tailwind: abaixo dele o layout vira um painel por vez. */
+/** Tailwind's `md` breakpoint: below it the layout shows one pane at a time. */
 export const MOBILE_QUERY = '(max-width: 767px)'
 
 const mobileMedia = () => (typeof window.matchMedia === 'function' ? window.matchMedia(MOBILE_QUERY) : null)

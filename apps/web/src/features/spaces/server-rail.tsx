@@ -7,18 +7,17 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { BrandLogo } from '@/design/brand-logo'
 import { QUICK_EASE, useTransition } from '@/design/motion'
-import { api, errorMessage } from '@/lib/api'
+import { api } from '@/lib/api'
 import { setState, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { Guild } from '@/lib/wire'
 import { navigate } from '../shell/navigation'
 import { parseInviteCode } from './logic'
 
-export type ServerRailProps = { activeGuildId: string | null }
+type ServerRailProps = { activeGuildId: string | null }
 
 export const initialsOf = (name: string) =>
   name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'
@@ -89,18 +88,18 @@ const AddServerDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: 
           <label htmlFor="new-guild-name" className="section-label">Criar servidor</label>
           <div className="flex gap-2">
             <Input id="new-guild-name" placeholder="Nome do servidor" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-            <Button type="submit" disabled={create.isPending || !name.trim()}>{create.isPending ? <Spinner aria-hidden /> : null}Criar</Button>
+            <Button type="submit" disabled={!name.trim()} loading={create.isPending}>Criar</Button>
           </div>
-          {create.error ? <FieldError>{errorMessage(create.error)}</FieldError> : null}
+          <FieldError error={create.error} />
         </form>
 
         <form onSubmit={submit(join)} className="space-y-2 border-t border-white/10 pt-4">
           <label htmlFor="join-invite" className="section-label">Entrar com convite</label>
           <div className="flex gap-2">
             <Input id="join-invite" placeholder="https://…/invite/ABC123 ou ABC123" value={invite} onChange={(e) => setInvite(e.target.value)} />
-            <Button type="submit" variant="secondary" disabled={join.isPending || !invite.trim()}>{join.isPending ? <Spinner aria-hidden /> : null}Entrar</Button>
+            <Button type="submit" variant="secondary" disabled={!invite.trim()} loading={join.isPending}>Entrar</Button>
           </div>
-          {join.error ? <FieldError>{errorMessage(join.error)}</FieldError> : null}
+          <FieldError error={join.error} />
         </form>
       </DialogContent>
     </Dialog>

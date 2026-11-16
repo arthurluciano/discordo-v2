@@ -1,4 +1,4 @@
-// CONTRACT (implemented by the voice area): call status and controls shown above the user panel
+// Call status and controls, shown above the user panel.
 // while in a call (renders nothing otherwise).
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'

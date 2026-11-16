@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button'
 import { SPRING_SOFT, useTransition } from '@/design/motion'
 import { applyAppUpdate, isAppUpdateAvailable, subscribeToAppUpdate } from '@/lib/service-worker'
 
-/** Aviso de versao nova do PWA. Dispensar so esconde ate a proxima abertura — a versao continua
- * esperando e entra sozinha quando todas as abas fecharem. */
+/** A new PWA version is ready. Dismissing only hides this until next launch; the update applies once every tab closes. */
 export const AppUpdatePrompt = () => {
   const updateAvailable = useSyncExternalStore(subscribeToAppUpdate, isAppUpdateAvailable)
   const [dismissed, setDismissed] = useState(false)

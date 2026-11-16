@@ -1,5 +1,5 @@
-// CONTRACT (implemented by the voice area): the call view of a voice channel or DM.
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react'
+// The call view of a voice channel or DM.
+import { useCallback, useEffect, useId, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useTransform } from 'motion/react'
 import { ArrowLeft, Ellipsis, Eye, EyeOff, HeadphoneOff, LayoutGrid, Maximize2, MicOff, Minimize2, MonitorUp, PhoneCall } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -14,7 +14,7 @@ import { SPRING_SNAP, useTransition } from '@/design/motion'
 import { displayName, useMe, useUser } from '@/features/identity/users'
 import type { Quality } from '@/lib/media/transport'
 import { has, Permission } from '@/lib/permissions'
-import { useStore } from '@/lib/store'
+import { useCallers, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { VoiceState } from '@/lib/wire'
 import { callPermissions, watchKey } from './call'
@@ -23,7 +23,7 @@ import { ControlsBar } from './voice-controls'
 import { useCallTitle } from './voice-dock'
 import { useVoice, voice } from './voice-session'
 
-export type VoiceStageProps = {
+type VoiceStageProps = {
   channelId: string
   /** Mobile: back to the navigation pane. */
   onBack: () => void
@@ -214,7 +214,6 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
   const v = useVoice((s) => ({ channelId: s.channelId, connection: s.connection, remote: s.remote, camera: s.camera, screen: s.screen, mic: s.mic, watching: s.watching, volumes: s.volumes, qualities: s.qualities, error: s.error }))
   const me = useMe()
   const title = useCallTitle(channelId)
-  const allVoice = useStore((s) => s.voice)
   const perms = useStore((s) => callPermissions(s, channelId))
   const stageRef = useRef<HTMLElement>(null)
   const { fullscreen, toggle: toggleFullscreen } = useStageFullscreen(stageRef)
@@ -222,7 +221,7 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
   const ours = v.channelId === channelId
   const inCall = ours && (v.connection === 'connecting' || v.connection === 'connected')
 
-  const participants = useMemo(() => Object.values(allVoice).filter((s) => s.channel_id === channelId), [allVoice, channelId])
+  const participants = useCallers(channelId)
 
   const remoteTrack = (userId: string, name: string) => v.remote.find((r) => r.userId === userId && r.name === name)?.track ?? null
 

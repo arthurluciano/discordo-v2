@@ -15,7 +15,7 @@ import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { RelationshipStatus, type Relationship } from '@/lib/wire'
 import { navigate } from '../shell/navigation'
-import { ConfirmDialog } from './dialogs'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { friendsIn, type FriendTab } from './dm'
 
 const TABS: readonly { id: FriendTab | 'add'; label: string }[] = [

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
 import { Avatar } from '@/design/avatar'
-import { api, errorMessage } from '@/lib/api'
+import { api } from '@/lib/api'
 import { useStore } from '@/lib/store'
 import { RelationshipStatus } from '@/lib/wire'
 import { navigate } from '../shell/navigation'
@@ -35,7 +35,7 @@ const FriendAction = ({ userId, username }: { userId: string; username: string }
               <UserPlus aria-hidden />{status === RelationshipStatus.Incoming ? 'Aceitar amizade' : 'Adicionar amigo'}
             </Button>
           )}
-      {change.error ? <FieldError>{errorMessage(change.error)}</FieldError> : null}
+      <FieldError error={change.error} />
     </>
   )
 }
@@ -70,7 +70,7 @@ const ProfileCard = ({ userId, onClose, onEdit }: { userId: string; onClose: () 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/5 pt-4">
             <Button type="button" size="sm" onClick={() => message.mutate()} disabled={message.isPending}><MessageCircle aria-hidden />Mensagem</Button>
             <FriendAction userId={user.id} username={user.username} />
-            {message.error ? <FieldError>{errorMessage(message.error)}</FieldError> : null}
+            <FieldError error={message.error} />
           </div>
         )}
       </div>
