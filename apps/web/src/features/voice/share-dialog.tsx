@@ -13,6 +13,7 @@ import { captureError, captureScreen, type ScreenSource, type ScreenSurface } fr
 import { CODECS, hardwareCodecs, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
 import { RESOLUTIONS, screenConstraints, screenEncoding, type Resolution, type ScreenPreset } from '@/lib/media/presets'
 import { cn } from '@/lib/utils'
+import { TrackPreview } from './track-preview'
 import { useVoice, voice } from './voice-session'
 
 const SURFACES: {
@@ -49,34 +50,6 @@ const useHardwareCodecs = (preset: ScreenPreset, open: boolean) => {
   }, [preset, open])
 
   return hardware
-}
-
-const Preview = ({ track }: { track: MediaStreamTrack | null }) => {
-  const ref = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el || !track) return
-
-    el.srcObject = new MediaStream([track])
-
-    return () => {
-      el.srcObject = null
-    }
-  }, [track])
-
-  if (!track) {
-    return (
-      <div className="grid size-full place-items-center text-center text-sm text-greyple">
-        <span className="flex flex-col items-center gap-2">
-          <MonitorUp className="size-8" aria-hidden />
-          Escolha acima o que compartilhar. A prévia aparece aqui antes de alguém ver.
-        </span>
-      </div>
-    )
-  }
-
-  return <video ref={ref} autoPlay muted playsInline className="size-full object-contain" />
 }
 
 const QualitySettings = ({ preset, hardware }: { preset: ScreenPreset; hardware: ReadonlySet<string> | null }) => {
@@ -273,7 +246,15 @@ export const ShareDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
         </div>
 
         <div className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-black">
-          <Preview track={shown} />
+          <TrackPreview
+            track={shown}
+            placeholder={
+              <>
+                <MonitorUp className="size-8" aria-hidden />
+                Escolha acima o que compartilhar. A prévia aparece aqui antes de alguém ver.
+              </>
+            }
+          />
 
           {live ? (
             <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-ekko-red px-2.5 py-1 text-xs font-bold text-white">

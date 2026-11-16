@@ -1,10 +1,6 @@
 import { useEffect, useState, type ComponentType } from 'react'
 import { HeadphoneOff, Headphones, Mic, MicOff, MonitorUp, PhoneOff, Settings2, Video, VideoOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { rememberEncoder } from '@/lib/media/codecs'
@@ -14,6 +10,7 @@ import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { callPermissions, senderStats } from './call'
+import { DeviceSettingsDialog } from './device-settings-dialog'
 import { ShareDialog } from './share-dialog'
 import { isMuted, useVoice, voice } from './voice-session'
 
@@ -154,120 +151,6 @@ export const EncoderInfo = ({ className }: { className?: string }) => {
   )
 }
 
-const useDevices = (open: boolean) => {
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  useEffect(() => {
-    const md = navigator.mediaDevices
-    if (!open || !md?.enumerateDevices) return
-    const load = () =>
-      void md
-        .enumerateDevices()
-        .then(setDevices)
-        .catch(() => {})
-    load()
-    md.addEventListener('devicechange', load)
-    return () => md.removeEventListener('devicechange', load)
-  }, [open])
-
-  return devices
-}
-
-const DeviceSelect = ({
-  label,
-  kind,
-  devices,
-  value,
-  onChange,
-}: {
-  label: string
-  kind: MediaDeviceKind
-  devices: MediaDeviceInfo[]
-  value: string | null
-  onChange: (id: string) => void
-}) => {
-  // Without a granted permission the browser lists devices with empty IDs.
-  const options = devices.filter((d) => d.kind === kind && d.deviceId)
-
-  return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
-      <Select
-        {...(value && options.some((d) => d.deviceId === value) ? { value } : {})}
-        onValueChange={onChange}
-        disabled={options.length === 0}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder="Padrão do sistema" />
-        </SelectTrigger>
-        <SelectContent position="popper">
-          {options.map((d) => (
-            <SelectItem key={d.deviceId} value={d.deviceId}>
-              {d.label || label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </Field>
-  )
-}
-
-const supportsOutputChoice = () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
-
-const DeviceSettings = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const prefs = useVoice((s) => s.prefs)
-  const devices = useDevices(open)
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-[min(94vw,28rem)] gap-0 bg-surface-sidebar p-0 text-snow sm:max-w-[28rem]"
-      >
-        <SheetHeader className="border-b border-border bg-surface-content pr-14">
-          <SheetTitle className="text-xl font-extrabold">Voz e vídeo</SheetTitle>
-          <SheetDescription>Dispositivos e processamento do microfone.</SheetDescription>
-        </SheetHeader>
-        <div className="grid gap-5 overflow-y-auto p-4 sm:p-5">
-          <DeviceSelect
-            label="Microfone"
-            kind="audioinput"
-            devices={devices}
-            value={prefs.input}
-            onChange={(id) => void voice.setDevice('input', id)}
-          />
-          {supportsOutputChoice() ? (
-            <DeviceSelect
-              label="Saída de áudio"
-              kind="audiooutput"
-              devices={devices}
-              value={prefs.output}
-              onChange={(id) => void voice.setDevice('output', id)}
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">Este navegador não permite escolher a saída de áudio.</p>
-          )}
-          <DeviceSelect
-            label="Câmera"
-            kind="videoinput"
-            devices={devices}
-            value={prefs.camera}
-            onChange={(id) => void voice.setDevice('camera', id)}
-          />
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldLabel htmlFor="voice-noise-gate">Porta de ruído</FieldLabel>
-              <FieldDescription>
-                Fecha o microfone entre as frases, quando só o ventilador e o teclado estariam saindo.
-              </FieldDescription>
-            </FieldContent>
-            <Switch id="voice-noise-gate" checked={prefs.noiseGate} onCheckedChange={voice.setNoiseGate} />
-          </Field>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
 /** Mute, deafen, camera, screen, devices, leave: shown on the stage of the call we are in. */
 export const ControlsBar = ({ channelId }: { channelId: string }) => {
   const v = useVoice((s) => ({
@@ -324,7 +207,7 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
         </TooltipTrigger>
         <TooltipContent>Sair da chamada</TooltipContent>
       </Tooltip>
-      <DeviceSettings open={settings} onOpenChange={setSettings} />
+      <DeviceSettingsDialog open={settings} onOpenChange={setSettings} />
       <EncoderInfo className="basis-full items-center" />
     </div>
   )
