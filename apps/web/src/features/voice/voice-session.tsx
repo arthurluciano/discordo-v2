@@ -1,29 +1,68 @@
 // CONTRACT (implemented by the voice area): the call the user is in, and how to join or leave one.
-import { createContext, useContext, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
+import { onGatewayEvent } from '@/lib/gateway'
+import {
+  dismissError, getCall, handleGatewayEvent, join, leave, setCamera, setDeafened, setDevice, setMuted, setNoiseGate,
+  setScreenPreset, startScreen, stopScreen, subscribeCall, watch, type CallState,
+} from './call'
 
-export type VoiceApi = {
-  /** The call we are in: a guild voice channel or a DM. */
-  channelId: string | null
-  connection: 'idle' | 'connecting' | 'connected' | 'failed'
-  error: string | null
-  join: (channelId: string) => void
-  leave: () => void
+const actions = { join, leave, setMuted, setDeafened, setCamera, startScreen, stopScreen, setScreenPreset, setDevice, setNoiseGate, watch, dismissError }
+
+export type VoiceApi = CallState & typeof actions & {
+  /** Effective: our own mute, deafened, or listen-only. */
   muted: boolean
-  deafened: boolean
-  setMuted: (muted: boolean) => void
-  setDeafened: (deafened: boolean) => void
 }
 
-const idle: VoiceApi = {
-  channelId: null, connection: 'idle', error: null, join: () => {}, leave: () => {},
-  muted: false, deafened: false, setMuted: () => {}, setDeafened: () => {},
+export const useVoice = (): VoiceApi => {
+  const call = useSyncExternalStore(subscribeCall, getCall)
+  return useMemo(() => ({ ...call, ...actions, muted: call.selfMuted || call.deafened || call.listenOnly }), [call])
 }
 
-const VoiceContext = createContext<VoiceApi>(idle)
+const RemoteAudio = ({ track, muted, sinkId }: { track: MediaStreamTrack; muted: boolean; sinkId: string | null }) => {
+  const ref = useRef<HTMLAudioElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.srcObject = new MediaStream([track])
+    el.play().catch(() => {}) // autoplay is allowed: joining was a click
+    return () => { el.srcObject = null }
+  }, [track])
+
+  useEffect(() => {
+    const el = ref.current
+    if (el && sinkId && 'setSinkId' in el) el.setSinkId(sinkId).catch(() => {})
+  }, [sinkId])
+
+  return <audio ref={ref} autoPlay muted={muted} />
+}
+
+/** Everyone's audio, at the provider so it keeps playing wherever the user navigates. */
+const CallAudio = () => {
+  const { remote, deafened, prefs } = useVoice()
+  return (
+    <div hidden>
+      {remote.filter((r) => r.track.kind === 'audio').map((r) => (
+        <RemoteAudio key={`${r.userId}/${r.name}`} track={r.track} muted={deafened} sinkId={prefs.output} />
+      ))}
+    </div>
+  )
+}
 
 /** Owns the call for the whole session: navigating never interrupts it. */
-export const VoiceProvider = ({ children }: { children: ReactNode }) => (
-  <VoiceContext.Provider value={idle}>{children}</VoiceContext.Provider>
-)
+export const VoiceProvider = ({ children }: { children: ReactNode }) => {
+  useEffect(() => {
+    const off = onGatewayEvent(handleGatewayEvent)
+    return () => {
+      off()
+      leave() // signed out
+    }
+  }, [])
 
-export const useVoice = () => useContext(VoiceContext)
+  return (
+    <>
+      {children}
+      <CallAudio />
+    </>
+  )
+}

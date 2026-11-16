@@ -32,34 +32,19 @@ jobs:
           TEST_DATABASE_URL: postgres://discordo:discordo@localhost:5432/discordo_test
           TEST_S3_ENDPOINT: localhost:9000
 
-  media-core:
+  web:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5 # the interop test runs the real SFU
+      - uses: actions/setup-node@v4
         with:
-          go-version-file: apps/server/go.mod
-      - run: cargo test
-        working-directory: crates/media-core
-
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - uses: actions/setup-go@v5 # the engine's interop test runs the real SFU
-        with:
-          go-version-file: apps/server/go.mod
-      # Building the app project also builds Discordo.Core and the Rust media engine (cargo and CMake come with the runner).
-      - run: dotnet build apps/windows/Discordo.App/Discordo.App.csproj -c Release -p:Platform=x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: discordo-windows-x64
-          path: apps/windows/Discordo.App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
-          if-no-files-found: error
-      - run: netsh advfirewall show allprofiles state # context for the interop test if ICE never connects
-      # The interop test against the real SFU, on the OS the engine ships on.
-      - run: cargo test -- --nocapture
-        working-directory: crates/media-core
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

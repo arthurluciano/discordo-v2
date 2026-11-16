@@ -5,21 +5,23 @@ A fonte da verdade são os tipos Go em `apps/server/internal`. Este documento é
 ## Convenções
 
 - JSON em tudo. IDs são UUIDv7 em texto: ordenar por ID é ordenar por data de criação.
-- Autenticação: `Authorization: Bearer <token>`.
+- Autenticação: o cookie de sessão `discordo_session` (HttpOnly) ou `Authorization: Bearer <token>`.
+  Com o cookie, requisições que não são GET precisam do header `Origin` com o mesmo host do servidor (CSRF).
 - Erros: `{"error": "..."}` com status 400 (inválido), 401, 403 (sem permissão), 404 (não existe **ou você não pode ver**), 409.
 - Sucesso sem corpo responde 204.
 
 ## Login (Discord OAuth)
 
-1. O app gera um `verifier` aleatório, passa a ouvir HTTP em `127.0.0.1:<porta livre>` e abre o navegador em
-   `GET /auth/discord/login?port=<porta>&challenge=<base64url(sha256(verifier)) sem padding>`.
-2. Depois do Discord, o navegador é redirecionado para `http://127.0.0.1:<porta>/?code=<código de uso único, 60 s>`.
-3. O app troca: `POST /auth/token {"code", "verifier"}` → `{"token", "user"}`. O token vale 30 dias.
-4. `POST /auth/logout` invalida o token.
+1. O navegador abre `GET /auth/discord/login`, que redireciona para o Discord (state + PKCE num cookie de curta duração).
+2. O callback (`/auth/discord/callback`) cria a sessão (30 dias), grava o cookie `discordo_session` e redireciona para `/`.
+   Em falha, redireciona para `/?login_error=expired|cancelled|failed`.
+3. `POST /auth/logout` invalida a sessão e apaga o cookie.
+
+Nome e avatar trocados no Discordo (`PATCH /users/@me`) prevalecem sobre os do Discord nos próximos logins.
 
 ## Gateway (tempo real)
 
-WebSocket em `GET /gateway`. A primeira mensagem do cliente é `{"token": "..."}`. Toda mensagem do servidor é `{"t": TIPO, "d": DADOS}`.
+WebSocket em `GET /gateway`. A primeira mensagem do cliente é `{"token": "..."}`, ou `{}` para usar o cookie de sessão. Toda mensagem do servidor é `{"t": TIPO, "d": DADOS}`.
 O servidor envia pings WebSocket. Depois de autenticar, o cliente só envia mensagens de chamada, no formato `{"op": OP, "d": DADOS}` (seção "Voz e vídeo"). Ao reconectar, o `READY` substitui todo o estado local.
 Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 
@@ -38,6 +40,7 @@ Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 | `DM_CREATE` / `DM_UPDATE` | `DM` | |
 | `DM_DELETE` | `{id}` | você saiu do grupo |
 | `RELATIONSHIP_UPDATE` | `Relationship` | `status` 0 = remova da lista |
+| `USER_UPDATE` | `User` | alguém com quem você divide servidor, amizade ou DM trocou nome ou avatar (inclusive você) |
 | `VOICE_STATE_UPDATE` | `VoiceState` | alguém entrou, saiu (`channel_id` vazio), mutou ou mudou o que transmite |
 | `VOICE_READY` / `VOICE_ERROR` / `RTC_OFFER` / `RTC_ANSWER` | ver "Voz e vídeo" | só para a sessão que está na chamada |
 
@@ -45,7 +48,7 @@ Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 
 ```
 User         {id, username, display_name, avatar_url}
-Snapshot     {id, name, icon_url, owner_id, permissions, roles: [Role], channels: [Channel], members: [Member]}
+Snapshot     {id, name, icon_url, banner_url, owner_id, permissions, roles: [Role], channels: [Channel], members: [Member]}
              // só os canais que você pode ver; permissions = suas permissões no servidor
 Role         {id, guild_id, name, color, permissions, position}   // id == guild_id é o @everyone
 Member       {user, nickname, roles: [id], joined_at, online}
@@ -75,7 +78,10 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 |---|---|---|
 | `GET /users/@me` | | `User` |
 | `POST /guilds` | `{name}` | `Snapshot` |
-| `PATCH /guilds/{guild}` | `{name?, icon_url?}` | |
+| `PATCH /users/@me` | `{display_name?, avatar_url?}` | `User` |
+| `POST /images` | `multipart/form-data`, parte `file` (PNG, JPEG, GIF ou WebP, até 8 MB) | `{url}` |
+| `GET /images/{image}` | | a imagem (pública) |
+| `PATCH /guilds/{guild}` | `{name?, icon_url?, banner_url?}` (imagens: `""` ou uma `url` de `POST /images`) | |
 | `DELETE /guilds/{guild}` | | só o dono |
 | `POST /guilds/{guild}/invites` | `{max_uses?, max_age?}` (segundos; 0 = sem limite) | `{code, ...}` |
 | `POST /invites/{code}` | | `Snapshot` (entra no servidor) |
@@ -117,7 +123,7 @@ Cliente → servidor (`{"op", "d"}`):
 | `voice_join` | `{channel_id}` | exige a permissão conectar; sai de qualquer outra chamada |
 | `voice_leave` | | |
 | `voice_state` | `{muted, deafened}` | só informativo para os outros; quem muta de verdade é o cliente |
-| `rtc_offer` | `{sdp}` | oferta da conexão de **envio** |
+| `rtc_offer` | `{sdp, tracks: {mid: nome}}` | oferta da conexão de **envio**; `tracks` nomeia cada faixa pelo `mid` do transceiver |
 | `rtc_answer` | `{sdp}` | resposta à oferta da conexão de **recepção** |
 | `rtc_subscribe` | `{user_id, track, on}` | começa/para de receber `camera` ou `screen` de alguém |
 
@@ -132,7 +138,8 @@ O cliente mantém **duas** conexões WebRTC com o servidor, para as ofertas nunc
 
 Sem trickle ICE: espere a coleta de candidatos terminar antes de enviar um SDP (os do servidor já vêm completos).
 
-O **ID da faixa** diz o que ela é: `mic`, `screen-audio` (áudio, Opus), `camera`, `screen` (vídeo, H.264). Outros nomes são ignorados.
-`mic` exige a permissão falar; as demais, transmitir vídeo. Nas faixas recebidas, o ID do *stream* é o ID do usuário dono.
+O **nome** da faixa (em `tracks`, pelo `mid`; sem ele, o ID da faixa) diz o que ela é: `mic`, `screen-audio` (áudio, Opus), `camera`, `screen` (vídeo). Outros nomes são ignorados.
+`mic` exige a permissão falar; as demais, transmitir vídeo. O servidor repassa sem transcodificar: quem recebe ganha o codec de quem envia.
+Nas ofertas de recepção, cada seção tem `a=msid:<id do usuário dono> <nome da faixa>`; use o `mid` para saber de quem é cada faixa recebida.
 
 Áudio chega de todos automaticamente. Vídeo só depois de `rtc_subscribe`: use `tracks` do `VoiceState` para saber quem está transmitindo o quê.

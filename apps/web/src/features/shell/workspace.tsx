@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ErrorBoundary } from '@/design/error-boundary'
 import { EDITORIAL_EASE, useTransition } from '@/design/motion'
@@ -52,7 +52,11 @@ const GuildMain = ({ guildId, channelId, onBack }: { guildId: string; channelId:
 /** Server rail, the sidebar of the current place (with the user dock), and what is open in it. */
 export const Workspace = () => {
   const place = usePlace()
-  const guildGone = useStore((s) => place.kind === 'guild' && s.status === 'ready' && !s.guilds.some((g) => g.id === place.guildId))
+  const guildPresent = useStore((s) => place.kind === 'guild' && s.guilds.some((g) => g.id === place.guildId))
+  // Only once it was seen: a server just created or joined arrives over the gateway after the REST reply.
+  const seen = useRef<string | null>(null)
+  if (guildPresent && place.kind === 'guild') seen.current = place.guildId
+  const guildGone = place.kind === 'guild' && !guildPresent && seen.current === place.guildId
   const { pane, showContent, showNavigation } = useMobilePane()
   const paneScope = usePaneSlide<HTMLDivElement>(pane)
   const sidebarTransition = useTransition(EDITORIAL_EASE)

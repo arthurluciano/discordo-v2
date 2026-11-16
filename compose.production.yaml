@@ -11,7 +11,9 @@ name: discordo
 
 services:
   server:
-    build: apps/server
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     depends_on:
       - postgres

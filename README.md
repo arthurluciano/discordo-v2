@@ -5,8 +5,7 @@ App de comunidades com chat, voz e transmissão em tempo real. Monorepo:
 | Pasta | O quê | Estado |
 |---|---|---|
 | `apps/server` | Backend em Go: REST + gateway WebSocket, Postgres, MinIO/S3 | chat, servidores, cargos, DMs, amigos e anexos prontos; SFU de voz/vídeo e sinalização prontos (transmissão em camadas e LiveKit a fazer) |
-| `apps/windows` | Cliente nativo Windows (C# WinUI 3) | login, servidores, canais, chat em tempo real, chamadas de voz e transmissão de tela (480p a 4K); ainda não compilado em um Windows |
-| `crates/media-core` | Motor de mídia em Rust: WebRTC, áudio (WASAPI + Opus), captura de tela e H.264 por GPU (Media Foundation) | transporte testado contra o SFU; áudio e vídeo checados só por tipos, ainda não executados em um Windows |
+| `apps/web` | App web (React + Vite), servido pelo próprio servidor Go | login, servidores, canais, chat, amigos, DMs, chamadas de voz, câmera e transmissão de tela (480p a 4K) |
 | `docs/protocol.md` | Contrato entre cliente e servidor | |
 | `deploy/` | Infra local (Postgres, MinIO) | |
 
@@ -38,26 +37,23 @@ Precisa de Go e Docker.
 | `MEDIA_PUBLIC_IP` | vazio | IP pelo qual os clientes alcançam o servidor; vazio só serve para desenvolvimento na mesma máquina/rede |
 | `PUBLIC_URL` | `http://localhost:8080` | como o navegador alcança o servidor |
 
-## Rodando o cliente Windows
+## Rodando o app web
 
-Precisa de:
+Precisa de Node 22. Em desenvolvimento o Vite (porta 5173) repassa a API e o gateway para o servidor (8080),
+então o login precisa voltar pelo Vite para o cookie de sessão ficar no endereço do app:
 
-- Visual Studio 2022 com as cargas "Desenvolvimento de aplicativos WinUI" e "Desenvolvimento para desktop com C++" (esta inclui o CMake, usado para compilar o codec Opus);
-- [Rust](https://rustup.rs) (o build do app compila o motor de mídia com `cargo`).
+1. No app do Discord, adicione também o redirect `http://localhost:5173/auth/discord/callback`.
+2. ```sh
+   PUBLIC_URL=http://localhost:5173 make run   # num terminal
+   make web                                     # noutro; abra http://localhost:5173
+   ```
 
-```powershell
-$env:DISCORDO_SERVER = "http://localhost:8080"   # opcional; o padrão é https://discordo.arluck.com.br
-dotnet run --project apps/windows/Discordo.App -p:Platform=x64
-```
-
-Ou abra `apps/windows/Discordo.sln` e rode o projeto `Discordo.App`.
+Em produção o build do app (`npm run build`) é embutido no binário do servidor (ver `apps/server/Dockerfile`).
 
 ### Transmissão de tela
 
-Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela" e escolha a tela ou janela no seletor do Windows.
-A codificação usa o encoder da placa de vídeo (NVENC, AMF ou Quick Sync); sem um, cai para o encoder de software e o app avisa.
-Para testar esse fallback, defina `DISCORDO_FORCE_SW_ENCODE=1` antes de abrir o app.
-No Gerenciador de Tarefas, aba Desempenho → GPU, o gráfico "Video Encode" mostra o encoder de hardware em uso.
+Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela".
+O navegador codifica em H.264 com o encoder da placa de vídeo quando disponível e cai para software sozinho.
 
 ## Produção (Openship)
 
@@ -78,5 +74,3 @@ Novo deploy, com a CLI (`npm i -g openship`) autenticada na instância:
 ```sh
 openship deploy --project discordo --branch <branch> --watch
 ```
-
-O cliente Windows aponta para produção por padrão.
