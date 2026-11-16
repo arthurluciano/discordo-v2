@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { CODECS, hardwareCodecs, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
+import { CODECS, hardwareCodecs, rememberEncoder, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
 import { RESOLUTIONS, screenEncoding, type Resolution } from '@/lib/media/presets'
 import { encoderDetails, encoderLabel, encoderStats, type EncoderStats } from '@/lib/media/stats'
 import { has, Permission } from '@/lib/permissions'
@@ -132,6 +132,10 @@ export const EncoderInfo = ({ className }: { className?: string }) => {
   const v = useVoice()
   const screen = useEncoderStats('screen', v.screen !== null)
   const camera = useEncoderStats('camera', v.camera !== null)
+  const { resolution, fps } = v.prefs.screen
+  useEffect(() => {
+    if (screen?.codec && screen.hardware !== null) rememberEncoder(screen.codec, { height: RESOLUTIONS[resolution].height, framerate: fps }, screen.hardware)
+  }, [screen?.codec, screen?.hardware, resolution, fps])
   const rows = [['Tela', screen] as const, ['Câmera', camera] as const].flatMap(([what, s]) => (s ? [{ what, s }] : []))
   if (rows.length === 0) return null
   return (

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { orderCodecs } from './codecs'
+import { describe, expect, it, vi } from 'vitest'
+import { hardwareCodecs, orderCodecs, rememberEncoder } from './codecs'
 
 const codecs = [
   { mimeType: 'video/VP8' },
@@ -10,6 +10,19 @@ const codecs = [
   { mimeType: 'video/VP9', sdpFmtpLine: 'profile-id=0' },
 ]
 const order = (hw: string[]) => orderCodecs(codecs, new Set(hw)).map((c) => `${c.mimeType} ${c.sdpFmtpLine ?? ''}`.trim())
+
+describe('hardwareCodecs', () => {
+  it('trusts what the encoder did over what the browser guessed', async () => {
+    vi.stubGlobal('navigator', { mediaCapabilities: { encodingInfo: async () => ({ supported: true, powerEfficient: false }) } })
+    const probe = { width: 1920, height: 1080, framerate: 30, bitrate: 6e6 }
+    expect(await hardwareCodecs(probe)).toEqual(new Set())
+    rememberEncoder('AV1', probe, true)
+    expect(await hardwareCodecs(probe)).toEqual(new Set(['video/av1']))
+    expect(await hardwareCodecs({ ...probe, framerate: 60 })).toEqual(new Set()) // another size: still the guess
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+})
 
 describe('orderCodecs', () => {
   it('puts GPU codecs first, then the CPU ones, RTX last', () => {

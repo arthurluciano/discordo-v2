@@ -15,14 +15,46 @@ const ORDER = Object.keys(CODECS).map((id) => `video/${id}`)
 
 export type Probe = { width: number; height: number; framerate: number; bitrate: number }
 
-/** Codecs (lowercase MIME types) the browser says it would encode power-efficiently, i.e. on the GPU, at this size. */
+const MEASURED_KEY = 'discordo:codec-hardware'
+// shortcut: keyed by height and frame rate only; a window share of odd size misses the screen preset's entry.
+const measuredKey = (mime: string, { height, framerate }: Pick<Probe, 'height' | 'framerate'>) => `${mime}|${height}|${Math.round(framerate)}`
+
+const loadMeasured = (): Record<string, boolean> => {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(MEASURED_KEY) ?? '{}')
+    return typeof saved === 'object' && saved !== null ? (saved as Record<string, boolean>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** What the encoder really used while sending (getStats' powerEfficientEncoder), which beats the browser's
+ * guess in encodingInfo: Chrome answers "not power efficient" for codecs it then encodes on the GPU. */
+export const rememberEncoder = (codec: string, probe: Pick<Probe, 'height' | 'framerate'>, hardware: boolean) => {
+  const measured = loadMeasured()
+  const key = measuredKey(`video/${codec.toLowerCase()}`, probe)
+  if (measured[key] === hardware) return
+  try {
+    localStorage.setItem(MEASURED_KEY, JSON.stringify({ ...measured, [key]: hardware }))
+  } catch {
+    // Not remembered; the guess still applies.
+  }
+}
+
+/** Codecs (lowercase MIME types) that would be encoded on the GPU at this size: measured when we have sent
+ * with them before, otherwise as the browser says (power-efficient encoding). */
 export const hardwareCodecs = async (probe: Probe): Promise<Set<string>> => {
   const hw = new Set<string>()
-  if (!navigator.mediaCapabilities?.encodingInfo) return hw
+  const measured = loadMeasured()
   await Promise.all(ORDER.map(async (contentType) => {
+    const known = measured[measuredKey(contentType, probe)]
+    if (known !== undefined) {
+      if (known) hw.add(contentType)
+      return
+    }
     try {
-      const info = await navigator.mediaCapabilities.encodingInfo({ type: 'webrtc', video: { contentType, ...probe } })
-      if (info.supported && info.powerEfficient) hw.add(contentType)
+      const info = await navigator.mediaCapabilities?.encodingInfo({ type: 'webrtc', video: { contentType, ...probe } })
+      if (info?.supported && info.powerEfficient) hw.add(contentType)
     } catch {
       // Unknown to this browser: it stays in the CPU tier.
     }
