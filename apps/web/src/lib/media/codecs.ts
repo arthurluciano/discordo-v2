@@ -52,14 +52,40 @@ export const hardwareCodecs = async (probe: Probe): Promise<Set<string>> => {
       if (known) hw.add(contentType)
       return
     }
-    try {
-      const info = await navigator.mediaCapabilities?.encodingInfo({ type: 'webrtc', video: { contentType, ...probe } })
-      if (info?.supported && info.powerEfficient) hw.add(contentType)
-    } catch {
-      // Unknown to this browser: it stays in the CPU tier.
-    }
+    if (await webCodecsHardware(contentType, probe) || await efficient(contentType, probe)) hw.add(contentType)
   }))
   return hw
+}
+
+/** WebCodecs codec strings at levels high enough for 4K60, so the level never is what rejects a size. */
+const WEBCODECS: Record<string, string> = {
+  'video/h264': 'avc1.640034',
+  'video/vp8': 'vp8',
+  'video/vp9': 'vp09.00.52.08',
+  'video/av1': 'av01.0.13M.08',
+}
+
+/** Whether the browser has a hardware encoder for this codec and size. Chrome's WebRTC uses the same GPU encoders,
+ * and unlike encodingInfo this asks for them directly (encodingInfo said CPU for every codec on an RTX 4070). */
+const webCodecsHardware = async (mime: string, { width, height, framerate, bitrate }: Probe) => {
+  const codec = WEBCODECS[mime]
+  if (!codec || typeof VideoEncoder === 'undefined') return false
+  try {
+    const { supported } = await VideoEncoder.isConfigSupported({ codec, width, height, framerate, bitrate, hardwareAcceleration: 'prefer-hardware' })
+    return supported === true
+  } catch {
+    return false
+  }
+}
+
+/** The WebRTC answer: "power efficient" means a hardware encoder. */
+const efficient = async (contentType: string, probe: Probe) => {
+  try {
+    const info = await navigator.mediaCapabilities?.encodingInfo({ type: 'webrtc', video: { contentType, ...probe } })
+    return Boolean(info?.supported && info.powerEfficient)
+  } catch {
+    return false // unknown to this browser
+  }
 }
 
 /** Sends GPU codecs first, then the rest by ORDER; H.264 packetization-mode=1 before 0. */
