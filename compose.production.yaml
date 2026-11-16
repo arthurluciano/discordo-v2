@@ -20,7 +20,7 @@ services:
       - minio
     ports:
       - "8080" # HTTP and WebSocket, reached through the domain
-      - "7882:7882/udp" # voice and video go straight to the host
+      - "0.0.0.0:7882:7882/udp" # voice and video go straight to the host; without the IP, Openship binds it to 127.0.0.1
     environment:
       DATABASE_URL: postgres://discordo:${POSTGRES_PASSWORD}@postgres:5432/discordo
       PUBLIC_URL: ${PUBLIC_URL}
