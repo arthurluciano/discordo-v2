@@ -11,7 +11,7 @@ import { displayName } from '@/features/identity/users'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Control, EncoderInfo } from './voice-controls'
-import { useVoice } from './voice-session'
+import { isMuted, useVoice, voice } from './voice-session'
 
 /** "channel / guild" for a voice channel, the DM's name (or its people) for a DM. */
 export const useCallTitle = (channelId: string | null) => useStore((s) => {
@@ -42,7 +42,7 @@ const IconButton = ({ label, onClick, variant = 'ghost', children }: { label: st
 )
 
 export const VoiceDock = () => {
-  const v = useVoice()
+  const v = useVoice((s) => ({ channelId: s.channelId, connection: s.connection, muted: isMuted(s), listenOnly: s.listenOnly, deafened: s.deafened, error: s.error }))
   const title = useCallTitle(v.channelId)
   const transition = useTransition(SPRING_SOFT)
   const status = STATUS[v.connection]
@@ -60,16 +60,16 @@ export const VoiceDock = () => {
               <span className="mt-1 block truncate text-[11px] text-greyple">{title}</span>
             </span>
             {v.connection === 'failed' ? (
-              <IconButton label="Tentar de novo" onClick={() => v.channelId && v.join(v.channelId)}><RotateCw aria-hidden /></IconButton>
+              <IconButton label="Tentar de novo" onClick={() => v.channelId && voice.join(v.channelId)}><RotateCw aria-hidden /></IconButton>
             ) : (
               <>
                 <Control icon={v.muted ? MicOff : Mic} danger pressed={v.muted} disabled={v.listenOnly}
-                  label={v.listenOnly ? 'Você está só ouvindo' : v.muted ? 'Ativar microfone' : 'Mutar microfone'} onPressedChange={(m) => v.setMuted(m)} />
+                  label={v.listenOnly ? 'Você está só ouvindo' : v.muted ? 'Ativar microfone' : 'Mutar microfone'} onPressedChange={(m) => voice.setMuted(m)} />
                 <Control icon={v.deafened ? HeadphoneOff : Headphones} danger pressed={v.deafened}
-                  label={v.deafened ? 'Ativar áudio' : 'Ensurdecer'} onPressedChange={(d) => v.setDeafened(d)} />
+                  label={v.deafened ? 'Ativar áudio' : 'Ensurdecer'} onPressedChange={(d) => voice.setDeafened(d)} />
               </>
             )}
-            <IconButton label="Sair da chamada" variant="destructive" onClick={v.leave}><PhoneOff aria-hidden /></IconButton>
+            <IconButton label="Sair da chamada" variant="destructive" onClick={voice.leave}><PhoneOff aria-hidden /></IconButton>
           </div>
           <EncoderInfo className="px-3 pb-2" />
           {v.error ? <p role="alert" className="px-3 pb-3 text-xs text-ekko-red">{v.error}</p> : null}

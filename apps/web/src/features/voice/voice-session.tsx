@@ -1,25 +1,21 @@
-// CONTRACT (implemented by the voice area): the call the user is in, and how to join or leave one.
-import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
+// The call the user is in (call.ts), for React: read it with useVoice(selector), act on it with `voice`.
+import { useEffect, useRef, type ReactNode } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { onGatewayEvent } from '@/lib/gateway'
 import {
-  dismissError, getCall, handleGatewayEvent, join, leave, setCamera, setDeafened, setDevice, setMuted, setNoiseGate, setQuality,
-  setScreenPreset, setVolume, startScreen, stopScreen, subscribeCall, switchScreen, watch, type CallState,
+  dismissError, handleGatewayEvent, join, leave, setCamera, setDeafened, setDevice, setMuted, setNoiseGate, setQuality,
+  setScreenPreset, setVolume, startScreen, stopScreen, switchScreen, useCall, watch, type CallState,
 } from './call'
 
-const actions = {
+export { isMuted } from './call'
+
+export const voice = {
   join, leave, setMuted, setDeafened, setCamera, startScreen, switchScreen, stopScreen, setScreenPreset, setDevice, setNoiseGate, watch,
   setQuality, setVolume, dismissError,
 }
 
-export type VoiceApi = CallState & typeof actions & {
-  /** Effective: our own mute, deafened, or listen-only. */
-  muted: boolean
-}
-
-export const useVoice = (): VoiceApi => {
-  const call = useSyncExternalStore(subscribeCall, getCall)
-  return useMemo(() => ({ ...call, ...actions, muted: call.selfMuted || call.deafened || call.listenOnly }), [call])
-}
+/** Part of the call state; a selector returning a new object is compared shallowly. */
+export const useVoice = <T,>(pick: (s: CallState) => T): T => useCall(useShallow(pick))
 
 type RemoteAudioProps = { track: MediaStreamTrack; muted: boolean; volume: number; sinkId: string | null }
 
@@ -67,11 +63,11 @@ const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
 
 /** Everyone's audio, at the provider so it keeps playing wherever the user navigates. */
 const CallAudio = () => {
-  const { remote, deafened, prefs, volumes } = useVoice()
+  const { remote, deafened, output, volumes } = useVoice((s) => ({ remote: s.remote, deafened: s.deafened, output: s.prefs.output, volumes: s.volumes }))
   return (
     <div hidden>
       {remote.filter((r) => r.track.kind === 'audio').map((r) => (
-        <RemoteAudio key={`${r.userId}/${r.name}`} track={r.track} muted={deafened} volume={volumes[r.userId] ?? 1} sinkId={prefs.output} />
+        <RemoteAudio key={`${r.userId}/${r.name}`} track={r.track} muted={deafened} volume={volumes[r.userId] ?? 1} sinkId={output} />
       ))}
     </div>
   )

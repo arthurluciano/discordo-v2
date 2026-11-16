@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { initialState, reduce, type State } from './store'
-import type { Guild, Message, User } from './wire'
+import { dispatch, getState, initialState, openChannel, reduce, type State } from './store'
+import type { GatewayEvent, Guild, Message, User } from './wire'
 
 const alice: User = { id: 'a', username: 'alice', display_name: 'Alice', avatar_url: '' }
 const bob: User = { id: 'b', username: 'bob', display_name: 'Bob', avatar_url: '' }
@@ -58,6 +58,21 @@ describe('reduce', () => {
   it('expires typing and clears it when the message arrives', () => {
     const typing = reduce(withLog(ready(), []), { t: 'TYPING_START', d: { channel_id: 'c', user_id: 'b' } }, 1000)
     expect(typing.typing.c?.b).toBe(9000)
-    expect(reduce(typing, { t: 'MESSAGE_CREATE', d: message('1', bob) }).typing.c?.b).toBe(0)
+    expect(reduce(typing, { t: 'MESSAGE_CREATE', d: message('1', bob) }).typing.c?.b).toBeUndefined()
+  })
+})
+
+describe('openChannel', () => {
+  it('drops a page requested before a reconnect', async () => {
+    const readyEvent: GatewayEvent = { t: 'READY', d: { user: alice, guilds: [guild], dms: [], relationships: [], voice_states: [] } }
+    dispatch(readyEvent)
+    let resolve!: (page: Message[]) => void
+    const opening = openChannel('c', () => new Promise((r) => { resolve = r }))
+    dispatch(readyEvent) // reconnected while the first page was in flight
+    resolve([message('old')])
+    await opening
+    expect(getState().messages.c).toBeUndefined()
+    await openChannel('c', async () => [message('new')]) // and opening it again is not blocked
+    expect(getState().messages.c?.list.map((m) => m.id)).toEqual(['new'])
   })
 })

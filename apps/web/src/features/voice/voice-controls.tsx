@@ -18,7 +18,7 @@ import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { callPermissions, senderStats } from './call'
-import { useVoice } from './voice-session'
+import { isMuted, useVoice, voice } from './voice-session'
 
 type Icon = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
 
@@ -41,9 +41,8 @@ export const Control = ({ icon: Icon, label, pressed, disabled = false, danger =
 const supportsScreenShare = () => typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
 const ShareMenu = () => {
-  const v = useVoice()
-  const preset = v.prefs.screen
-  const sharing = v.screen !== null
+  const v = useVoice((s) => ({ preset: s.prefs.screen, sharing: s.screen !== null, connection: s.connection }))
+  const { preset, sharing } = v
   const [hardware, setHardware] = useState<ReadonlySet<string> | null>(null)
   // Asked each time the menu opens, for the preset in use: GPU support depends on resolution and frame rate.
   const probe = (open: boolean) => {
@@ -68,20 +67,20 @@ const ShareMenu = () => {
       </Tooltip>
       <DropdownMenuContent side="top" className="w-56">
         <DropdownMenuLabel>Resolução</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={preset.resolution} onValueChange={(r) => void v.setScreenPreset({ ...preset, resolution: r as Resolution })}>
+        <DropdownMenuRadioGroup value={preset.resolution} onValueChange={(r) => void voice.setScreenPreset({ ...preset, resolution: r as Resolution })}>
           {Object.entries(RESOLUTIONS).map(([id, { label }]) => (
             <DropdownMenuRadioItem key={id} value={id} onSelect={(e) => e.preventDefault()}>{label}</DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Quadros por segundo</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={String(preset.fps)} onValueChange={(fps) => void v.setScreenPreset({ ...preset, fps: fps === '60' ? 60 : 30 })}>
+        <DropdownMenuRadioGroup value={String(preset.fps)} onValueChange={(fps) => void voice.setScreenPreset({ ...preset, fps: fps === '60' ? 60 : 30 })}>
           <DropdownMenuRadioItem value="30" onSelect={(e) => e.preventDefault()}>30 fps (texto nítido)</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="60" onSelect={(e) => e.preventDefault()}>60 fps (movimento)</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Codec</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={preset.codec ?? 'auto'} onValueChange={(codec) => void v.setScreenPreset({ ...preset, codec: codec as CodecChoice })}>
+        <DropdownMenuRadioGroup value={preset.codec ?? 'auto'} onValueChange={(codec) => void voice.setScreenPreset({ ...preset, codec: codec as CodecChoice })}>
           <DropdownMenuRadioItem value="auto" onSelect={(e) => e.preventDefault()}>Automático (GPU primeiro)</DropdownMenuRadioItem>
           {sendableCodecs().map((id) => (
             <DropdownMenuRadioItem key={id} value={id} onSelect={(e) => e.preventDefault()}>{codecLabel(id)}</DropdownMenuRadioItem>
@@ -90,11 +89,11 @@ const ShareMenu = () => {
         <DropdownMenuSeparator />
         {sharing ? (
           <>
-            <DropdownMenuItem onSelect={() => void v.switchScreen()}>Trocar tela</DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onSelect={() => void v.stopScreen()}>Parar compartilhamento</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void voice.switchScreen()}>Trocar tela</DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onSelect={() => void voice.stopScreen()}>Parar compartilhamento</DropdownMenuItem>
           </>
         ) : (
-          <DropdownMenuItem onSelect={() => void v.startScreen()}>Compartilhar tela</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void voice.startScreen()}>Compartilhar tela</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -129,10 +128,10 @@ const useEncoderStats = (name: 'screen' | 'camera', active: boolean) => {
 
 /** "Codificação: GPU (…)" for each video we send; sent resolution, frame rate and bitrate on hover. */
 export const EncoderInfo = ({ className }: { className?: string }) => {
-  const v = useVoice()
-  const screen = useEncoderStats('screen', v.screen !== null)
-  const camera = useEncoderStats('camera', v.camera !== null)
-  const { resolution, fps } = v.prefs.screen
+  const v = useVoice((s) => ({ screen: s.screen !== null, camera: s.camera !== null, resolution: s.prefs.screen.resolution, fps: s.prefs.screen.fps }))
+  const screen = useEncoderStats('screen', v.screen)
+  const camera = useEncoderStats('camera', v.camera)
+  const { resolution, fps } = v
   useEffect(() => {
     if (screen?.codec && screen.hardware !== null) rememberEncoder(screen.codec, { height: RESOLUTIONS[resolution].height, framerate: fps }, screen.hardware)
   }, [screen?.codec, screen?.hardware, resolution, fps])
@@ -183,8 +182,8 @@ const DeviceSelect = ({ label, kind, devices, value, onChange }: { label: string
 
 const supportsOutputChoice = () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
 
-export const DeviceSettings = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const v = useVoice()
+const DeviceSettings = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const prefs = useVoice((s) => s.prefs)
   const devices = useDevices(open)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -194,17 +193,17 @@ export const DeviceSettings = ({ open, onOpenChange }: { open: boolean; onOpenCh
           <SheetDescription>Dispositivos e processamento do microfone.</SheetDescription>
         </SheetHeader>
         <div className="grid gap-5 overflow-y-auto p-4 sm:p-5">
-          <DeviceSelect label="Microfone" kind="audioinput" devices={devices} value={v.prefs.input} onChange={(id) => void v.setDevice('input', id)} />
+          <DeviceSelect label="Microfone" kind="audioinput" devices={devices} value={prefs.input} onChange={(id) => void voice.setDevice('input', id)} />
           {supportsOutputChoice() ? (
-            <DeviceSelect label="Saída de áudio" kind="audiooutput" devices={devices} value={v.prefs.output} onChange={(id) => void v.setDevice('output', id)} />
+            <DeviceSelect label="Saída de áudio" kind="audiooutput" devices={devices} value={prefs.output} onChange={(id) => void voice.setDevice('output', id)} />
           ) : <p className="text-xs text-muted-foreground">Este navegador não permite escolher a saída de áudio.</p>}
-          <DeviceSelect label="Câmera" kind="videoinput" devices={devices} value={v.prefs.camera} onChange={(id) => void v.setDevice('camera', id)} />
+          <DeviceSelect label="Câmera" kind="videoinput" devices={devices} value={prefs.camera} onChange={(id) => void voice.setDevice('camera', id)} />
           <Field orientation="horizontal">
             <FieldContent>
               <FieldLabel htmlFor="voice-noise-gate">Porta de ruído</FieldLabel>
               <FieldDescription>Fecha o microfone entre as frases, quando só o ventilador e o teclado estariam saindo.</FieldDescription>
             </FieldContent>
-            <Switch id="voice-noise-gate" checked={v.prefs.noiseGate} onCheckedChange={v.setNoiseGate} />
+            <Switch id="voice-noise-gate" checked={prefs.noiseGate} onCheckedChange={voice.setNoiseGate} />
           </Field>
         </div>
       </SheetContent>
@@ -214,7 +213,7 @@ export const DeviceSettings = ({ open, onOpenChange }: { open: boolean; onOpenCh
 
 /** Mute, deafen, camera, screen, devices, leave: shown on the stage of the call we are in. */
 export const ControlsBar = ({ channelId }: { channelId: string }) => {
-  const v = useVoice()
+  const v = useVoice((s) => ({ connection: s.connection, muted: isMuted(s), listenOnly: s.listenOnly, deafened: s.deafened, camera: s.camera }))
   const perms = useStore((s) => callPermissions(s, channelId))
   const [settings, setSettings] = useState(false)
   const canStream = has(perms, Permission.Stream)
@@ -223,18 +222,18 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
       <Control icon={v.muted ? MicOff : Mic} danger pressed={v.muted} disabled={v.listenOnly}
-        label={v.listenOnly ? 'Você está só ouvindo' : v.muted ? 'Ativar microfone' : 'Mutar microfone'} onPressedChange={(m) => v.setMuted(m)} />
+        label={v.listenOnly ? 'Você está só ouvindo' : v.muted ? 'Ativar microfone' : 'Mutar microfone'} onPressedChange={(m) => voice.setMuted(m)} />
       <Control icon={v.deafened ? HeadphoneOff : Headphones} danger pressed={v.deafened}
-        label={v.deafened ? 'Ativar áudio' : 'Ensurdecer'} onPressedChange={(d) => v.setDeafened(d)} />
+        label={v.deafened ? 'Ativar áudio' : 'Ensurdecer'} onPressedChange={(d) => voice.setDeafened(d)} />
       {canStream ? (
         <Control icon={v.camera ? Video : VideoOff} pressed={v.camera !== null} disabled={!connected}
-          label={v.camera ? 'Desligar câmera' : 'Ligar câmera'} onPressedChange={(on) => void v.setCamera(on)} />
+          label={v.camera ? 'Desligar câmera' : 'Ligar câmera'} onPressedChange={(on) => void voice.setCamera(on)} />
       ) : null}
       {canStream && supportsScreenShare() ? <ShareMenu /> : null}
       <Control icon={Settings2} pressed={settings} label="Configurações de voz e vídeo" onPressedChange={setSettings} />
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="destructive" size="icon" className="size-10 max-md:size-11" aria-label="Sair da chamada" onClick={v.leave}><PhoneOff aria-hidden /></Button>
+          <Button variant="destructive" size="icon" className="size-10 max-md:size-11" aria-label="Sair da chamada" onClick={voice.leave}><PhoneOff aria-hidden /></Button>
         </TooltipTrigger>
         <TooltipContent>Sair da chamada</TooltipContent>
       </Tooltip>

@@ -1,6 +1,6 @@
 // The one WebSocket to the server. Authenticated by the session cookie; feeds the store, and hands
 // call signaling to whoever listens (the voice session).
-import { dispatch, setState } from './store'
+import { dispatch, reset, setState } from './store'
 import type { GatewayEvent } from './wire'
 
 type Listener = (e: GatewayEvent) => void
@@ -23,7 +23,13 @@ const open = () => {
   socket = ws
   ws.onopen = () => ws.send('{}') // the hello: no token, the cookie came with the upgrade
   ws.onmessage = (raw) => {
-    const e = JSON.parse(String(raw.data)) as GatewayEvent
+    if (socket !== ws) return
+    let e: GatewayEvent
+    try {
+      e = JSON.parse(String(raw.data)) as GatewayEvent
+    } catch {
+      return // a malformed frame must not break the ones after it
+    }
     if (e.t === 'READY') attempt = 0
     dispatch(e)
     listeners.forEach((l) => l(e))
@@ -33,7 +39,7 @@ const open = () => {
     socket = null
     if (close.code === POLICY_VIOLATION) {
       stopped = true
-      setState((s) => ({ ...s, status: 'signed-out' }))
+      reset('signed-out')
       return
     }
     if (stopped) return

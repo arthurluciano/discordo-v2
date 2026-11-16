@@ -21,7 +21,7 @@ import { ChannelType, type Channel, type Guild, type GuildChannel } from '@/lib/
 import { displayName, useMe } from '../identity/users'
 import { useProfileViewer } from '../identity/profile-viewer'
 import { navigate } from '../shell/navigation'
-import { useVoice } from '../voice/voice-session'
+import { useVoice, voice } from '../voice/voice-session'
 import { ChannelSettingsDialog } from './channel-settings-dialog'
 import { INVITE_EXPIRY } from './logic'
 import { ServerSettingsDialog } from './server-settings-dialog'
@@ -217,12 +217,12 @@ const SECTIONS = [
 ] as const
 
 const ChannelList = ({ guild, channelId, onCreate, onSettings }: { guild: Guild; channelId: string | null; onCreate: () => void; onSettings: (id: string) => void }) => {
-  const voice = useVoice()
+  const callId = useVoice((s) => s.channelId)
   const canManage = has(guild.permissions, Permission.ManageChannels)
 
   const select = (c: GuildChannel) => {
     navigate.channel(guild.id, c.id)
-    if (c.type === ChannelType.Voice && voice.channelId !== c.id && has(c.permissions, Permission.Connect)) voice.join(c.id)
+    if (c.type === ChannelType.Voice && callId !== c.id && has(c.permissions, Permission.Connect)) voice.join(c.id)
   }
 
   return (
@@ -243,7 +243,7 @@ const ChannelList = ({ guild, channelId, onCreate, onSettings }: { guild: Guild;
                   return (
                     <li key={c.id}>
                       <div className={cn('group flex items-center gap-1 rounded-md pr-1.5 transition-colors hover:bg-surface-hover', active && 'bg-surface-active')}>
-                        <button type="button" aria-current={active ? 'page' : undefined} onClick={() => select(c)} className={cn('flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm text-greyple hover:text-snow', active && 'text-snow', voice.channelId === c.id && 'text-spring-green')}>
+                        <button type="button" aria-current={active ? 'page' : undefined} onClick={() => select(c)} className={cn('flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm text-greyple hover:text-snow', active && 'text-snow', callId === c.id && 'text-spring-green')}>
                           <Icon aria-hidden className="size-[18px] shrink-0" />
                           <span className="min-w-0 flex-1 truncate text-left">{c.name}</span>
                         </button>

@@ -21,7 +21,7 @@ import { callPermissions, watchKey } from './call'
 import { useAudioLevel } from './use-audio-level'
 import { ControlsBar } from './voice-controls'
 import { useCallTitle } from './voice-dock'
-import { useVoice } from './voice-session'
+import { useVoice, voice } from './voice-session'
 
 export type VoiceStageProps = {
   channelId: string
@@ -211,7 +211,7 @@ const useStageFullscreen = (stage: RefObject<HTMLElement | null>) => {
 const peopleCount = (n: number) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`
 
 export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
-  const v = useVoice()
+  const v = useVoice((s) => ({ channelId: s.channelId, connection: s.connection, remote: s.remote, camera: s.camera, screen: s.screen, mic: s.mic, watching: s.watching, volumes: s.volumes, qualities: s.qualities, error: s.error }))
   const me = useMe()
   const title = useCallTitle(channelId)
   const allVoice = useStore((s) => s.voice)
@@ -243,7 +243,7 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
   const others = tiles.filter((t) => t !== focal)
   const speechOf = (t: TileItem) => (t.own ? v.mic : remoteTrack(t.state.user_id, 'mic'))
   const watchTile = (t: TileItem, on: boolean) => {
-    v.watch(t.state.user_id, t.kind === 'screen' ? 'screen' : 'camera', on)
+    voice.watch(t.state.user_id, t.kind === 'screen' ? 'screen' : 'camera', on)
     setPinned(on ? t.id : null)
   }
 
@@ -251,9 +251,9 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
     const track = t.kind === 'screen' ? 'screen' : 'camera'
     return {
       volume: !t.own && inCall && t.kind === 'person' ? (v.volumes[t.state.user_id] ?? 1) : null,
-      onVolume: (volume) => v.setVolume(t.state.user_id, volume),
+      onVolume: (volume) => voice.setVolume(t.state.user_id, volume),
       quality: t.watched ? (v.qualities[watchKey(t.state.user_id, track)] ?? 'auto') : null,
-      onQuality: (quality) => v.setQuality(t.state.user_id, track, quality),
+      onQuality: (quality) => voice.setQuality(t.state.user_id, track, quality),
     }
   }
 
@@ -302,13 +302,13 @@ export const VoiceStage = ({ channelId, onBack }: VoiceStageProps) => {
         {ours && v.error ? (
           <Alert variant="destructive" className="shrink-0"><AlertDescription className="flex items-center gap-2">
             <span className="flex-1">{v.error}</span>
-            <Button variant="ghost" size="xs" onClick={v.dismissError}>Fechar</Button>
+            <Button variant="ghost" size="xs" onClick={voice.dismissError}>Fechar</Button>
           </AlertDescription></Alert>
         ) : null}
 
         <footer className="flex shrink-0 justify-center">
           {inCall ? <ControlsBar channelId={channelId} /> : canConnect ? (
-            <Button size="lg" onClick={() => v.join(channelId)}><PhoneCall aria-hidden />Entrar na chamada</Button>
+            <Button size="lg" onClick={() => voice.join(channelId)}><PhoneCall aria-hidden />Entrar na chamada</Button>
           ) : <p className="text-sm text-greyple">Você não tem permissão para entrar nesta chamada.</p>}
         </footer>
       </section>

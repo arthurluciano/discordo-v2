@@ -5,7 +5,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ErrorBoundary } from '@/design/error-boundary'
 import { ChannelChat } from '@/features/chat/channel-chat'
 import { useMe } from '@/features/identity/users'
-import { useVoice } from '@/features/voice/voice-session'
+import { useVoice, voice } from '@/features/voice/voice-session'
 import { VoiceStage } from '@/features/voice/voice-stage'
 import { api } from '@/lib/api'
 import { useStore } from '@/lib/store'
@@ -23,8 +23,7 @@ const GROUP_MAX = 10
 
 const DMView = ({ dm, onBack }: { dm: DM; onBack: () => void }) => {
   const me = useMe()
-  const voice = useVoice()
-  const inCall = voice.channelId === dm.id
+  const inCall = useVoice((s) => s.channelId === dm.id)
   const callers = useStore((s) => Object.values(s.voice).filter((v) => v.channel_id === dm.id).length)
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)

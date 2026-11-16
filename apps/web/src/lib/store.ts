@@ -1,6 +1,6 @@
 // The client's copy of the server state, fed by the gateway (READY replaces it, events patch it).
-// `reduce` is pure; components read through `useStore` with a selector.
-import { useSyncExternalStore } from 'react'
+// `reduce` is pure; components read through `useStore` with a selector (`useShallow` for derived objects).
+import { create } from 'zustand'
 import type { DM, GatewayEvent, Guild, Message, Relationship, User, VoiceState } from './wire'
 
 export type MessageLog = {
@@ -100,8 +100,8 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
     case 'USER_UPDATE':
       return patchUser(s, e.d)
     case 'MESSAGE_CREATE': {
-      const typing = s.typing[e.d.channel_id]
-      const after = typing?.[e.d.author.id] ? { ...s, typing: { ...s.typing, [e.d.channel_id]: { ...typing, [e.d.author.id]: 0 } } } : s
+      const { [e.d.author.id]: _, ...typing } = s.typing[e.d.channel_id] ?? {}
+      const after = _ ? { ...s, typing: { ...s.typing, [e.d.channel_id]: typing } } : s
       return mapMessages(after, e.d.channel_id, (list) => (list.some((m) => m.id === e.d.id) ? list : [...list, e.d]))
     }
     case 'MESSAGE_UPDATE':
@@ -141,26 +141,24 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
 
 // ---- the live store ----
 
-let state = initialState
-const listeners = new Set<() => void>()
+export const useStore = create<State>()(() => initialState)
 
-export const getState = () => state
+export const getState = useStore.getState
+export const setState = (fn: (s: State) => State) => useStore.setState(fn, true)
 
-export const setState = (fn: (s: State) => State) => {
-  state = fn(state)
-  listeners.forEach((l) => l())
+/** Bumped by every READY: message pages requested before it are stale (the log they belong to is gone). */
+let epoch = 0
+
+export const dispatch = (e: GatewayEvent) => {
+  if (e.t === 'READY') {
+    epoch++
+    loading.clear()
+  }
+  setState((s) => reduce(s, e))
 }
 
-export const dispatch = (e: GatewayEvent) => setState((s) => reduce(s, e))
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener)
-  return () => void listeners.delete(listener)
-}
-
-/** Reads part of the state. The selector must return something already in the state (or a
- * primitive): a new array or object on every call would re-render forever. Derive with useMemo. */
-export const useStore = <T>(selector: (s: State) => T): T => useSyncExternalStore(subscribe, () => selector(state))
+/** Drops everything we knew (signed out): nothing of the old account stays in memory. */
+export const reset = (status: State['status']) => setState(() => ({ ...initialState, status }))
 
 // ---- messages ----
 
@@ -170,17 +168,20 @@ const loading = new Set<string>()
 /** Loads the newest messages of a channel, once per channel (later ones arrive by the gateway).
  * While loading, the log exists but is empty and not `complete`, so messages arriving meanwhile are kept. */
 export const openChannel = async (channelId: string, fetchPage: (before?: string) => Promise<Message[]>) => {
-  if (state.messages[channelId] || loading.has(channelId)) return
+  if (getState().messages[channelId] || loading.has(channelId)) return
+  const mine = epoch
   loading.add(channelId)
   setState((s) => ({ ...s, messages: { ...s.messages, [channelId]: { list: [], complete: false } } }))
   try {
     const page = (await fetchPage()).reverse()
+    if (mine !== epoch) return
     setState((s) => {
       const live = s.messages[channelId]?.list ?? []
       const list = [...page, ...live.filter((m) => !page.some((p) => p.id === m.id))]
       return { ...s, messages: { ...s.messages, [channelId]: { list, complete: page.length < PAGE } } }
     })
   } catch (cause) {
+    if (mine !== epoch) return
     setState((s) => {
       const messages = { ...s.messages }
       delete messages[channelId] // so that opening the channel again retries
@@ -188,7 +189,7 @@ export const openChannel = async (channelId: string, fetchPage: (before?: string
     })
     throw cause
   } finally {
-    loading.delete(channelId)
+    if (mine === epoch) loading.delete(channelId)
   }
 }
 
@@ -197,11 +198,13 @@ export const isLoadingChannel = (log: MessageLog | undefined) => !log || (!log.c
 
 /** Loads the page before the oldest message we have. */
 export const loadOlder = async (channelId: string, fetchPage: (before?: string) => Promise<Message[]>) => {
-  const log = state.messages[channelId]
+  const log = getState().messages[channelId]
   if (!log || log.complete || loading.has(channelId)) return
+  const mine = epoch
   loading.add(channelId)
   try {
     const page = await fetchPage(log.list[0]?.id)
+    if (mine !== epoch) return
     setState((s) => {
       const current = s.messages[channelId]
       if (!current) return s
@@ -209,7 +212,7 @@ export const loadOlder = async (channelId: string, fetchPage: (before?: string) 
       return { ...s, messages: { ...s.messages, [channelId]: { list: [...older, ...current.list], complete: page.length < PAGE } } }
     })
   } finally {
-    loading.delete(channelId)
+    if (mine === epoch) loading.delete(channelId)
   }
 }
 
