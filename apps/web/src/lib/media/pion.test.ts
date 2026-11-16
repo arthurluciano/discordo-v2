@@ -82,7 +82,7 @@ describe('pion transport', () => {
     t.close()
   })
 
-  it('publishes the video again when its codec changes', async () => {
+  it('publishes the video again when its encoding changes', async () => {
     let peer: FakePeer | null = null
     vi.stubGlobal('RTCPeerConnection', class extends FakePeer { constructor() { super(); peer = this } })
     const send = vi.fn(() => true)
@@ -92,15 +92,20 @@ describe('pion transport', () => {
     await flush()
     t.handle({ t: 'RTC_ANSWER', d: { sdp: 'answer-1' } })
     await flush()
-    void t.publish('screen', screen, { maxBitrate: 1 }) // same codec: no new offer
+    void t.publish('screen', screen, { maxBitrate: 1 }) // same encoding: no new offer
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
     void t.publish('screen', screen, { maxBitrate: 1, codec: 'av1' })
     await flush()
-    const [first, second] = peer!.transceivers
+    t.handle({ t: 'RTC_ANSWER', d: { sdp: 'answer-2' } })
+    await flush()
+    void t.publish('screen', screen, { maxBitrate: 2, codec: 'av1' }) // another resolution or frame rate
+    await flush()
+    const [first, second, third] = peer!.transceivers
     expect(first?.stop).toHaveBeenCalled()
-    expect(second?.sender.track).toBe(screen)
-    expect(send).toHaveBeenCalledTimes(2)
+    expect(second?.stop).toHaveBeenCalled()
+    expect(third?.sender.track).toBe(screen)
+    expect(send).toHaveBeenCalledTimes(3)
     t.close()
   })
 })

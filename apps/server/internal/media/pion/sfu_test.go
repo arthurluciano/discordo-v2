@@ -190,6 +190,10 @@ func TestForwarding(t *testing.T) {
 	bob.expect("alice", media.Screen)
 	carol.expectNothing()
 
+	// Published again (another codec or resolution) before the old one ends: viewers move to the new one.
+	alice.publish(media.Screen, webrtc.MimeTypeVP8)
+	bob.expect("alice", media.Screen)
+
 	// Without the Stream grant, video is published into the void.
 	carol.publish(media.Camera, webrtc.MimeTypeH264)
 	bob.signal("rtc_subscribe", map[string]any{"user_id": "carol", "track": media.Camera, "on": true})

@@ -323,6 +323,10 @@ func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote, receiv
 		return
 	}
 	t := r.tracks[key]
+	if t != nil && t.receiver != receiver { // published again (another codec or resolution): replaces the old one
+		s.unpublishLocked(r, key)
+		t = nil
+	}
 	switch {
 	case t == nil: // the track's first layer (or its only one)
 		t = &track{owner: p, name: name, kind: remote.Kind(), codec: remote.Codec().RTPCodecCapability, receiver: receiver, pub: p.pub,
@@ -340,7 +344,7 @@ func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote, receiv
 		published := r.published(p.userID)
 		s.mu.Unlock()
 		s.onTracks(roomID, p.userID, published)
-	case t.receiver == receiver: // another simulcast layer of it
+	default: // another simulcast layer of it
 		t.mu.Lock()
 		t.layers[rid] = remote
 		for _, d := range t.downs {
@@ -348,9 +352,6 @@ func (s *SFU) forward(roomID string, p *peer, remote *webrtc.TrackRemote, receiv
 		}
 		t.mu.Unlock()
 		s.mu.Unlock()
-	default: // a second track with the same name
-		s.mu.Unlock()
-		return
 	}
 
 	for {

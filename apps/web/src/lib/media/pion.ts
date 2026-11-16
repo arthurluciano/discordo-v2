@@ -46,7 +46,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   let pub: RTCPeerConnection | null = null
   let sub: RTCPeerConnection | null = null
   const published = new Map<TrackName, RTCRtpTransceiver>()
-  const chosen = new Map<TrackName, string>() // the codec choice each video was published with
+  const publishedWith = new Map<TrackName, string>() // the encoding each video was published with
   let pubQueue = Promise.resolve()
   let subQueue = Promise.resolve()
   let onAnswer: ((sdp: string) => void) | null = null
@@ -112,11 +112,12 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   return {
     publish: async (name, track, encoding) => {
       if (closed) return
-      const choice = encoding?.codec ?? 'auto'
-      // The SFU forwards in the codec a track started with, so another codec means publishing it again.
-      const recodec = track?.kind === 'video' && published.has(name) && chosen.get(name) !== choice
+      const key = JSON.stringify(encoding ?? null)
+      // A new video encoding means publishing again: the SFU forwards in the codec a track started with, the
+      // simulcast layers were sized for the old resolution, and viewers get a fresh stream right away.
+      const recodec = track?.kind === 'video' && published.has(name) && publishedWith.get(name) !== key
       // Probed before anything else so the rest stays synchronous (no offer can slip in between).
-      const codecs = track?.kind === 'video' && (!published.has(name) || recodec) ? await videoCodecs(probeFor(track, encoding?.maxBitrate), choice) : null
+      const codecs = track?.kind === 'video' && (!published.has(name) || recodec) ? await videoCodecs(probeFor(track, encoding?.maxBitrate), encoding?.codec) : null
       if (closed) return
       let current = published.get(name)
       if (!track || recodec) {
@@ -144,7 +145,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         transceiver = pub.addTransceiver(track, { direction: 'sendonly', sendEncodings: sendEncodings(encoding, undefined) }) // no simulcast here
       }
       if (codecs) setCodecs(transceiver, codecs)
-      chosen.set(name, choice)
+      publishedWith.set(name, key)
       published.set(name, transceiver)
       return negotiate()
     },
