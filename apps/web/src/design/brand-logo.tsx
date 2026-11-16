@@ -8,6 +8,7 @@ type BrandLogoProps = { className?: string; label?: string; interactive?: boolea
 
 export const BrandLogo = ({ className, label = 'Discordo', interactive = false }: BrandLogoProps) => {
   const transition = useTransition(QUICK_EASE)
+
   return (
     <motion.img
       src={mascotLogoUrl}

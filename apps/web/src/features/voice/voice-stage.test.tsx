@@ -9,11 +9,18 @@ describe('VoiceStage', () => {
   it('shows who is in the call and offers to join it', () => {
     const user = { id: 'u2', username: 'ana', display_name: 'Ana', avatar_url: '' }
     setState(() => ({
-      ...initialState, status: 'ready', me: { id: 'u1', username: 'eu', display_name: 'Eu', avatar_url: '' },
+      ...initialState,
+      status: 'ready',
+      me: { id: 'u1', username: 'eu', display_name: 'Eu', avatar_url: '' },
       dms: [{ id: 'dm1', type: 2, name: '', recipients: [user] }],
       voice: { u2: { user_id: 'u2', channel_id: 'dm1', muted: true, deafened: false, tracks: ['mic', 'screen'] } },
     }))
-    render(<TooltipProvider><VoiceStage channelId="dm1" onBack={() => {}} /><VoiceDock /></TooltipProvider>)
+    render(
+      <TooltipProvider>
+        <VoiceStage channelId="dm1" onBack={() => {}} />
+        <VoiceDock />
+      </TooltipProvider>,
+    )
     expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument()
     expect(screen.getByText('1 pessoa')).toBeInTheDocument()
     expect(screen.getByLabelText('Ana, compartilhando tela')).toBeInTheDocument()

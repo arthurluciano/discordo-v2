@@ -1,7 +1,8 @@
 // The column of servers, home, and create/join a server.
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { BrandLogo } from '@/design/brand-logo'
 import { QUICK_EASE, useTransition } from '@/design/motion'
 import { api } from '@/lib/api'
+import { filled } from '@/lib/forms'
 import { setState, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { Guild } from '@/lib/wire'
@@ -20,7 +22,13 @@ import { parseInviteCode } from './logic'
 type ServerRailProps = { activeGuildId: string | null }
 
 export const initialsOf = (name: string) =>
-  name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'
+  name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '?'
 
 // The REST reply can beat the GUILD_SYNC; without the snapshot in the store the workspace would
 // think the guild is gone and send the user home.
@@ -29,8 +37,19 @@ const openGuild = (guild: Guild) => {
   navigate.guild(guild.id)
 }
 
-const RailButton = ({ label, active, children, onClick }: { label: string; active: boolean; children: ReactNode; onClick: () => void }) => {
+const RailButton = ({
+  label,
+  active,
+  children,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  children: ReactNode
+  onClick: () => void
+}) => {
   const transition = useTransition(QUICK_EASE)
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -42,63 +61,103 @@ const RailButton = ({ label, active, children, onClick }: { label: string; activ
           whileTap={{ scale: 0.94 }}
           transition={transition}
           onClick={onClick}
-          className={cn('group relative grid size-12 shrink-0 place-items-center rounded-2xl bg-surface-sidebar text-fog transition-[border-radius,background-color,color] duration-150 hover:rounded-xl hover:bg-blurple hover:text-white focus-visible:rounded-xl', active && 'rounded-xl bg-blurple text-white')}
+          className={cn(
+            'group relative grid size-12 shrink-0 place-items-center rounded-2xl bg-surface-sidebar text-fog transition-[border-radius,background-color,color] duration-150 hover:rounded-xl hover:bg-blurple hover:text-white focus-visible:rounded-xl',
+            active && 'rounded-xl bg-blurple text-white',
+          )}
         >
-          <span className={cn('absolute -left-3 h-2 w-1 rounded-r-full bg-white transition-all', active ? 'h-10' : 'opacity-0 group-hover:h-5 group-hover:opacity-100')} aria-hidden />
+          <span
+            className={cn(
+              'absolute -left-3 h-2 w-1 rounded-r-full bg-white transition-all',
+              active ? 'h-10' : 'opacity-0 group-hover:h-5 group-hover:opacity-100',
+            )}
+            aria-hidden
+          />
           <span className="grid size-full place-items-center overflow-hidden rounded-[inherit]">{children}</span>
         </motion.button>
       </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
+      <TooltipContent side="right" sideOffset={8}>
+        {label}
+      </TooltipContent>
     </Tooltip>
   )
 }
 
 const AddServerDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const [name, setName] = useState('')
-  const [invite, setInvite] = useState('')
+  const createForm = useForm({ defaultValues: { name: '' }, mode: 'onChange' })
+  const joinForm = useForm({ defaultValues: { invite: '' }, mode: 'onChange' })
+
   const done = (guild: Guild) => {
-    setName('')
-    setInvite('')
+    createForm.reset()
+    joinForm.reset()
     onOpenChange(false)
     openGuild(guild)
   }
-  const create = useMutation({ mutationFn: () => api.createGuild(name.trim()), onSuccess: done })
+
+  const create = useMutation({
+    mutationFn: ({ name }: { name: string }) => api.createGuild(name.trim()),
+    onSuccess: done,
+  })
+
   const join = useMutation({
-    mutationFn: () => {
+    mutationFn: ({ invite }: { invite: string }) => {
       const code = parseInviteCode(invite)
       if (!code) throw new Error('Convite inválido. Cole o código ou o link inteiro.')
       return api.joinInvite(code)
     },
     onSuccess: done,
   })
-  const submit = (mutation: { mutate: () => void }) => (e: FormEvent) => {
-    e.preventDefault()
-    mutation.mutate()
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-surface-content sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Plus className="size-5 text-blurple-soft" aria-hidden />Adicionar um servidor</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="size-5 text-blurple-soft" aria-hidden />
+            Adicionar um servidor
+          </DialogTitle>
           <DialogDescription>Crie o seu próprio espaço ou entre em um com um convite.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={submit(create)} className="space-y-2">
-          <label htmlFor="new-guild-name" className="section-label">Criar servidor</label>
+        <form onSubmit={createForm.handleSubmit((values) => create.mutate(values))} className="space-y-2">
+          <label htmlFor="new-guild-name" className="section-label">
+            Criar servidor
+          </label>
+
           <div className="flex gap-2">
-            <Input id="new-guild-name" placeholder="Nome do servidor" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-            <Button type="submit" disabled={!name.trim()} loading={create.isPending}>Criar</Button>
+            <Input
+              id="new-guild-name"
+              placeholder="Nome do servidor"
+              maxLength={100}
+              {...createForm.register('name', filled)}
+            />
+            <Button type="submit" disabled={!createForm.formState.isValid} loading={create.isPending}>
+              Criar
+            </Button>
           </div>
+
           <FieldError error={create.error} />
         </form>
 
-        <form onSubmit={submit(join)} className="space-y-2 border-t border-white/10 pt-4">
-          <label htmlFor="join-invite" className="section-label">Entrar com convite</label>
+        <form
+          onSubmit={joinForm.handleSubmit((values) => join.mutate(values))}
+          className="space-y-2 border-t border-white/10 pt-4"
+        >
+          <label htmlFor="join-invite" className="section-label">
+            Entrar com convite
+          </label>
+
           <div className="flex gap-2">
-            <Input id="join-invite" placeholder="https://…/invite/ABC123 ou ABC123" value={invite} onChange={(e) => setInvite(e.target.value)} />
-            <Button type="submit" variant="secondary" disabled={!invite.trim()} loading={join.isPending}>Entrar</Button>
+            <Input
+              id="join-invite"
+              placeholder="https://…/invite/ABC123 ou ABC123"
+              {...joinForm.register('invite', filled)}
+            />
+            <Button type="submit" variant="secondary" disabled={!joinForm.formState.isValid} loading={join.isPending}>
+              Entrar
+            </Button>
           </div>
+
           <FieldError error={join.error} />
         </form>
       </DialogContent>
@@ -111,14 +170,21 @@ export const ServerRail = ({ activeGuildId }: ServerRailProps) => {
   const [adding, setAdding] = useState(false)
 
   return (
-    <nav aria-label="Servidores" className="dock-clearance flex w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-surface-rail py-3 [scrollbar-width:none]">
+    <nav
+      aria-label="Servidores"
+      className="dock-clearance flex w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-surface-rail py-3 [scrollbar-width:none]"
+    >
       <RailButton label="Inicial" active={activeGuildId === null} onClick={navigate.home}>
         <BrandLogo className="size-12 rounded-none" />
       </RailButton>
       {guilds.length > 0 ? <span aria-hidden className="my-0.5 h-0.5 w-8 shrink-0 rounded-full bg-white/10" /> : null}
       {guilds.map((g) => (
         <RailButton key={g.id} label={g.name} active={g.id === activeGuildId} onClick={() => navigate.guild(g.id)}>
-          {g.icon_url ? <img src={g.icon_url} alt="" className="size-full object-cover" /> : <span className="text-sm font-bold">{initialsOf(g.name)}</span>}
+          {g.icon_url ? (
+            <img src={g.icon_url} alt="" className="size-full object-cover" />
+          ) : (
+            <span className="text-sm font-bold">{initialsOf(g.name)}</span>
+          )}
         </RailButton>
       ))}
       <RailButton label="Adicionar um servidor" active={false} onClick={() => setAdding(true)}>

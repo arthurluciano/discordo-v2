@@ -8,6 +8,7 @@ const mobileMedia = () => (typeof window.matchMedia === 'function' ? window.matc
 const subscribe = (onChange: () => void) => {
   const media = mobileMedia()
   media?.addEventListener('change', onChange)
+
   return () => media?.removeEventListener('change', onChange)
 }
 

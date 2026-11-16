@@ -1,6 +1,7 @@
 type NavigatorFingerprint = Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'>
 
 const APPLE_MOBILE_USER_AGENT = /iPad|iPhone|iPod/
+
 const IOS_PLATFORM = 'ios'
 
 /** iPadOS se apresenta como Mac desde o 13; o que o denuncia e a tela de toque. */

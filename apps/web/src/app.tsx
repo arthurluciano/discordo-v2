@@ -16,7 +16,10 @@ import { useStore } from '@/lib/store'
 
 const Loading = ({ label }: { label: string }) => (
   <div className="grid h-full place-items-center bg-surface-content">
-    <div className="flex items-center gap-3 text-sm font-semibold text-fog"><Spinner aria-hidden />{label}</div>
+    <div className="flex items-center gap-3 text-sm font-semibold text-fog">
+      <Spinner aria-hidden />
+      {label}
+    </div>
   </div>
 )
 
@@ -35,11 +38,13 @@ const usePendingInvite = (ready: boolean) => {
   useEffect(() => {
     if (!ready || !code || tried.current) return
     tried.current = true
-    api.joinInvite(code)
+    api
+      .joinInvite(code)
       .then((guild) => navigate.guild(guild.id))
       .catch((cause: unknown) => setError(`Não foi possível usar o convite: ${errorMessage(cause)}`))
       .finally(clearPendingInvite)
   }, [ready, code])
+
   return { error, dismiss: () => setError(null) }
 }
 
@@ -47,7 +52,11 @@ const Banner = ({ children, onDismiss }: { children: ReactNode; onDismiss?: () =
   <Alert variant="destructive" className="m-2 shrink-0">
     <AlertDescription className="flex items-center justify-between gap-3">
       <span className="flex items-center gap-2">{children}</span>
-      {onDismiss ? <Button type="button" variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dispensar"><X aria-hidden /></Button> : null}
+      {onDismiss ? (
+        <Button type="button" variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dispensar">
+          <X aria-hidden />
+        </Button>
+      ) : null}
     </AlertDescription>
   </Alert>
 )
@@ -62,8 +71,18 @@ export const App = () => {
     return stopGateway
   }, [])
 
-  if (status === 'signed-out') return <AppFrame><LoginScreen /></AppFrame>
-  if (!hasSession) return <AppFrame><Loading label="Conectando ao Discordo" /></AppFrame>
+  if (status === 'signed-out')
+    return (
+      <AppFrame>
+        <LoginScreen />
+      </AppFrame>
+    )
+  if (!hasSession)
+    return (
+      <AppFrame>
+        <Loading label="Conectando ao Discordo" />
+      </AppFrame>
+    )
 
   return (
     <AppFrame>
@@ -71,9 +90,16 @@ export const App = () => {
         <ProfileViewerProvider>
           <VoiceProvider>
             <div className="flex h-full flex-col">
-              {status === 'offline' ? <Banner><WifiOff aria-hidden className="size-4" />Sem conexão. Reconectando…</Banner> : null}
+              {status === 'offline' ? (
+                <Banner>
+                  <WifiOff aria-hidden className="size-4" />
+                  Sem conexão. Reconectando…
+                </Banner>
+              ) : null}
               {invite.error ? <Banner onDismiss={invite.dismiss}>{invite.error}</Banner> : null}
-              <div className="min-h-0 flex-1"><Workspace /></div>
+              <div className="min-h-0 flex-1">
+                <Workspace />
+              </div>
             </div>
           </VoiceProvider>
         </ProfileViewerProvider>

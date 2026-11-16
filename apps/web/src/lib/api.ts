@@ -2,7 +2,10 @@
 import type { Attachment, Ban, Channel, DM, Guild, Invite, Message, Role, User } from './wire'
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message)
     this.name = 'ApiError'
   }
@@ -13,7 +16,8 @@ export const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.
 
 const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
   const init: RequestInit = { method, credentials: 'same-origin' }
-  if (body instanceof FormData) init.body = body // the browser sets the multipart boundary itself
+  if (body instanceof FormData)
+    init.body = body // the browser sets the multipart boundary itself
   else if (body !== undefined) {
     init.body = JSON.stringify(body)
     init.headers = { 'content-type': 'application/json' }
@@ -27,15 +31,18 @@ const request = async <T>(method: string, path: string, body?: unknown): Promise
   if (response.status === 204) return undefined as T
   const payload: unknown = await response.json().catch(() => null)
   if (!response.ok) {
-    const message = typeof payload === 'object' && payload && 'error' in payload ? String(payload.error) : `Erro ${response.status}`
+    const message =
+      typeof payload === 'object' && payload && 'error' in payload ? String(payload.error) : `Erro ${response.status}`
     throw new ApiError(response.status, message)
   }
+
   return payload as T
 }
 
 const upload = <T>(path: string, file: File) => {
   const body = new FormData()
   body.append('file', file)
+
   return request<T>('POST', path, body)
 }
 
@@ -62,10 +69,14 @@ export const api = {
 
   createRole: (guildId: string, input: Partial<Pick<Role, 'name' | 'color' | 'permissions' | 'position'>>) =>
     request<Role>('POST', `/guilds/${guildId}/roles`, input),
-  updateRole: (guildId: string, roleId: string, input: Partial<Pick<Role, 'name' | 'color' | 'permissions' | 'position'>>) =>
-    request<Role>('PATCH', `/guilds/${guildId}/roles/${roleId}`, input),
+  updateRole: (
+    guildId: string,
+    roleId: string,
+    input: Partial<Pick<Role, 'name' | 'color' | 'permissions' | 'position'>>,
+  ) => request<Role>('PATCH', `/guilds/${guildId}/roles/${roleId}`, input),
   /** Swaps the role with the one right above (or below) it. */
-  moveRole: (guildId: string, roleId: string, up: boolean) => request<void>('POST', `/guilds/${guildId}/roles/${roleId}/move`, { up }),
+  moveRole: (guildId: string, roleId: string, up: boolean) =>
+    request<void>('POST', `/guilds/${guildId}/roles/${roleId}/move`, { up }),
   deleteRole: (guildId: string, roleId: string) => request<void>('DELETE', `/guilds/${guildId}/roles/${roleId}`),
 
   /** `max_age` in seconds; 0 (or absent) means no limit, for both. */
@@ -76,14 +87,17 @@ export const api = {
   invites: (guildId: string) => request<Invite[]>('GET', `/guilds/${guildId}/invites`),
   revokeInvite: (code: string) => request<void>('DELETE', `/invites/${enc(code)}`),
 
-  createChannel: (guildId: string, input: { name: string; type?: Channel['type']; topic?: string; position?: number }) =>
-    request<Channel>('POST', `/guilds/${guildId}/channels`, input),
+  createChannel: (
+    guildId: string,
+    input: { name: string; type?: Channel['type']; topic?: string; position?: number },
+  ) => request<Channel>('POST', `/guilds/${guildId}/channels`, input),
   updateChannel: (channelId: string, input: { name?: string; topic?: string; position?: number }) =>
     request<Channel>('PATCH', `/channels/${channelId}`, input),
   deleteChannel: (channelId: string) => request<void>('DELETE', `/channels/${channelId}`),
   setOverwrite: (channelId: string, targetId: string, input: { is_member: boolean; allow: number; deny: number }) =>
     request<void>('PUT', `/channels/${channelId}/overwrites/${targetId}`, input),
-  deleteOverwrite: (channelId: string, targetId: string) => request<void>('DELETE', `/channels/${channelId}/overwrites/${targetId}`),
+  deleteOverwrite: (channelId: string, targetId: string) =>
+    request<void>('DELETE', `/channels/${channelId}/overwrites/${targetId}`),
 
   /** Newest first, at most `limit` (100), older than `before` when given. */
   messages: (channelId: string, before?: string, limit = 50) =>
@@ -92,7 +106,8 @@ export const api = {
     request<Message>('POST', `/channels/${channelId}/messages`, { content, attachments }),
   editMessage: (channelId: string, messageId: string, content: string) =>
     request<Message>('PATCH', `/channels/${channelId}/messages/${messageId}`, { content }),
-  deleteMessage: (channelId: string, messageId: string) => request<void>('DELETE', `/channels/${channelId}/messages/${messageId}`),
+  deleteMessage: (channelId: string, messageId: string) =>
+    request<void>('DELETE', `/channels/${channelId}/messages/${messageId}`),
   react: (channelId: string, messageId: string, emoji: string, on: boolean) =>
     request<void>(on ? 'PUT' : 'DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${enc(emoji)}`),
   typing: (channelId: string) => request<void>('POST', `/channels/${channelId}/typing`),
@@ -106,8 +121,10 @@ export const api = {
   block: (userId: string) => request<void>('PUT', `/blocks/${userId}`),
 
   openDM: (recipientId: string) => request<DM>('POST', '/dms', { recipient_id: recipientId }),
-  createGroup: (recipientIds: string[], name?: string) => request<DM>('POST', '/dms/groups', { recipient_ids: recipientIds, name }),
-  addToGroup: (channelId: string, userIds: string[]) => request<void>('POST', `/dms/${channelId}/recipients`, { recipient_ids: userIds }),
+  createGroup: (recipientIds: string[], name?: string) =>
+    request<DM>('POST', '/dms/groups', { recipient_ids: recipientIds, name }),
+  addToGroup: (channelId: string, userIds: string[]) =>
+    request<void>('POST', `/dms/${channelId}/recipients`, { recipient_ids: userIds }),
   leaveGroup: (channelId: string) => request<void>('DELETE', `/dms/${channelId}/recipients/@me`),
 }
 

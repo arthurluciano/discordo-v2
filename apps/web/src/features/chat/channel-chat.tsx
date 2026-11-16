@@ -41,7 +41,7 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
     if (!log && ready && !failed) openChannel(channelId, fetchPage).catch((cause) => setFailed(errorMessage(cause)))
   }, [channelId, fetchPage, log, ready, failed])
 
-  const permissions = guild ? guild.channels.find((c) => c.id === channelId)?.permissions ?? 0 : ALL
+  const permissions = guild ? (guild.channels.find((c) => c.id === channelId)?.permissions ?? 0) : ALL
 
   const mentionable = useMemo(() => {
     const people = guild
@@ -70,22 +70,49 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
   if (!me) return null
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" onDragOver={onDragOver} onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDragging(false)} onDrop={onDrop}>
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragOver={onDragOver}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDragging(false)}
+      onDrop={onDrop}
+    >
       {failed ? (
         <div className="grid flex-1 place-items-center text-center">
           <div>
             <p className="mb-3 text-sm text-fog">Não foi possível carregar as mensagens: {failed}</p>
-            <Button variant="secondary" size="sm" onClick={() => setFailed(null)}>Tentar de novo</Button>
+            <Button variant="secondary" size="sm" onClick={() => setFailed(null)}>
+              Tentar de novo
+            </Button>
           </div>
         </div>
       ) : (
-        <Transcript log={log} title={title} isDM={!guildId} meId={me.id} people={people} colors={colors} canReact={has(permissions, Permission.AddReactions)} canManage={has(permissions, Permission.ManageMessages)} onLoadOlder={loadMore} />
+        <Transcript
+          log={log}
+          title={title}
+          isDM={!guildId}
+          meId={me.id}
+          people={people}
+          colors={colors}
+          canReact={has(permissions, Permission.AddReactions)}
+          canManage={has(permissions, Permission.ManageMessages)}
+          onLoadOlder={loadMore}
+        />
       )}
       <TypingIndicator channelId={channelId} meId={me.id} people={people} />
-      <Composer channelId={channelId} placeholder={guildId ? `Conversar em #${title}` : `Conversar com ${title}`} canSend={has(permissions, Permission.SendMessages)} canAttach={canAttach} uploads={uploads} mentionable={mentionable} />
+      <Composer
+        channelId={channelId}
+        placeholder={guildId ? `Conversar em #${title}` : `Conversar com ${title}`}
+        canSend={has(permissions, Permission.SendMessages)}
+        canAttach={canAttach}
+        uploads={uploads}
+        mentionable={mentionable}
+      />
       {dragging ? (
         <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-xl border-2 border-dashed border-blurple bg-surface-content/90 glass:bg-(--canvas)/90 glass:backdrop-blur-md">
-          <p className="flex items-center gap-2 font-semibold text-snow"><Paperclip aria-hidden />Solte para anexar</p>
+          <p className="flex items-center gap-2 font-semibold text-snow">
+            <Paperclip aria-hidden />
+            Solte para anexar
+          </p>
         </div>
       ) : null}
     </div>
@@ -93,12 +120,26 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
 }
 
 export const ChannelChat = ({ channelId, guildId, title, topic, actions, onBack }: ChannelChatProps) => (
-  <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface-content" aria-label={guildId ? `#${title}` : title}>
+  <section
+    className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface-content"
+    aria-label={guildId ? `#${title}` : title}
+  >
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/5 px-2 md:px-4">
-      <Button variant="ghost" size="icon-sm" onClick={onBack} className="md:hidden" aria-label="Voltar"><ArrowLeft aria-hidden /></Button>
+      <Button variant="ghost" size="icon-sm" onClick={onBack} className="md:hidden" aria-label="Voltar">
+        <ArrowLeft aria-hidden />
+      </Button>
       {guildId ? <Hash aria-hidden className="size-5 shrink-0 text-greyple" /> : null}
       <h1 className="truncate font-bold text-snow">{title}</h1>
-      {topic ? <><span className="mx-2 hidden h-6 w-px bg-white/10 sm:block" /><p className="hidden min-w-0 flex-1 truncate text-xs text-greyple sm:block" title={topic}>{topic}</p></> : <span className="flex-1" />}
+      {topic ? (
+        <>
+          <span className="mx-2 hidden h-6 w-px bg-white/10 sm:block" />
+          <p className="hidden min-w-0 flex-1 truncate text-xs text-greyple sm:block" title={topic}>
+            {topic}
+          </p>
+        </>
+      ) : (
+        <span className="flex-1" />
+      )}
       {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
     <Chat key={channelId} channelId={channelId} guildId={guildId} title={title} />

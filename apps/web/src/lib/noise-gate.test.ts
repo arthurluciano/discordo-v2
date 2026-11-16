@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { blockLevel, CLOSED_GATE, nextGateState, type GateState } from './noise-gate'
 
 const SILENCE = 0.0008
+
 const ROOM_NOISE = 0.006
+
 const SPEECH = 0.06
 
 const feed = (state: GateState, level: number, blocks: number) => {
   let current = state
   for (let block = 0; block < blocks; block += 1) current = nextGateState(current, level)
+
   return current
 }
 

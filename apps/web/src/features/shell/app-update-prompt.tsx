@@ -29,13 +29,25 @@ export const AppUpdatePrompt = () => {
           transition={transition}
           className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-surface-floating p-3 text-snow shadow-2xl glass:glass-panel glass:glass-float glass:rounded-2xl"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-blurple/15 text-blurple-soft"><RefreshCw aria-hidden className="size-4" /></span>
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-blurple/15 text-blurple-soft">
+            <RefreshCw aria-hidden className="size-4" />
+          </span>
           <span className="min-w-0 flex-1 text-sm leading-tight">
             <span className="block font-semibold">Nova versão disponível</span>
             <span className="block text-xs text-greyple">Atualize para usar a mais recente.</span>
           </span>
-          <Button type="button" size="sm" onClick={update} disabled={applying}>{applying ? 'Atualizando…' : 'Atualizar'}</Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => setDismissed(true)} aria-label="Dispensar aviso de atualização"><X aria-hidden /></Button>
+          <Button type="button" size="sm" onClick={update} disabled={applying}>
+            {applying ? 'Atualizando…' : 'Atualizar'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setDismissed(true)}
+            aria-label="Dispensar aviso de atualização"
+          >
+            <X aria-hidden />
+          </Button>
         </motion.div>
       ) : null}
     </AnimatePresence>

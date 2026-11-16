@@ -22,14 +22,20 @@ export const splitMentions = (content: string): (string | { userId: string })[] 
     last = match.index + match[0].length
   }
   if (last < content.length) parts.push(content.slice(last))
+
   return parts
 }
 
 /** The `@word` being typed right before the caret, if any. */
 export const mentionQuery = (text: string, caret: number): { start: number; query: string } | null => {
   const match = /(?:^|\s)@([^\s@<>]*)$/.exec(text.slice(0, caret))
+
   return match ? { start: caret - match[1]!.length - 1, query: match[1]! } : null
 }
 
 export const formatSize = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  bytes < 1024
+    ? `${bytes} B`
+    : bytes < 1024 ** 2
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / 1024 ** 2).toFixed(1)} MB`

@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { isScreenPreset, screenConstraints, screenContentHint, screenEncoding, sendEncodings, updateEncodings } from './presets'
+import {
+  isScreenPreset,
+  screenConstraints,
+  screenContentHint,
+  screenEncoding,
+  sendEncodings,
+  updateEncodings,
+} from './presets'
 
 describe('screen presets', () => {
   it('caps capture at the preset', () => {
     expect(screenConstraints({ resolution: '2160p', fps: 60 })).toEqual({
-      width: { ideal: 3840, max: 3840 }, height: { ideal: 2160, max: 2160 }, frameRate: { ideal: 60, max: 60 },
+      width: { ideal: 3840, max: 3840 },
+      height: { ideal: 2160, max: 2160 },
+      frameRate: { ideal: 60, max: 60 },
     })
   })
 
@@ -47,7 +56,9 @@ describe('simulcast encodings', () => {
 
   it('only adds layers clearly smaller than the video', () => {
     expect(sendEncodings({ maxBitrate: 3_000_000 }, 720).map((e) => e.rid)).toEqual(['l', 'h'])
-    expect(sendEncodings({ maxBitrate: 1_500_000, maxFramerate: 30 }, 480)).toEqual([{ maxBitrate: 1_500_000, maxFramerate: 30 }])
+    expect(sendEncodings({ maxBitrate: 1_500_000, maxFramerate: 30 }, 480)).toEqual([
+      { maxBitrate: 1_500_000, maxFramerate: 30 },
+    ])
     expect(sendEncodings({ maxBitrate: 1_500_000 }, undefined)).toEqual([{ maxBitrate: 1_500_000 }])
   })
 

@@ -26,15 +26,22 @@ const FriendAction = ({ userId, username }: { userId: string; username: string }
     mutationFn: () => (status === RelationshipStatus.Incoming ? api.acceptFriend(userId) : api.addFriend(username)),
   })
   if (status === RelationshipStatus.Blocked) return null
+
   return (
     <>
-      {status === RelationshipStatus.Friend ? <Badge variant="outline"><Check aria-hidden />Amigos</Badge>
-        : status === RelationshipStatus.Outgoing ? <Badge variant="outline">Pedido enviado</Badge>
-          : (
-            <Button type="button" variant="secondary" size="sm" onClick={() => change.mutate()} disabled={change.isPending}>
-              <UserPlus aria-hidden />{status === RelationshipStatus.Incoming ? 'Aceitar amizade' : 'Adicionar amigo'}
-            </Button>
-          )}
+      {status === RelationshipStatus.Friend ? (
+        <Badge variant="outline">
+          <Check aria-hidden />
+          Amigos
+        </Badge>
+      ) : status === RelationshipStatus.Outgoing ? (
+        <Badge variant="outline">Pedido enviado</Badge>
+      ) : (
+        <Button type="button" variant="secondary" size="sm" onClick={() => change.mutate()} disabled={change.isPending}>
+          <UserPlus aria-hidden />
+          {status === RelationshipStatus.Incoming ? 'Aceitar amizade' : 'Adicionar amigo'}
+        </Button>
+      )}
       <FieldError error={change.error} />
     </>
   )
@@ -60,15 +67,30 @@ const ProfileCard = ({ userId, onClose, onEdit }: { userId: string; onClose: () 
       <div className="px-5 pb-5">
         <div className="-mt-10 mb-3 flex items-end justify-between">
           <span className="rounded-full bg-popover ring-4 ring-popover">
-            <Avatar userId={user.id} displayName={displayName(user)} avatarUrl={user.avatar_url} size="large" state={online ? 'online' : 'offline'} ringClass="ring-popover" />
+            <Avatar
+              userId={user.id}
+              displayName={displayName(user)}
+              avatarUrl={user.avatar_url}
+              size="large"
+              state={online ? 'online' : 'offline'}
+              ringClass="ring-popover"
+            />
           </span>
-          {isSelf ? <Button type="button" variant="secondary" size="sm" onClick={onEdit}><Pencil aria-hidden />Editar perfil</Button> : null}
+          {isSelf ? (
+            <Button type="button" variant="secondary" size="sm" onClick={onEdit}>
+              <Pencil aria-hidden />
+              Editar perfil
+            </Button>
+          ) : null}
         </div>
         <h2 className="text-lg font-bold leading-tight text-snow">{displayName(user)}</h2>
         <p className="text-sm font-medium text-greyple">@{user.username}</p>
         {isSelf ? null : (
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/5 pt-4">
-            <Button type="button" size="sm" onClick={() => message.mutate()} disabled={message.isPending}><MessageCircle aria-hidden />Mensagem</Button>
+            <Button type="button" size="sm" onClick={() => message.mutate()} disabled={message.isPending}>
+              <MessageCircle aria-hidden />
+              Mensagem
+            </Button>
             <FriendAction userId={user.id} username={user.username} />
             <FieldError error={message.error} />
           </div>
@@ -92,7 +114,16 @@ export const ProfileViewerProvider = ({ children }: { children: ReactNode }) => 
             <DialogTitle>Perfil</DialogTitle>
             <DialogDescription>Cartão de perfil.</DialogDescription>
           </DialogHeader>
-          {userId ? <ProfileCard userId={userId} onClose={() => setUserId(null)} onEdit={() => { setUserId(null); setEditing(true) }} /> : null}
+          {userId ? (
+            <ProfileCard
+              userId={userId}
+              onClose={() => setUserId(null)}
+              onEdit={() => {
+                setUserId(null)
+                setEditing(true)
+              }}
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
       <EditProfileDialog open={editing} onOpenChange={setEditing} />

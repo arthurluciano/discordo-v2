@@ -16,13 +16,28 @@ import { navigate, usePlace } from './navigation'
 import { useMobilePane, usePaneSlide } from './use-mobile-pane'
 import { FloatingDock, UserDock } from './user-dock'
 
-const GuildMain = ({ guildId, channelId, onBack }: { guildId: string; channelId: string | null; onBack: () => void }) => {
+const GuildMain = ({
+  guildId,
+  channelId,
+  onBack,
+}: {
+  guildId: string
+  channelId: string | null
+  onBack: () => void
+}) => {
   const channel = useStore((s) => s.guilds.find((g) => g.id === guildId)?.channels.find((c) => c.id === channelId))
   const transition = useTransition(EDITORIAL_EASE)
 
   return (
     <AnimatePresence mode="wait" initial={false}>
-      <motion.div key={channel?.id ?? 'none'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transition} className="flex flex-1 overflow-hidden">
+      <motion.div
+        key={channel?.id ?? 'none'}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={transition}
+        className="flex flex-1 overflow-hidden"
+      >
         {!channel ? (
           <div className="grid flex-1 place-items-center text-center">
             <div>
@@ -31,16 +46,26 @@ const GuildMain = ({ guildId, channelId, onBack }: { guildId: string; channelId:
             </div>
           </div>
         ) : channel.type === ChannelType.Voice ? (
-          <ErrorBoundary label="Chamada"><VoiceStage channelId={channel.id} onBack={onBack} /></ErrorBoundary>
+          <ErrorBoundary label="Chamada">
+            <VoiceStage channelId={channel.id} onBack={onBack} />
+          </ErrorBoundary>
         ) : (
           <>
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <ErrorBoundary label="Canal">
-                <ChannelChat channelId={channel.id} guildId={guildId} title={channel.name} topic={channel.topic} onBack={onBack} />
+                <ChannelChat
+                  channelId={channel.id}
+                  guildId={guildId}
+                  title={channel.name}
+                  topic={channel.topic}
+                  onBack={onBack}
+                />
               </ErrorBoundary>
             </div>
             <div className="hidden w-60 shrink-0 border-l border-white/5 lg:block">
-              <ErrorBoundary label="Membros"><MemberList guildId={guildId} /></ErrorBoundary>
+              <ErrorBoundary label="Membros">
+                <MemberList guildId={guildId} />
+              </ErrorBoundary>
             </div>
           </>
         )}
@@ -76,27 +101,52 @@ export const Workspace = () => {
 
   return (
     <>
-      <div ref={paneScope} className="flex h-full overflow-hidden bg-surface-content glass:gap-2 glass:bg-transparent glass:p-2">
-        <div className={cn('flex h-full min-w-0 shrink-0 glass:gap-2', pane === 'content' ? 'max-md:hidden' : 'max-md:flex-1')}>
+      <div
+        ref={paneScope}
+        className="flex h-full overflow-hidden bg-surface-content glass:gap-2 glass:bg-transparent glass:p-2"
+      >
+        <div
+          className={cn(
+            'flex h-full min-w-0 shrink-0 glass:gap-2',
+            pane === 'content' ? 'max-md:hidden' : 'max-md:flex-1',
+          )}
+        >
           {/* `contents` keeps the default layout untouched; glass turns the rail into its own pane. */}
           <div className="contents glass:flex glass:overflow-hidden glass:glass-panel glass:rounded-[1.75rem]">
             <ServerRail activeGuildId={place.kind === 'guild' ? place.guildId : null} />
           </div>
-          <motion.aside key={sidebarKey} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={sidebarTransition} className="flex h-full min-w-0 flex-1 flex-col border-r border-white/10 bg-surface-secondary md:w-60 md:flex-none glass:overflow-hidden glass:glass-panel glass:rounded-[1.75rem]">
+          <motion.aside
+            key={sidebarKey}
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={sidebarTransition}
+            className="flex h-full min-w-0 flex-1 flex-col border-r border-white/10 bg-surface-secondary md:w-60 md:flex-none glass:overflow-hidden glass:glass-panel glass:rounded-[1.75rem]"
+          >
             <div className="dock-clearance flex min-h-0 flex-1 flex-col">
               <ErrorBoundary label="Barra lateral">
-                {place.kind === 'guild' ? <GuildSidebar guildId={place.guildId} channelId={place.channelId} /> : <HomeSidebar dmId={place.dmId} />}
+                {place.kind === 'guild' ? (
+                  <GuildSidebar guildId={place.guildId} channelId={place.channelId} />
+                ) : (
+                  <HomeSidebar dmId={place.dmId} />
+                )}
               </ErrorBoundary>
             </div>
             <UserDock />
           </motion.aside>
         </div>
 
-        <main className={cn('flex min-w-0 flex-1 flex-col overflow-hidden glass:glass-strong glass:glass-panel glass:rounded-[1.75rem]', pane === 'navigation' && 'max-md:hidden')}>
+        <main
+          className={cn(
+            'flex min-w-0 flex-1 flex-col overflow-hidden glass:glass-strong glass:glass-panel glass:rounded-[1.75rem]',
+            pane === 'navigation' && 'max-md:hidden',
+          )}
+        >
           {place.kind === 'guild' ? (
             <GuildMain guildId={place.guildId} channelId={place.channelId} onBack={back} />
           ) : (
-            <ErrorBoundary label="Início"><HomeContent dmId={place.dmId} onBack={back} /></ErrorBoundary>
+            <ErrorBoundary label="Início">
+              <HomeContent dmId={place.dmId} onBack={back} />
+            </ErrorBoundary>
           )}
         </main>
       </div>

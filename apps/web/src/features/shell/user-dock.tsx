@@ -6,7 +6,9 @@ import { VoiceDock } from '@/features/voice/voice-dock'
 import { useIsMobile } from './use-is-mobile'
 
 const DOCK_HEIGHT_PROPERTY = '--dock-height'
+
 const DOCK_HIDDEN = { opacity: 0, y: 32, scale: 0.94 }
+
 const DOCK_SHOWN = { opacity: 1, y: 0, scale: 1 }
 
 const DockContents = () => (
@@ -21,6 +23,7 @@ const DockContents = () => (
 export const UserDock = () => {
   const isMobile = useIsMobile()
   if (isMobile) return null
+
   return (
     <div className="border-t border-white/10 bg-surface-rail glass:m-2 glass:mt-0 glass:rounded-2xl glass:border-0 glass:bg-surface-raised">
       <DockContents />
@@ -37,7 +40,8 @@ const useDockHeight = () => {
     if (!dock || typeof ResizeObserver === 'undefined') return
     const root = document.documentElement
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) root.style.setProperty(DOCK_HEIGHT_PROPERTY, `${entry.borderBoxSize[0]?.blockSize ?? dock.offsetHeight}px`)
+      if (entry)
+        root.style.setProperty(DOCK_HEIGHT_PROPERTY, `${entry.borderBoxSize[0]?.blockSize ?? dock.offsetHeight}px`)
     })
     observer.observe(dock)
     return () => {
@@ -71,5 +75,6 @@ const FloatingDockPanel = () => {
 /** The phone dock: floats above the gesture bar and only shows on navigation screens (it slides away inside a chat). */
 export const FloatingDock = ({ visible }: { visible: boolean }) => {
   const isMobile = useIsMobile()
+
   return <AnimatePresence>{isMobile && visible ? <FloatingDockPanel key="floating-dock" /> : null}</AnimatePresence>
 }

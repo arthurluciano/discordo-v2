@@ -7,7 +7,10 @@ describe('LiveKit track sources', () => {
   it('maps every track name to its source and back', () => {
     const names: TrackName[] = ['mic', 'camera', 'screen', 'screen-audio']
     expect(names.map(sourceOf)).toEqual([
-      Track.Source.Microphone, Track.Source.Camera, Track.Source.ScreenShare, Track.Source.ScreenShareAudio,
+      Track.Source.Microphone,
+      Track.Source.Camera,
+      Track.Source.ScreenShare,
+      Track.Source.ScreenShareAudio,
     ])
     for (const name of names) expect(nameOf(sourceOf(name))).toBe(name)
   })

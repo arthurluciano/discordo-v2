@@ -1,6 +1,13 @@
 import { useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
 
 /** Asks before something destructive; stays open, showing the error, when it fails. */
@@ -13,10 +20,24 @@ type ConfirmDialogProps = {
   onConfirm: () => Promise<unknown>
 }
 
-export const ConfirmDialog = ({ open, onOpenChange, title, description, confirmLabel, onConfirm }: ConfirmDialogProps) => {
+export const ConfirmDialog = ({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+}: ConfirmDialogProps) => {
   const run = useMutation({ mutationFn: onConfirm, onSuccess: () => onOpenChange(false) })
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) run.reset(); onOpenChange(next) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) run.reset()
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -24,7 +45,9 @@ export const ConfirmDialog = ({ open, onOpenChange, title, description, confirmL
         </DialogHeader>
         <FieldError error={run.error} />
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
           <Button type="button" variant="destructive" onClick={() => run.mutate()} loading={run.isPending}>
             {confirmLabel}
           </Button>

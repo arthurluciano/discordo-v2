@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type FakeWorker = EventTarget & { state: ServiceWorkerState; postMessage: ReturnType<typeof vi.fn> }
 
-const fakeWorker = (state: ServiceWorkerState): FakeWorker => Object.assign(new EventTarget(), { state, postMessage: vi.fn() })
+const fakeWorker = (state: ServiceWorkerState): FakeWorker =>
+  Object.assign(new EventTarget(), { state, postMessage: vi.fn() })
 
 const fakeRegistration = (overrides: { waiting?: FakeWorker; installing?: FakeWorker } = {}) =>
   Object.assign(new EventTarget(), {
@@ -12,12 +13,15 @@ const fakeRegistration = (overrides: { waiting?: FakeWorker; installing?: FakeWo
   })
 
 let registration = fakeRegistration()
+
 const register = vi.fn(async () => registration)
+
 const container = Object.assign(new EventTarget(), { register, controller: null as object | null })
 
 /** O modulo guarda a versao em espera em estado de modulo: cada teste parte de uma copia limpa. */
 const loadModule = async () => {
   vi.resetModules()
+
   return import('./service-worker')
 }
 
@@ -30,7 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-    Reflect.deleteProperty(navigator, 'serviceWorker')
+  Reflect.deleteProperty(navigator, 'serviceWorker')
 })
 
 describe('registerServiceWorker', () => {

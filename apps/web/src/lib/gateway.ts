@@ -6,9 +6,13 @@ import type { GatewayEvent } from './wire'
 type Listener = (e: GatewayEvent) => void
 
 const listeners = new Set<Listener>()
+
 let socket: WebSocket | null = null
+
 let stopped = true
+
 let attempt = 0
+
 let retry: ReturnType<typeof setTimeout> | undefined
 
 const POLICY_VIOLATION = 1008 // the server's "unauthorized" close
@@ -66,11 +70,13 @@ export const stopGateway = () => {
 export const sendOp = (op: string, d: unknown = {}) => {
   if (socket?.readyState !== WebSocket.OPEN) return false
   socket.send(JSON.stringify({ op, d }))
+
   return true
 }
 
 /** Every event, after the store has applied it. */
 export const onGatewayEvent = (listener: Listener) => {
   listeners.add(listener)
+
   return () => void listeners.delete(listener)
 }

@@ -32,11 +32,35 @@ const buttonVariants = cva(
 )
 
 /** `loading` shows a spinner before the label and disables the button. */
-function Button({ className, variant = 'default', size = 'default', asChild = false, loading = false, disabled, children, ...props }: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants> & { asChild?: boolean; loading?: boolean }) {
+function Button({
+  className,
+  variant = 'default',
+  size = 'default',
+  asChild = false,
+  loading = false,
+  disabled,
+  children,
+  ...props
+}: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants> & { asChild?: boolean; loading?: boolean }) {
   const Comp = asChild ? Slot.Root : 'button'
+
   return (
-    <Comp data-slot="button" data-variant={variant} data-size={size} className={cn(buttonVariants({ variant, size, className }))} disabled={disabled || loading} {...props}>
-      {asChild ? children : <>{loading ? <Spinner aria-hidden /> : null}{children}</>}
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      disabled={disabled || loading}
+      {...props}
+    >
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {loading ? <Spinner aria-hidden /> : null}
+          {children}
+        </>
+      )}
     </Comp>
   )
 }

@@ -27,7 +27,14 @@ export type State = {
 }
 
 export const initialState: State = {
-  status: 'connecting', me: null, guilds: [], dms: [], relationships: [], voice: {}, typing: {}, messages: {},
+  status: 'connecting',
+  me: null,
+  guilds: [],
+  dms: [],
+  relationships: [],
+  voice: {},
+  typing: {},
+  messages: {},
 }
 
 const TYPING_MS = 8000
@@ -36,11 +43,13 @@ const upsert = <T extends { id: string }>(list: T[], item: T) =>
   list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]
 
 const mapGuild = (s: State, guildId: string, fn: (g: Guild) => Guild): State => ({
-  ...s, guilds: s.guilds.map((g) => (g.id === guildId ? fn(g) : g)),
+  ...s,
+  guilds: s.guilds.map((g) => (g.id === guildId ? fn(g) : g)),
 })
 
 const mapMessages = (s: State, channelId: string, fn: (list: Message[]) => Message[]): State => {
   const log = s.messages[channelId]
+
   return log ? { ...s, messages: { ...s.messages, [channelId]: { ...log, list: fn(log.list) } } } : s
 }
 
@@ -48,6 +57,7 @@ const react = (m: Message, emoji: string, userId: string, on: boolean): Message 
   const others = m.reactions.filter((r) => r.emoji !== emoji)
   const users = (m.reactions.find((r) => r.emoji === emoji)?.users ?? []).filter((u) => u !== userId)
   if (on) users.push(userId)
+
   return { ...m, reactions: users.length ? [...others, { emoji, users }] : others }
 }
 
@@ -57,16 +67,24 @@ const patchUser = (s: State, u: User): State => ({
   guilds: s.guilds.map((g) => ({ ...g, members: g.members.map((m) => (m.user.id === u.id ? { ...m, user: u } : m)) })),
   dms: s.dms.map((d) => ({ ...d, recipients: d.recipients.map((r) => (r.id === u.id ? u : r)) })),
   relationships: s.relationships.map((r) => (r.user.id === u.id ? { ...r, user: u } : r)),
-  messages: Object.fromEntries(Object.entries(s.messages).map(([c, log]) => [
-    c, { ...log, list: log.list.map((m) => (m.author.id === u.id ? { ...m, author: u } : m)) },
-  ])),
+  messages: Object.fromEntries(
+    Object.entries(s.messages).map(([c, log]) => [
+      c,
+      { ...log, list: log.list.map((m) => (m.author.id === u.id ? { ...m, author: u } : m)) },
+    ]),
+  ),
 })
 
 export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
   switch (e.t) {
     case 'READY':
       return {
-        ...initialState, status: 'ready', me: e.d.user, guilds: e.d.guilds, dms: e.d.dms, relationships: e.d.relationships,
+        ...initialState,
+        status: 'ready',
+        me: e.d.user,
+        guilds: e.d.guilds,
+        dms: e.d.dms,
+        relationships: e.d.relationships,
         voice: Object.fromEntries(e.d.voice_states.map((v) => [v.user_id, v])),
       }
     case 'GUILD_SYNC': {
@@ -86,7 +104,8 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
     }
     case 'MEMBER_ADD':
       return mapGuild(s, e.d.guild_id, (g) => ({
-        ...g, members: [...g.members.filter((m) => m.user.id !== e.d.member.user.id), e.d.member],
+        ...g,
+        members: [...g.members.filter((m) => m.user.id !== e.d.member.user.id), e.d.member],
       }))
     case 'MEMBER_REMOVE':
       return mapGuild(s, e.d.guild_id, (g) => ({ ...g, members: g.members.filter((m) => m.user.id !== e.d.user_id) }))
@@ -94,7 +113,8 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
       return {
         ...s,
         guilds: s.guilds.map((g) => ({
-          ...g, members: g.members.map((m) => (m.user.id === e.d.user_id ? { ...m, online: e.d.online } : m)),
+          ...g,
+          members: g.members.map((m) => (m.user.id === e.d.user_id ? { ...m, online: e.d.online } : m)),
         })),
         relationships: s.relationships.map((r) => (r.user.id === e.d.user_id ? { ...r, online: e.d.online } : r)),
       }
@@ -113,10 +133,14 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
     case 'REACTION_REMOVE': {
       const on = e.t === 'REACTION_ADD'
       return mapMessages(s, e.d.channel_id, (list) =>
-        list.map((m) => (m.id === e.d.message_id ? react(m, e.d.emoji, e.d.user_id, on) : m)))
+        list.map((m) => (m.id === e.d.message_id ? react(m, e.d.emoji, e.d.user_id, on) : m)),
+      )
     }
     case 'TYPING_START':
-      return { ...s, typing: { ...s.typing, [e.d.channel_id]: { ...s.typing[e.d.channel_id], [e.d.user_id]: now + TYPING_MS } } }
+      return {
+        ...s,
+        typing: { ...s.typing, [e.d.channel_id]: { ...s.typing[e.d.channel_id], [e.d.user_id]: now + TYPING_MS } },
+      }
     case 'DM_CREATE':
     case 'DM_UPDATE':
       return { ...s, dms: upsert(s.dms, e.d) }
@@ -149,6 +173,7 @@ export const useCallers = (channelId: string) =>
   useStore(useShallow((s) => Object.values(s.voice).filter((v) => v.channel_id === channelId)))
 
 export const getState = useStore.getState
+
 export const setState = (fn: (s: State) => State) => useStore.setState(fn, true)
 
 /** Bumped by every READY: message pages requested before it are stale (the log they belong to is gone). */
@@ -168,6 +193,7 @@ export const reset = (status: State['status']) => setState(() => ({ ...initialSt
 // ---- messages ----
 
 const PAGE = 50
+
 const loading = new Set<string>()
 
 /** Loads the newest messages of a channel, once per channel (later ones arrive by the gateway).
@@ -214,7 +240,10 @@ export const loadOlder = async (channelId: string, fetchPage: (before?: string) 
       const current = s.messages[channelId]
       if (!current) return s
       const older = page.reverse().filter((m) => !current.list.some((c) => c.id === m.id))
-      return { ...s, messages: { ...s.messages, [channelId]: { list: [...older, ...current.list], complete: page.length < PAGE } } }
+      return {
+        ...s,
+        messages: { ...s.messages, [channelId]: { list: [...older, ...current.list], complete: page.length < PAGE } },
+      }
     })
   } finally {
     if (mine === epoch) loading.delete(channelId)

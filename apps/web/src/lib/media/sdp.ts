@@ -13,11 +13,19 @@ export const parseOfferTracks = (sdp: string): Map<string, TrackOwner> => {
     const lines = section.split(/\r?\n/)
     if (/^m=\S+ 0 /.test(lines[0] ?? '')) continue // port 0: rejected or stopped
     if (lines.some((l) => l === 'a=inactive' || l === 'a=recvonly')) continue
-    const mid = lines.find((l) => l.startsWith('a=mid:'))?.slice(6).trim()
-    const msid = lines.find((l) => l.startsWith('a=msid:'))?.slice(7).trim().split(/\s+/)
+    const mid = lines
+      .find((l) => l.startsWith('a=mid:'))
+      ?.slice(6)
+      .trim()
+    const msid = lines
+      .find((l) => l.startsWith('a=msid:'))
+      ?.slice(7)
+      .trim()
+      .split(/\s+/)
     const [userId, name] = msid ?? []
     if (mid && userId && name && TRACK_NAMES.includes(name)) tracks.set(mid, { userId, name: name as TrackName })
   }
+
   return tracks
 }
 
@@ -25,5 +33,6 @@ export const parseOfferTracks = (sdp: string): Map<string, TrackOwner> => {
 export const nameTracks = (published: Iterable<{ mid: string | null; name: TrackName }>): Record<string, TrackName> => {
   const names: Record<string, TrackName> = {}
   for (const { mid, name } of published) if (mid) names[mid] = name
+
   return names
 }

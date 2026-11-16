@@ -10,6 +10,7 @@ import type { Attachment, User } from '@/lib/wire'
 import { formatSize, mentionQuery } from './format'
 
 const MAX_UPLOAD = 25 * 1024 * 1024
+
 const TYPING_EVERY_MS = 6000
 
 type Upload = { key: number; file: File; attachment?: Attachment; error?: string }
@@ -19,19 +20,27 @@ let nextKey = 0
 /** Files being attached to the next message. Lives in the chat so drops anywhere on it land here. */
 export const useUploads = (channelId: string) => {
   const [items, setItems] = useState<Upload[]>([])
-  const patch = (key: number, change: Partial<Upload>) => setItems((list) => list.map((u) => (u.key === key ? { ...u, ...change } : u)))
-  const add = useCallback((files: Iterable<File>) => {
-    for (const file of files) {
-      const key = nextKey++
-      if (file.size > MAX_UPLOAD) {
-        setItems((list) => [...list, { key, file, error: 'Maior que 25 MB' }])
-        continue
+  const patch = (key: number, change: Partial<Upload>) =>
+    setItems((list) => list.map((u) => (u.key === key ? { ...u, ...change } : u)))
+  const add = useCallback(
+    (files: Iterable<File>) => {
+      for (const file of files) {
+        const key = nextKey++
+        if (file.size > MAX_UPLOAD) {
+          setItems((list) => [...list, { key, file, error: 'Maior que 25 MB' }])
+          continue
+        }
+        setItems((list) => [...list, { key, file }])
+        api.uploadAttachment(channelId, file).then(
+          (attachment) => patch(key, { attachment }),
+          (cause) => patch(key, { error: errorMessage(cause) }),
+        )
       }
-      setItems((list) => [...list, { key, file }])
-      api.uploadAttachment(channelId, file).then((attachment) => patch(key, { attachment }), (cause) => patch(key, { error: errorMessage(cause) }))
-    }
-  }, [channelId])
+    },
+    [channelId],
+  )
   const remove = (key: number) => setItems((list) => list.filter((u) => u.key !== key))
+
   return { items, add, remove, clear: () => setItems([]) }
 }
 
@@ -62,13 +71,18 @@ export const Composer = ({ channelId, placeholder, canSend, canAttach, uploads, 
   const suggestions = useMemo(() => {
     if (!query) return []
     const q = query.query.toLowerCase()
-    return mentionable.filter((p) => p.name.toLowerCase().includes(q) || p.user.username.toLowerCase().includes(q)).slice(0, 8)
+    return mentionable
+      .filter((p) => p.name.toLowerCase().includes(q) || p.user.username.toLowerCase().includes(q))
+      .slice(0, 8)
   }, [query, mentionable])
 
   if (!canSend) {
     return (
       <div className="shrink-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        <p className="flex items-center gap-2 rounded-lg bg-surface-raised px-4 py-3 text-sm text-greyple"><Lock aria-hidden className="size-4" />Você não tem permissão para enviar mensagens neste canal.</p>
+        <p className="flex items-center gap-2 rounded-lg bg-surface-raised px-4 py-3 text-sm text-greyple">
+          <Lock aria-hidden className="size-4" />
+          Você não tem permissão para enviar mensagens neste canal.
+        </p>
       </div>
     )
   }
@@ -144,14 +158,36 @@ export const Composer = ({ channelId, placeholder, canSend, canAttach, uploads, 
   }
 
   return (
-    <form onSubmit={submit} className="relative shrink-0 bg-surface-content px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+    <form
+      onSubmit={submit}
+      className="relative shrink-0 bg-surface-content px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+    >
       {suggestions.length ? (
-        <ul role="listbox" aria-label="Mencionar" className="absolute inset-x-4 bottom-full mb-1 overflow-hidden rounded-lg bg-popover p-1 shadow-md ring-1 ring-foreground/10">
+        <ul
+          role="listbox"
+          aria-label="Mencionar"
+          className="absolute inset-x-4 bottom-full mb-1 overflow-hidden rounded-lg bg-popover p-1 shadow-md ring-1 ring-foreground/10"
+        >
           {suggestions.map((p, i) => (
             <li key={p.user.id} role="option" aria-selected={i === highlight}>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertMention(p.user.id)} onMouseEnter={() => setHighlight(i)} className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm', i === highlight && 'bg-surface-hover')}>
-                <Avatar userId={p.user.id} displayName={p.name} avatarUrl={p.user.avatar_url} ringClass="ring-popover" />
-                <span className="truncate font-medium text-snow">{p.name}</span><span className="truncate text-xs text-greyple">@{p.user.username}</span>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertMention(p.user.id)}
+                onMouseEnter={() => setHighlight(i)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                  i === highlight && 'bg-surface-hover',
+                )}
+              >
+                <Avatar
+                  userId={p.user.id}
+                  displayName={p.name}
+                  avatarUrl={p.user.avatar_url}
+                  ringClass="ring-popover"
+                />
+                <span className="truncate font-medium text-snow">{p.name}</span>
+                <span className="truncate text-xs text-greyple">@{p.user.username}</span>
               </button>
             </li>
           ))}
@@ -162,10 +198,33 @@ export const Composer = ({ channelId, placeholder, canSend, canAttach, uploads, 
         {uploads.items.length ? (
           <ul className="flex flex-wrap gap-2 border-b border-white/5 p-2">
             {uploads.items.map((u) => (
-              <li key={u.key} className={cn('flex max-w-56 items-center gap-2 rounded-md bg-surface-secondary py-1 pl-2 pr-1 text-xs', u.error && 'ring-1 ring-destructive')}>
-                {u.attachment || u.error ? <FileText aria-hidden className="size-4 shrink-0 text-greyple" /> : <Spinner className="shrink-0" />}
-                <span className="min-w-0"><span className="block truncate text-snow">{u.file.name}</span><span className={u.error ? 'text-destructive' : 'text-greyple'}>{u.error ?? formatSize(u.file.size)}</span></span>
-                <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remover ${u.file.name}`} onClick={() => uploads.remove(u.key)}><X aria-hidden /></Button>
+              <li
+                key={u.key}
+                className={cn(
+                  'flex max-w-56 items-center gap-2 rounded-md bg-surface-secondary py-1 pl-2 pr-1 text-xs',
+                  u.error && 'ring-1 ring-destructive',
+                )}
+              >
+                {u.attachment || u.error ? (
+                  <FileText aria-hidden className="size-4 shrink-0 text-greyple" />
+                ) : (
+                  <Spinner className="shrink-0" />
+                )}
+                <span className="min-w-0">
+                  <span className="block truncate text-snow">{u.file.name}</span>
+                  <span className={u.error ? 'text-destructive' : 'text-greyple'}>
+                    {u.error ?? formatSize(u.file.size)}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Remover ${u.file.name}`}
+                  onClick={() => uploads.remove(u.key)}
+                >
+                  <X aria-hidden />
+                </Button>
               </li>
             ))}
           </ul>
@@ -173,11 +232,30 @@ export const Composer = ({ channelId, placeholder, canSend, canAttach, uploads, 
         <div className="flex items-end gap-1 px-2 py-1">
           {canAttach ? (
             <>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Anexar arquivo" onClick={() => filePicker.current?.click()}><Paperclip aria-hidden /></Button>
-              <input ref={filePicker} type="file" multiple hidden onChange={(e) => { uploads.add(e.target.files ?? []); e.target.value = '' }} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Anexar arquivo"
+                onClick={() => filePicker.current?.click()}
+              >
+                <Paperclip aria-hidden />
+              </Button>
+              <input
+                ref={filePicker}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  uploads.add(e.target.files ?? [])
+                  e.target.value = ''
+                }}
+              />
             </>
           ) : null}
-          <label className="sr-only" htmlFor={`composer-${channelId}`}>{placeholder}</label>
+          <label className="sr-only" htmlFor={`composer-${channelId}`}>
+            {placeholder}
+          </label>
           <Textarea
             ref={input}
             id={`composer-${channelId}`}
@@ -190,10 +268,14 @@ export const Composer = ({ channelId, placeholder, canSend, canAttach, uploads, 
             placeholder={placeholder}
             className="max-h-48 min-h-10 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 focus-visible:ring-0"
           />
-          <Button type="submit" size="icon-sm" disabled={!canSubmit} aria-label="Enviar mensagem"><SendHorizontal aria-hidden /></Button>
+          <Button type="submit" size="icon-sm" disabled={!canSubmit} aria-label="Enviar mensagem">
+            <SendHorizontal aria-hidden />
+          </Button>
         </div>
       </div>
-      <p className="mt-1 px-1 text-[0.65rem] text-greyple">{error ? <span className="text-destructive">{error}</span> : 'Enter envia · Shift + Enter quebra a linha'}</p>
+      <p className="mt-1 px-1 text-[0.65rem] text-greyple">
+        {error ? <span className="text-destructive">{error}</span> : 'Enter envia · Shift + Enter quebra a linha'}
+      </p>
     </form>
   )
 }

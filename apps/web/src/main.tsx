@@ -21,14 +21,14 @@ if (!container) throw new Error('Elemento #root nao existe no index.html')
 createRoot(container).render(
   <StrictMode>
     <ThemeProvider>
-    <MotionConfig reducedMotion="user">
-      <TooltipProvider>
-        <QueryClientProvider client={queryClient}>
-          <App />
-          <AppUpdatePrompt />
-        </QueryClientProvider>
-      </TooltipProvider>
-    </MotionConfig>
+      <MotionConfig reducedMotion="user">
+        <TooltipProvider>
+          <QueryClientProvider client={queryClient}>
+            <App />
+            <AppUpdatePrompt />
+          </QueryClientProvider>
+        </TooltipProvider>
+      </MotionConfig>
     </ThemeProvider>
   </StrictMode>,
 )

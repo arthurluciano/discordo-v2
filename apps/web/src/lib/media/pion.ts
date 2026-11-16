@@ -8,20 +8,24 @@ import { nameTracks, parseOfferTracks } from './sdp'
 import type { RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
 const GATHER_TIMEOUT_MS = 3_000
+
 const ANSWER_TIMEOUT_MS = 10_000
 
 /** Resolves once the local description has all its candidates (or after a timeout, with what it has). */
-const gathered = (pc: RTCPeerConnection) => new Promise<void>((resolve) => {
-  if (pc.iceGatheringState === 'complete') return resolve()
-  const done = () => {
-    clearTimeout(timer)
-    pc.removeEventListener('icegatheringstatechange', check)
-    resolve()
-  }
-  const check = () => { if (pc.iceGatheringState === 'complete') done() }
-  const timer = setTimeout(done, GATHER_TIMEOUT_MS)
-  pc.addEventListener('icegatheringstatechange', check)
-})
+const gathered = (pc: RTCPeerConnection) =>
+  new Promise<void>((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve()
+    const done = () => {
+      clearTimeout(timer)
+      pc.removeEventListener('icegatheringstatechange', check)
+      resolve()
+    }
+    const check = () => {
+      if (pc.iceGatheringState === 'complete') done()
+    }
+    const timer = setTimeout(done, GATHER_TIMEOUT_MS)
+    pc.addEventListener('icegatheringstatechange', check)
+  })
 
 const applyEncoding = async (sender: RTCRtpSender, encoding: Encoding | undefined) => {
   if (!encoding) return
@@ -54,7 +58,9 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   const reportState = () => {
     if (closed) return
     const states = [pub, sub].flatMap((pc) => (pc ? [pc.connectionState] : []))
-    events.onState(states.includes('failed') ? 'failed' : states.every((s) => s === 'connected') ? 'connected' : 'connecting')
+    events.onState(
+      states.includes('failed') ? 'failed' : states.every((s) => s === 'connected') ? 'connected' : 'connecting',
+    )
   }
 
   // The server's SDPs carry its own candidates (public IP, one UDP port): no STUN/TURN needed.
@@ -84,7 +90,9 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
 
   // Serialized: a new offer only after the previous answer was applied.
   const negotiate = () => {
-    pubQueue = pubQueue.then(offer).catch((cause) => { if (!closed) events.onError(`Falha ao negociar o envio: ${message(cause)}`) })
+    pubQueue = pubQueue.then(offer).catch((cause) => {
+      if (!closed) events.onError(`Falha ao negociar o envio: ${message(cause)}`)
+    })
     return pubQueue
   }
 
@@ -117,7 +125,10 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
       // simulcast layers were sized for the old resolution, and viewers get a fresh stream right away.
       const recodec = track?.kind === 'video' && published.has(name) && publishedWith.get(name) !== key
       // Probed before anything else so the rest stays synchronous (no offer can slip in between).
-      const codecs = track?.kind === 'video' && (!published.has(name) || recodec) ? await videoCodecs(probeFor(track, encoding?.maxBitrate), encoding?.codec) : null
+      const codecs =
+        track?.kind === 'video' && (!published.has(name) || recodec)
+          ? await videoCodecs(probeFor(track, encoding?.maxBitrate), encoding?.codec)
+          : null
       if (closed) return
       let current = published.get(name)
       if (!track || recodec) {
@@ -136,20 +147,29 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         reportState()
       }
       // Video is simulcast (rids h/m/l, see presets) so the SFU can give each viewer the layer it can take.
-      const encodings = encoding ? sendEncodings(encoding, track.kind === 'video' ? track.getSettings?.().height : undefined) : undefined
+      const encodings = encoding
+        ? sendEncodings(encoding, track.kind === 'video' ? track.getSettings?.().height : undefined)
+        : undefined
       let transceiver: RTCRtpTransceiver
       try {
-        transceiver = pub.addTransceiver(track, { direction: 'sendonly', ...(encodings ? { sendEncodings: encodings } : {}) })
+        transceiver = pub.addTransceiver(track, {
+          direction: 'sendonly',
+          ...(encodings ? { sendEncodings: encodings } : {}),
+        })
       } catch (cause) {
         if (!encoding || encodings?.length === 1) throw cause
-        transceiver = pub.addTransceiver(track, { direction: 'sendonly', sendEncodings: sendEncodings(encoding, undefined) }) // no simulcast here
+        transceiver = pub.addTransceiver(track, {
+          direction: 'sendonly',
+          sendEncodings: sendEncodings(encoding, undefined),
+        }) // no simulcast here
       }
       if (codecs) setCodecs(transceiver, codecs)
       publishedWith.set(name, key)
       published.set(name, transceiver)
       return negotiate()
     },
-    subscribe: (userId, track, on, quality) => void send('rtc_subscribe', { user_id: userId, track, on, ...(quality ? { quality } : {}) }),
+    subscribe: (userId, track, on, quality) =>
+      void send('rtc_subscribe', { user_id: userId, track, on, ...(quality ? { quality } : {}) }),
     getStats: async (name) => (await published.get(name)?.sender.getStats()) ?? null,
     handle: (e) => {
       if (closed) return
@@ -158,7 +178,11 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         onAnswer = null
       } else if (e.t === 'RTC_OFFER') {
         const sdp = e.d.sdp
-        subQueue = subQueue.then(() => answer(sdp)).catch((cause) => { if (!closed) events.onError(`Falha ao negociar a recepção: ${message(cause)}`) })
+        subQueue = subQueue
+          .then(() => answer(sdp))
+          .catch((cause) => {
+            if (!closed) events.onError(`Falha ao negociar a recepção: ${message(cause)}`)
+          })
       }
     },
     close: () => {

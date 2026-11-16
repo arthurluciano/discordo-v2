@@ -6,9 +6,10 @@ import { MOBILE_QUERY } from './use-is-mobile'
 export type MobilePane = 'navigation' | 'content'
 
 const CONTENT_HISTORY_STATE = 'discordo:mobile-content'
+
 const SLIDE_OFFSET_PX = 32
 
-const paneFromHistory = (): MobilePane => window.history.state === CONTENT_HISTORY_STATE ? 'content' : 'navigation'
+const paneFromHistory = (): MobilePane => (window.history.state === CONTENT_HISTORY_STATE ? 'content' : 'navigation')
 
 /** On a phone one pane fits at a time: navigation or content. Opening content pushes a history entry so the
  * system back gesture returns to the list (in the installed PWA it would close the app otherwise). */

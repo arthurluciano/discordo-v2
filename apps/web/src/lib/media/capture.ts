@@ -56,15 +56,21 @@ const withNoiseGate = async (raw: MediaStreamTrack): Promise<Microphone> => {
 }
 
 export const captureMicrophone = async (deviceId: string | null, noiseGate: boolean): Promise<Microphone> => {
-  const stream = await getUserMedia({ echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 'audio', deviceId)
+  const stream = await getUserMedia(
+    { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    'audio',
+    deviceId,
+  )
   const [raw] = stream.getAudioTracks()
   if (!raw) throw new DOMException('no audio track', 'NotFoundError')
+
   return noiseGate ? withNoiseGate(raw) : { track: raw, device: raw, stop: () => raw.stop() }
 }
 
 export const captureCamera = async (deviceId: string | null) => {
   const [track] = (await getUserMedia(CAMERA_CONSTRAINTS, 'video', deviceId)).getVideoTracks()
   if (!track) throw new DOMException('no video track', 'NotFoundError')
+
   return track
 }
 
@@ -82,6 +88,7 @@ export const captureScreen = async (preset: ScreenPreset) => {
   })
   const [video] = stream.getVideoTracks()
   if (!video) throw new DOMException('no video track', 'NotFoundError')
+
   return { video, audio: stream.getAudioTracks()[0] ?? null }
 }
 
@@ -98,6 +105,8 @@ export const captureError = (cause: unknown, kind: CaptureKind): string => {
       : `A permissão para usar ${what} foi negada. Libere o acesso nas configurações do navegador.`
   }
   if (name === 'NotFoundError') return `Nenhum dispositivo encontrado para ${what}.`
-  if (name === 'NotReadableError') return `Não foi possível abrir ${what}: o dispositivo pode estar em uso por outro aplicativo.`
+  if (name === 'NotReadableError')
+    return `Não foi possível abrir ${what}: o dispositivo pode estar em uso por outro aplicativo.`
+
   return `Não foi possível usar ${what}.`
 }

@@ -33,14 +33,47 @@ const DMView = ({ dm, onBack }: { dm: DM; onBack: () => void }) => {
   const actions = (
     <>
       {inCall ? (
-        <Button variant="ghost" size="icon-sm" onClick={voice.leave} aria-label="Sair da chamada" title="Sair da chamada"><PhoneOff className="text-destructive" aria-hidden /></Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={voice.leave}
+          aria-label="Sair da chamada"
+          title="Sair da chamada"
+        >
+          <PhoneOff className="text-destructive" aria-hidden />
+        </Button>
       ) : (
-        <Button variant="ghost" size="icon-sm" onClick={() => voice.join(dm.id)} aria-label="Iniciar chamada" title="Iniciar chamada"><Phone aria-hidden /></Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => voice.join(dm.id)}
+          aria-label="Iniciar chamada"
+          title="Iniciar chamada"
+        >
+          <Phone aria-hidden />
+        </Button>
       )}
       {group ? (
         <>
-          <Button variant="ghost" size="icon-sm" onClick={() => setAdding(true)} disabled={dm.recipients.length >= GROUP_MAX} aria-label="Adicionar membro" title="Adicionar membro"><UserPlus aria-hidden /></Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => setLeaving(true)} aria-label="Sair do grupo" title="Sair do grupo"><LogOut aria-hidden /></Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setAdding(true)}
+            disabled={dm.recipients.length >= GROUP_MAX}
+            aria-label="Adicionar membro"
+            title="Adicionar membro"
+          >
+            <UserPlus aria-hidden />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setLeaving(true)}
+            aria-label="Sair do grupo"
+            title="Sair do grupo"
+          >
+            <LogOut aria-hidden />
+          </Button>
         </>
       ) : null}
     </>
@@ -50,17 +83,25 @@ const DMView = ({ dm, onBack }: { dm: DM; onBack: () => void }) => {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {inCall ? (
         <div className="flex h-1/2 min-h-0 shrink-0 border-b border-white/5">
-          <ErrorBoundary label="Chamada"><VoiceStage channelId={dm.id} onBack={onBack} /></ErrorBoundary>
+          <ErrorBoundary label="Chamada">
+            <VoiceStage channelId={dm.id} onBack={onBack} />
+          </ErrorBoundary>
         </div>
       ) : callers > 0 ? (
         <div className="flex shrink-0 items-center gap-3 border-b border-white/5 bg-spring-green/10 px-4 py-2 text-sm">
           <Phone className="size-4 text-spring-green" aria-hidden />
-          <span className="flex-1 text-fog">{callers === 1 ? '1 pessoa na chamada' : `${callers} pessoas na chamada`}</span>
-          <Button size="sm" onClick={() => voice.join(dm.id)}>Entrar na chamada</Button>
+          <span className="flex-1 text-fog">
+            {callers === 1 ? '1 pessoa na chamada' : `${callers} pessoas na chamada`}
+          </span>
+          <Button size="sm" onClick={() => voice.join(dm.id)}>
+            Entrar na chamada
+          </Button>
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ErrorBoundary label="Conversa"><ChannelChat channelId={dm.id} title={title} actions={actions} onBack={onBack} /></ErrorBoundary>
+        <ErrorBoundary label="Conversa">
+          <ChannelChat channelId={dm.id} title={title} actions={actions} onBack={onBack} />
+        </ErrorBoundary>
       </div>
 
       {group ? (
@@ -101,7 +142,13 @@ const DMScreen = ({ dmId, onBack }: { dmId: string; onBack: () => void }) => {
     else if (seen.current) navigate.home()
   }, [dm])
 
-  if (!dm) return <div className="grid flex-1 place-items-center"><Spinner aria-label="Carregando conversa" /></div>
+  if (!dm)
+    return (
+      <div className="grid flex-1 place-items-center">
+        <Spinner aria-label="Carregando conversa" />
+      </div>
+    )
+
   return <DMView dm={dm} onBack={onBack} />
 }
 

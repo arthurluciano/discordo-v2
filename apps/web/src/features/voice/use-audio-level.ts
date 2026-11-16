@@ -3,6 +3,7 @@ import { useMotionValue, useSpring, type MotionValue } from 'motion/react'
 import { blockLevel } from '@/lib/noise-gate'
 
 const SPRING = { stiffness: 300, damping: 30, mass: 0.2 }
+
 /** RMS below this is silence (~-40 dBFS). */
 const SPEAKING_RMS = 0.01
 

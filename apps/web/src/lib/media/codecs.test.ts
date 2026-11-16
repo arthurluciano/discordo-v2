@@ -9,11 +9,15 @@ const codecs = [
   { mimeType: 'video/AV1' },
   { mimeType: 'video/VP9', sdpFmtpLine: 'profile-id=0' },
 ]
-const order = (hw: string[]) => orderCodecs(codecs, new Set(hw)).map((c) => `${c.mimeType} ${c.sdpFmtpLine ?? ''}`.trim())
+
+const order = (hw: string[]) =>
+  orderCodecs(codecs, new Set(hw)).map((c) => `${c.mimeType} ${c.sdpFmtpLine ?? ''}`.trim())
 
 describe('hardwareCodecs', () => {
   it('trusts what the encoder did over what the browser guessed', async () => {
-    vi.stubGlobal('navigator', { mediaCapabilities: { encodingInfo: async () => ({ supported: true, powerEfficient: false }) } })
+    vi.stubGlobal('navigator', {
+      mediaCapabilities: { encodingInfo: async () => ({ supported: true, powerEfficient: false }) },
+    })
     const probe = { width: 1920, height: 1080, framerate: 30, bitrate: 6e6 }
     expect(await hardwareCodecs(probe)).toEqual(new Set())
     rememberEncoder('AV1', probe, true)

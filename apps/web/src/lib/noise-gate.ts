@@ -16,6 +16,7 @@ const HOLD_BLOCKS = 90
 
 /** Quanto acima do piso a energia precisa subir para abrir, e ate onde pode cair sem fechar. */
 const OPEN_ABOVE_FLOOR = 3.5
+
 const CLOSE_ABOVE_FLOOR = 1.8
 
 /**
@@ -55,14 +56,13 @@ export const blockLevel = (samples: Float32Array) => {
     const sample = samples[index] ?? 0
     sum += sample * sample
   }
+
   return samples.length === 0 ? 0 : Math.sqrt(sum / samples.length)
 }
 
 export const nextGateState = (state: GateState, level: number): GateState => {
   const noiseFloor =
-    level < state.noiseFloor
-      ? level
-      : state.noiseFloor + (level - state.noiseFloor) * FLOOR_RISE_PER_BLOCK
+    level < state.noiseFloor ? level : state.noiseFloor + (level - state.noiseFloor) * FLOOR_RISE_PER_BLOCK
 
   if (state.open) {
     if (level > Math.max(noiseFloor * CLOSE_ABOVE_FLOOR, QUIETEST_SPEECH * 0.6)) {
@@ -75,5 +75,6 @@ export const nextGateState = (state: GateState, level: number): GateState => {
   if (level > Math.max(noiseFloor * OPEN_ABOVE_FLOOR, QUIETEST_SPEECH)) {
     return { noiseFloor, open: true, holdBlocks: HOLD_BLOCKS }
   }
+
   return { ...state, noiseFloor }
 }

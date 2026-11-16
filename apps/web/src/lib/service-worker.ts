@@ -1,11 +1,13 @@
-
 const SERVICE_WORKER_URL = '/sw.js'
+
 const SKIP_WAITING_MESSAGE = { type: 'SKIP_WAITING' } as const
+
 /** O PWA instalado costuma ficar aberto por dias: sem checagem periodica, so veria o deploy novo
  * ao ser fechado e reaberto. */
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 let waitingWorker: ServiceWorker | null = null
+
 const updateListeners = new Set<() => void>()
 
 const publishWaitingWorker = (worker: ServiceWorker) => {
@@ -15,6 +17,7 @@ const publishWaitingWorker = (worker: ServiceWorker) => {
 
 export const subscribeToAppUpdate = (listener: () => void) => {
   updateListeners.add(listener)
+
   return () => {
     updateListeners.delete(listener)
   }

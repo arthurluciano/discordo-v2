@@ -8,6 +8,11 @@ export const useCopy = () => {
     const timer = setTimeout(() => setCopied(false), 2000)
     return () => clearTimeout(timer)
   }, [copied])
-  const copy = (text: string) => navigator.clipboard.writeText(text).then(() => setCopied(true), () => {})
+  const copy = (text: string) =>
+    navigator.clipboard.writeText(text).then(
+      () => setCopied(true),
+      () => {},
+    )
+
   return { copied, copy }
 }

@@ -1,6 +1,7 @@
 // An invite link is /invite/CODE. Logging in goes through Discord and comes back to "/", so the
 // code waits in sessionStorage (this tab only) until there is a session to use it with.
 const KEY = 'discordo-pending-invite'
+
 const PATH = /^\/invite\/([\w-]+)\/?$/
 
 export const inviteLink = (code: string) => `${window.location.origin}/invite/${code}`

@@ -3,10 +3,22 @@
 import { create } from 'zustand'
 import { captureCamera, captureError, captureMicrophone, captureScreen, type Microphone } from '@/lib/media/capture'
 import {
-  CAMERA_ENCODING, DEFAULT_SCREEN_PRESET, isScreenPreset, SCREEN_AUDIO_ENCODING, screenConstraints, screenContentHint,
-  screenEncoding, type ScreenPreset,
+  CAMERA_ENCODING,
+  DEFAULT_SCREEN_PRESET,
+  isScreenPreset,
+  SCREEN_AUDIO_ENCODING,
+  screenConstraints,
+  screenContentHint,
+  screenEncoding,
+  type ScreenPreset,
 } from '@/lib/media/presets'
-import { createTransport, type Quality, type RemoteTrack, type TransportState, type VoiceTransport } from '@/lib/media/transport'
+import {
+  createTransport,
+  type Quality,
+  type RemoteTrack,
+  type TransportState,
+  type VoiceTransport,
+} from '@/lib/media/transport'
 import { sendOp } from '@/lib/gateway'
 import { ALL, has, Permission } from '@/lib/permissions'
 import { getState, type State } from '@/lib/store'
@@ -45,9 +57,13 @@ export type CallState = {
 }
 
 const CONNECT_TIMEOUT_MS = 15_000
+
 const UDP_BLOCKED = 'Não conectou: a porta UDP de mídia do servidor pode estar bloqueada.'
+
 const PREFS_KEY = 'discordo:voice-prefs'
+
 const VOLUMES_KEY = 'discordo:voice-volumes'
+
 const MIC_LOST = 'Seu microfone foi desconectado. Conecte um microfone para voltar a falar.'
 
 const loadPrefs = (): Prefs => {
@@ -62,6 +78,7 @@ const loadPrefs = (): Prefs => {
   } catch {
     // Unavailable or corrupt storage: defaults.
   }
+
   return prefs
 }
 
@@ -71,21 +88,37 @@ const loadVolumes = (): Record<string, number> => {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(VOLUMES_KEY) ?? '{}')
     if (typeof saved !== 'object' || saved === null) return {}
-    return Object.fromEntries(Object.entries(saved).flatMap(([id, v]) => (typeof v === 'number' ? [[id, clampVolume(v)]] : [])))
+    return Object.fromEntries(
+      Object.entries(saved).flatMap(([id, v]) => (typeof v === 'number' ? [[id, clampVolume(v)]] : [])),
+    )
   } catch {
     return {}
   }
 }
 
 const IDLE = {
-  connection: 'idle', error: null, listenOnly: false, mic: null, camera: null, screen: null, remote: [], watching: {}, qualities: {},
+  connection: 'idle',
+  error: null,
+  listenOnly: false,
+  mic: null,
+  camera: null,
+  screen: null,
+  remote: [],
+  watching: {},
+  qualities: {},
 } as const satisfies Partial<CallState>
 
 export const useCall = create<CallState>()(() => ({
-  ...IDLE, channelId: null, selfMuted: false, deafened: false, volumes: loadVolumes(), prefs: loadPrefs(),
+  ...IDLE,
+  channelId: null,
+  selfMuted: false,
+  deafened: false,
+  volumes: loadVolumes(),
+  prefs: loadPrefs(),
 }))
 
 const set = (patch: Partial<CallState>) => useCall.setState(patch)
+
 const call = useCall.getState
 
 /** Our permission bits in a call's channel (a number, so it is safe in a store selector). DMs allow everything. */
@@ -94,27 +127,38 @@ export const callPermissions = (s: State, channelId: string) => {
     const channel = guild.channels.find((c) => c.id === channelId)
     if (channel) return channel.permissions
   }
+
   return ALL
 }
 
 // ---- private session state ----
 
 let transport: VoiceTransport | null = null
+
 let microphone: Microphone | null = null
+
 let screenAudio: MediaStreamTrack | null = null
+
 /** Join sent, VOICE_READY not received yet. */
 let pendingJoin: string | null = null
+
 /** Bumped whenever the media session is torn down, so late async work knows it is stale. */
 let generation = 0
+
 let timer: ReturnType<typeof setTimeout> | undefined
+
 let mediaState: TransportState = 'connecting'
+
 let micDone = false
+
 let everConnected = false
+
 /** The microphone was unplugged and no other one could be opened yet. */
 let micLost = false
 
 /** Effective mute: our own choice, deafened, or listen-only. */
 export const isMuted = (s: CallState) => s.selfMuted || s.deafened || s.listenOnly
+
 const muted = () => isMuted(call())
 
 const sendVoiceState = () => void sendOp('voice_state', { muted: muted(), deafened: call().deafened })
@@ -149,7 +193,8 @@ const start = (channelId: string) => {
   set({ ...IDLE, channelId, connection: 'connecting' })
   if (!sendOp('voice_join', { channel_id: channelId })) return fail('Sem conexão com o servidor.')
   timer = setTimeout(() => {
-    if (call().connection === 'connecting') fail(pendingJoin ? 'O servidor não respondeu ao pedido de entrar na chamada.' : UDP_BLOCKED)
+    if (call().connection === 'connecting')
+      fail(pendingJoin ? 'O servidor não respondeu ao pedido de entrar na chamada.' : UDP_BLOCKED)
   }, CONNECT_TIMEOUT_MS)
 }
 
@@ -207,13 +252,17 @@ const onVoiceReady = (d: GatewayEvents['VOICE_READY']) => {
   const gen = ++generation
   mediaState = 'connecting'
   const t = createTransport(d.connection, sendOp, {
-    onRemoteTracks: (remote) => { if (gen === generation) set({ remote }) },
+    onRemoteTracks: (remote) => {
+      if (gen === generation) set({ remote })
+    },
     onState: (s) => {
       if (gen !== generation) return
       mediaState = s
       sync()
     },
-    onError: (error) => { if (gen === generation) set({ error }) },
+    onError: (error) => {
+      if (gen === generation) set({ error })
+    },
   })
   if (!t) return fail(`Este app não suporta o tipo de conexão de mídia do servidor ("${d.connection.kind}").`)
   transport = t
@@ -293,7 +342,9 @@ export const setCamera = async (on: boolean) => {
   try {
     const track = await captureCamera(call().prefs.camera)
     if (gen !== generation) return track.stop()
-    track.addEventListener('ended', () => { if (call().camera === track) void setCamera(false) })
+    track.addEventListener('ended', () => {
+      if (call().camera === track) void setCamera(false)
+    })
     set({ camera: track, error: null })
     await t.publish('camera', track, CAMERA_ENCODING)
   } catch (cause) {
@@ -328,7 +379,9 @@ export const startScreen = async () => {
     }
     video.contentHint = screenContentHint(preset)
     // The browser's own "stop sharing" button ends the track.
-    video.addEventListener('ended', () => { if (call().screen === video) void stopScreen() })
+    video.addEventListener('ended', () => {
+      if (call().screen === video) void stopScreen()
+    })
     screenAudio = audio
     set({ screen: video, error: null })
     await t.publish('screen', video, screenEncoding(preset))
@@ -353,7 +406,9 @@ export const switchScreen = async () => {
       return
     }
     video.contentHint = screenContentHint(preset)
-    video.addEventListener('ended', () => { if (call().screen === video) void stopScreen() })
+    video.addEventListener('ended', () => {
+      if (call().screen === video) void stopScreen()
+    })
     const oldAudio = screenAudio
     screenAudio = audio
     set({ screen: video, error: null })
@@ -365,7 +420,8 @@ export const switchScreen = async () => {
     oldAudio?.stop()
   } catch (cause) {
     // Closing the picker keeps the current share.
-    if (!(cause instanceof DOMException && cause.name === 'NotAllowedError')) set({ error: captureError(cause, 'screen') })
+    if (!(cause instanceof DOMException && cause.name === 'NotAllowedError'))
+      set({ error: captureError(cause, 'screen') })
   }
 }
 
@@ -449,7 +505,9 @@ export const setDevice = async (kind: 'input' | 'output' | 'camera', deviceId: s
   try {
     const track = await captureCamera(deviceId)
     if (call().camera !== old) return track.stop()
-    track.addEventListener('ended', () => { if (call().camera === track) void setCamera(false) })
+    track.addEventListener('ended', () => {
+      if (call().camera === track) void setCamera(false)
+    })
     await t.publish('camera', track, CAMERA_ENCODING)
     old.stop()
     set({ camera: track })

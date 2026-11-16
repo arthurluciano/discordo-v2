@@ -54,9 +54,15 @@ export type Message = {
   reactions: Reaction[]
 }
 
-export type DM = { id: string; type: typeof ChannelType.DM | typeof ChannelType.Group; name: string; recipients: User[] }
+export type DM = {
+  id: string
+  type: typeof ChannelType.DM | typeof ChannelType.Group
+  name: string
+  recipients: User[]
+}
 
 export const RelationshipStatus = { None: 0, Friend: 1, Incoming: 2, Outgoing: 3, Blocked: 4 } as const
+
 export type Relationship = { user: User; status: number; online: boolean }
 
 /** Someone in a call. An empty `channel_id` means they left. `tracks` are what they publish. */
@@ -74,11 +80,25 @@ export type TrackName = 'mic' | 'screen-audio' | 'camera' | 'screen'
 /** How to reach the call's media: "pion" signals over the gateway; "livekit" connects to `url` with `token`. */
 export type MediaConnection = { kind: string; url?: string; token?: string }
 
-export type Invite = { code: string; guild_id: string; creator_id: string; max_uses: number; uses: number; expires_at: string | null; creator?: User }
+export type Invite = {
+  code: string
+  guild_id: string
+  creator_id: string
+  max_uses: number
+  uses: number
+  expires_at: string | null
+  creator?: User
+}
 
 export type Ban = { user: User }
 
-export type Ready = { user: User; guilds: Guild[]; dms: DM[]; relationships: Relationship[]; voice_states: VoiceState[] }
+export type Ready = {
+  user: User
+  guilds: Guild[]
+  dms: DM[]
+  relationships: Relationship[]
+  voice_states: VoiceState[]
+}
 
 /** Every gateway event the client handles, by type. */
 export type GatewayEvents = {

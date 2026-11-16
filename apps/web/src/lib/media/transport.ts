@@ -39,27 +39,29 @@ export interface VoiceTransport {
 type Factory = (send: SendOp, events: TransportEvents, connection: MediaConnection) => VoiceTransport
 
 /** Loads a transport's module on first use, queueing calls until then (calls keep their order). */
-const lazy = (load: () => Promise<Factory>): Factory => (send, events, connection) => {
-  let closed = false
-  const ready = load().then(
-    (create) => (closed ? null : create(send, events, connection)),
-    () => {
-      events.onError('Não foi possível carregar o módulo de mídia. Recarregue a página.')
-      events.onState('failed')
-      return null
-    },
-  )
-  return {
-    publish: (name, track, encoding) => ready.then((t) => t?.publish(name, track, encoding)),
-    subscribe: (...args) => void ready.then((t) => t?.subscribe(...args)),
-    handle: (event) => void ready.then((t) => t?.handle(event)),
-    getStats: (name) => ready.then((t) => t?.getStats?.(name) ?? null),
-    close: () => {
-      closed = true
-      void ready.then((t) => t?.close())
-    },
+const lazy =
+  (load: () => Promise<Factory>): Factory =>
+  (send, events, connection) => {
+    let closed = false
+    const ready = load().then(
+      (create) => (closed ? null : create(send, events, connection)),
+      () => {
+        events.onError('Não foi possível carregar o módulo de mídia. Recarregue a página.')
+        events.onState('failed')
+        return null
+      },
+    )
+    return {
+      publish: (name, track, encoding) => ready.then((t) => t?.publish(name, track, encoding)),
+      subscribe: (...args) => void ready.then((t) => t?.subscribe(...args)),
+      handle: (event) => void ready.then((t) => t?.handle(event)),
+      getStats: (name) => ready.then((t) => t?.getStats?.(name) ?? null),
+      close: () => {
+        closed = true
+        void ready.then((t) => t?.close())
+      },
+    }
   }
-}
 
 const TRANSPORTS: Record<string, Factory> = {
   pion: createPionTransport,
@@ -68,5 +70,9 @@ const TRANSPORTS: Record<string, Factory> = {
 }
 
 /** Null when this client does not know the kind. */
-export const createTransport = (connection: MediaConnection, send: SendOp, events: TransportEvents): VoiceTransport | null =>
+export const createTransport = (
+  connection: MediaConnection,
+  send: SendOp,
+  events: TransportEvents,
+): VoiceTransport | null =>
   Object.hasOwn(TRANSPORTS, connection.kind) ? TRANSPORTS[connection.kind]!(send, events, connection) : null

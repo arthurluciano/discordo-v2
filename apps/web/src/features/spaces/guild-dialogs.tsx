@@ -1,33 +1,56 @@
 // The guild header's dialogs: create a channel, invite people.
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Controller, useForm } from 'react-hook-form'
 import { Check, Copy, Hash, UserPlus, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { filled } from '@/lib/forms'
 import { inviteLink } from '@/lib/pending-invite'
 import { useCopy } from '@/lib/use-copy'
 import { cn } from '@/lib/utils'
 import { ChannelType, type Channel, type Guild } from '@/lib/wire'
 import { INVITE_EXPIRY } from './logic'
 
-export const CreateChannelDialog = ({ guildId, open, onOpenChange }: { guildId: string; open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const [name, setName] = useState('')
-  const [type, setType] = useState<Channel['type']>(ChannelType.Text)
+type NewChannel = { name: string; type: Channel['type'] }
+
+const CHANNEL_TYPES = [
+  [ChannelType.Text, 'Texto', Hash],
+  [ChannelType.Voice, 'Voz', Volume2],
+] as const
+
+export const CreateChannelDialog = ({
+  guildId,
+  open,
+  onOpenChange,
+}: {
+  guildId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
+  const { control, register, handleSubmit, reset, formState } = useForm<NewChannel>({
+    defaultValues: { name: '', type: ChannelType.Text },
+    mode: 'onChange',
+  })
+
   const create = useMutation({
-    mutationFn: () => api.createChannel(guildId, { name: name.trim(), type }),
+    mutationFn: ({ name, type }: NewChannel) => api.createChannel(guildId, { name: name.trim(), type }),
     onSuccess: () => {
-      setName('')
+      reset()
       onOpenChange(false)
     },
   })
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    create.mutate()
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -36,22 +59,56 @@ export const CreateChannelDialog = ({ guildId, open, onOpenChange }: { guildId: 
           <DialogTitle>Criar canal</DialogTitle>
           <DialogDescription>Canais de texto para conversar, de voz para chamadas.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de canal">
-            {([[ChannelType.Text, 'Texto', Hash], [ChannelType.Voice, 'Voz', Volume2]] as const).map(([value, label, Icon]) => (
-              <button key={value} type="button" role="radio" aria-checked={type === value} onClick={() => setType(value)} className={cn('flex items-center gap-2 rounded-lg border border-white/10 bg-surface-raised px-3 py-2.5 text-sm text-greyple transition-colors hover:text-snow', type === value && 'border-blurple-soft text-snow')}>
-                <Icon className="size-4" aria-hidden />{label}
-              </button>
-            ))}
-          </div>
+
+        <form onSubmit={handleSubmit((values) => create.mutate(values))} className="space-y-4">
+          <Controller
+            control={control}
+            name="type"
+            render={({ field }) => (
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de canal">
+                {CHANNEL_TYPES.map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={field.value === value}
+                    onClick={() => field.onChange(value)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg border border-white/10 bg-surface-raised px-3 py-2.5 text-sm text-greyple transition-colors hover:text-snow',
+                      field.value === value && 'border-blurple-soft text-snow',
+                    )}
+                  >
+                    <Icon className="size-4" aria-hidden />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          />
+
           <div>
-            <label htmlFor="channel-name" className="section-label">Nome do canal</label>
-            <Input id="channel-name" className="mt-2" placeholder="novo-canal" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <label htmlFor="channel-name" className="section-label">
+              Nome do canal
+            </label>
+            <Input
+              id="channel-name"
+              className="mt-2"
+              placeholder="novo-canal"
+              maxLength={100}
+              autoFocus
+              {...register('name', filled)}
+            />
           </div>
+
           <FieldError error={create.error} />
+
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit" disabled={!name.trim()} loading={create.isPending}>Criar canal</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={!formState.isValid} loading={create.isPending}>
+              Criar canal
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -59,7 +116,15 @@ export const CreateChannelDialog = ({ guildId, open, onOpenChange }: { guildId: 
   )
 }
 
-export const InviteDialog = ({ guild, open, onOpenChange }: { guild: Guild; open: boolean; onOpenChange: (open: boolean) => void }) => {
+export const InviteDialog = ({
+  guild,
+  open,
+  onOpenChange,
+}: {
+  guild: Guild
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
   const [maxUses, setMaxUses] = useState('0')
   const [maxAge, setMaxAge] = useState(String(INVITE_EXPIRY[3].seconds))
   const queryClient = useQueryClient()
@@ -71,36 +136,69 @@ export const InviteDialog = ({ guild, open, onOpenChange }: { guild: Guild; open
   const { copied, copy } = useCopy()
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) create.reset(); onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) create.reset()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent className="bg-surface-content sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><UserPlus className="size-5 text-blurple-soft" aria-hidden />Convidar para {guild.name}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="size-5 text-blurple-soft" aria-hidden />
+            Convidar para {guild.name}
+          </DialogTitle>
           <DialogDescription>Gere um link e envie para quem você quer chamar.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <span className="section-label">Expira em</span>
             <Select value={maxAge} onValueChange={setMaxAge}>
-              <SelectTrigger className="mt-2 w-full" aria-label="Expira em"><SelectValue /></SelectTrigger>
-              <SelectContent>{INVITE_EXPIRY.map((o) => <SelectItem key={o.seconds} value={String(o.seconds)}>{o.label}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="mt-2 w-full" aria-label="Expira em">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INVITE_EXPIRY.map((o) => (
+                  <SelectItem key={o.seconds} value={String(o.seconds)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div>
             <span className="section-label">Máximo de usos</span>
             <Select value={maxUses} onValueChange={setMaxUses}>
-              <SelectTrigger className="mt-2 w-full" aria-label="Máximo de usos"><SelectValue /></SelectTrigger>
-              <SelectContent>{[0, 1, 5, 10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n === 0 ? 'Sem limite' : `${n} ${n === 1 ? 'uso' : 'usos'}`}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="mt-2 w-full" aria-label="Máximo de usos">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[0, 1, 5, 10, 25, 50, 100].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n === 0 ? 'Sem limite' : `${n} ${n === 1 ? 'uso' : 'usos'}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
         </div>
         {link ? (
           <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-surface-raised p-2 pl-3">
             <span className="min-w-0 flex-1 truncate font-mono text-sm text-blurple-soft">{link}</span>
-            <Button type="button" size="sm" onClick={() => void copy(link)}>{copied ? <Check aria-hidden /> : <Copy aria-hidden />}{copied ? 'Copiado' : 'Copiar'}</Button>
+            <Button type="button" size="sm" onClick={() => void copy(link)}>
+              {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+              {copied ? 'Copiado' : 'Copiar'}
+            </Button>
           </div>
         ) : null}
         <FieldError error={create.error} />
-        <Button type="button" variant={link ? 'secondary' : 'default'} onClick={() => create.mutate()} loading={create.isPending}>
+        <Button
+          type="button"
+          variant={link ? 'secondary' : 'default'}
+          onClick={() => create.mutate()}
+          loading={create.isPending}
+        >
           {link ? 'Gerar outro link' : 'Gerar link'}
         </Button>
       </DialogContent>

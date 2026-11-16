@@ -19,6 +19,7 @@ const takeLoginError = () => {
   if (reason === null) return null
   url.searchParams.delete('login_error')
   window.history.replaceState(null, '', url)
+
   return LOGIN_ERRORS[reason] ?? LOGIN_ERRORS.failed
 }
 
@@ -35,25 +36,50 @@ export const LoginScreen = () => {
       </div>
 
       <div className="relative mx-auto grid min-h-full max-w-7xl items-center gap-6 px-4 py-4 sm:py-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(23rem,0.7fr)] lg:gap-10 lg:px-12">
-        <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={enter} className="hidden lg:block">
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={enter}
+          className="hidden lg:block"
+        >
           <div className="flex items-center gap-3">
             <BrandLogo className="size-14" interactive />
-            <div><p className="text-xl font-bold">Discordo</p><p className="text-xs font-semibold uppercase tracking-[0.12em] text-fog">Seu lugar para conversar</p></div>
+            <div>
+              <p className="text-xl font-bold">Discordo</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-fog">Seu lugar para conversar</p>
+            </div>
           </div>
-          <h1 className="display-crushed mt-12 max-w-3xl text-[clamp(3.5rem,6vw,6.5rem)]">Onde seu grupo fica junto.</h1>
-          <p className="mt-7 max-w-xl text-lg leading-8 text-fog">Entre para conversar por texto, voz ou vídeo — com a espontaneidade de estar na mesma sala.</p>
+          <h1 className="display-crushed mt-12 max-w-3xl text-[clamp(3.5rem,6vw,6.5rem)]">
+            Onde seu grupo fica junto.
+          </h1>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-fog">
+            Entre para conversar por texto, voz ou vídeo — com a espontaneidade de estar na mesma sala.
+          </p>
         </motion.section>
 
-        <motion.div variants={FADE_UP} initial="hidden" animate="visible" transition={enter} className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-surface-sidebar p-6 shadow-2xl shadow-black/30 sm:p-8 glass:glass-panel glass:glass-strong glass:rounded-[2rem]">
+        <motion.div
+          variants={FADE_UP}
+          initial="hidden"
+          animate="visible"
+          transition={enter}
+          className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-surface-sidebar p-6 shadow-2xl shadow-black/30 sm:p-8 glass:glass-panel glass:glass-strong glass:rounded-[2rem]"
+        >
           <div className="mb-6 text-center sm:mb-8">
             <BrandLogo className="mx-auto mb-4 size-14 sm:mb-5 sm:size-16 lg:hidden" />
             <h2 className="text-xl font-bold sm:text-2xl">Boas-vindas!</h2>
             <p className="mt-2 text-sm text-fog">Entre com sua conta do Discord para continuar.</p>
           </div>
-          {error ? <Alert variant="destructive" className="mb-5"><AlertDescription>{error}</AlertDescription></Alert> : null}
+          {error ? (
+            <Alert variant="destructive" className="mb-5">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
           {/* A real navigation, not fetch: Discord needs the whole window to authorize. */}
           <Button asChild size="lg" className="w-full">
-            <a href="/auth/discord/login"><DiscordMark className="size-5" />Entrar com Discord</a>
+            <a href="/auth/discord/login">
+              <DiscordMark className="size-5" />
+              Entrar com Discord
+            </a>
           </Button>
           <p className="mt-5 text-center text-xs text-greyple">Usamos só seu nome e avatar do Discord.</p>
         </motion.div>

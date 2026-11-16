@@ -1,16 +1,36 @@
 import { createContext, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type Theme = 'dark' | 'light' | 'system'
+
 export type ResolvedTheme = Exclude<Theme, 'system'>
 
 /** A skin is the look (tokens in design/tokens.css); the color mode applies only where the skin has both.
  * index.html repeats `id`, `modes` and `themeColor` to paint the right skin before React loads. */
 export const SKINS = [
-  { id: 'default', label: 'Discordo', description: 'O visual clássico, escuro.', modes: ['dark'], themeColor: { dark: '#1e1f22' } },
-  { id: 'glass', label: 'Liquid Glass', description: 'Painéis de vidro sobre um fundo colorido.', modes: ['light', 'dark'], themeColor: { dark: '#0b0c1a', light: '#eef0f8' } },
+  {
+    id: 'default',
+    label: 'Discordo',
+    description: 'O visual clássico, escuro.',
+    modes: ['dark'],
+    themeColor: { dark: '#1e1f22' },
+  },
+  {
+    id: 'glass',
+    label: 'Liquid Glass',
+    description: 'Painéis de vidro sobre um fundo colorido.',
+    modes: ['light', 'dark'],
+    themeColor: { dark: '#0b0c1a', light: '#eef0f8' },
+  },
 ] as const satisfies ReadonlyArray<SkinInfo>
 
-type SkinInfo = { id: string; label: string; description: string; modes: readonly [ResolvedTheme, ...ResolvedTheme[]]; themeColor: Partial<Record<ResolvedTheme, string>> }
+type SkinInfo = {
+  id: string
+  label: string
+  description: string
+  modes: readonly [ResolvedTheme, ...ResolvedTheme[]]
+  themeColor: Partial<Record<ResolvedTheme, string>>
+}
+
 export type Skin = (typeof SKINS)[number]['id']
 
 type ThemeContextValue = {
@@ -23,9 +43,16 @@ type ThemeContextValue = {
   setReduceTransparency: (reduce: boolean) => void
 }
 
-const KEYS = { theme: 'discordo-theme', skin: 'discordo-skin', reduceTransparency: 'discordo-reduce-transparency' } as const
+const KEYS = {
+  theme: 'discordo-theme',
+  skin: 'discordo-skin',
+  reduceTransparency: 'discordo-reduce-transparency',
+} as const
+
 const DARK_QUERY = '(prefers-color-scheme: dark)'
+
 const LESS_GLASS_QUERY = '(prefers-reduced-transparency: reduce)'
+
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export const skinOf = (id: Skin): SkinInfo => SKINS.find((s) => s.id === id) ?? SKINS[0]
@@ -34,6 +61,7 @@ export const skinOf = (id: Skin): SkinInfo => SKINS.find((s) => s.id === id) ?? 
 export const resolveTheme = (skin: Skin, theme: Theme, systemDark: boolean): ResolvedTheme => {
   const wanted = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme
   const { modes } = skinOf(skin)
+
   return modes.includes(wanted) ? wanted : modes[0]
 }
 
@@ -55,6 +83,7 @@ const write = (key: string, value: string) => {
 
 const storedTheme = (): Theme => {
   const value = read(KEYS.theme)
+
   return value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
 }
 
@@ -64,7 +93,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [skin, setSkinState] = useState<Skin>(storedSkin)
   const [theme, setThemeState] = useState<Theme>(storedTheme)
   const [reduceTransparency, setReduceState] = useState(() => read(KEYS.reduceTransparency) === 'true')
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveTheme(skin, theme, window.matchMedia(DARK_QUERY).matches))
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
+    resolveTheme(skin, theme, window.matchMedia(DARK_QUERY).matches),
+  )
 
   useLayoutEffect(() => {
     const root = document.documentElement
@@ -77,7 +108,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       root.classList.toggle('dark', resolved === 'dark')
       if (reduceTransparency || lessGlass.matches) root.dataset.transparency = 'reduced'
       else delete root.dataset.transparency
-      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', skinOf(skin).themeColor[resolved] ?? '')
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', skinOf(skin).themeColor[resolved] ?? '')
       setResolvedTheme(resolved)
     }
 
@@ -118,5 +151,6 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 export const useTheme = () => {
   const context = useContext(ThemeContext)
   if (!context) throw new Error('useTheme precisa estar dentro de ThemeProvider')
+
   return context
 }

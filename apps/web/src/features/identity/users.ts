@@ -12,6 +12,7 @@ export const findUser = (s: State, userId: string): User | null => {
     const r = d.recipients.find((x) => x.id === userId)
     if (r) return r
   }
+
   return s.relationships.find((r) => r.user.id === userId)?.user ?? null
 }
 
@@ -22,7 +23,9 @@ export const isOnline = (s: State, userId: string) =>
   s.relationships.some((r) => r.user.id === userId && r.status === RelationshipStatus.Friend && r.online)
 
 export const useUser = (userId: string | null) => useStore((s) => (userId ? findUser(s, userId) : null))
+
 export const useOnline = (userId: string) => useStore((s) => isOnline(s, userId))
+
 export const useMe = () => useStore((s) => s.me)
 
 /** The name to show for a user, in a guild (its nickname) or anywhere else. */

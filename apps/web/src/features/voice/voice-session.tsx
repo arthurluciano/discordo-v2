@@ -3,15 +3,44 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { onGatewayEvent } from '@/lib/gateway'
 import {
-  dismissError, handleGatewayEvent, join, leave, setCamera, setDeafened, setDevice, setMuted, setNoiseGate, setQuality,
-  setScreenPreset, setVolume, startScreen, stopScreen, switchScreen, useCall, watch, type CallState,
+  dismissError,
+  handleGatewayEvent,
+  join,
+  leave,
+  setCamera,
+  setDeafened,
+  setDevice,
+  setMuted,
+  setNoiseGate,
+  setQuality,
+  setScreenPreset,
+  setVolume,
+  startScreen,
+  stopScreen,
+  switchScreen,
+  useCall,
+  watch,
+  type CallState,
 } from './call'
 
 export { isMuted } from './call'
 
 export const voice = {
-  join, leave, setMuted, setDeafened, setCamera, startScreen, switchScreen, stopScreen, setScreenPreset, setDevice, setNoiseGate, watch,
-  setQuality, setVolume, dismissError,
+  join,
+  leave,
+  setMuted,
+  setDeafened,
+  setCamera,
+  startScreen,
+  switchScreen,
+  stopScreen,
+  setScreenPreset,
+  setDevice,
+  setNoiseGate,
+  watch,
+  setQuality,
+  setVolume,
+  dismissError,
 }
 
 /** Part of the call state; a selector returning a new object is compared shallowly. */
@@ -29,7 +58,9 @@ const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
     if (!el) return
     el.srcObject = new MediaStream([track])
     el.play().catch(() => {}) // autoplay is allowed: joining was a click
-    return () => { el.srcObject = null }
+    return () => {
+      el.srcObject = null
+    }
   }, [track])
 
   useEffect(() => {
@@ -43,9 +74,13 @@ const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
     if (!boosted) return
     const context = new AudioContext()
     const node = context.createGain()
-    context.createMediaStreamSource(new MediaStream([track])).connect(node).connect(context.destination)
+    context
+      .createMediaStreamSource(new MediaStream([track]))
+      .connect(node)
+      .connect(context.destination)
     gain.current = node
-    if (sinkId && 'setSinkId' in context) (context as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(sinkId).catch(() => {})
+    if (sinkId && 'setSinkId' in context)
+      (context as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(sinkId).catch(() => {})
     void context.resume()
     return () => {
       gain.current = null
@@ -63,12 +98,26 @@ const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
 
 /** Everyone's audio, at the provider so it keeps playing wherever the user navigates. */
 const CallAudio = () => {
-  const { remote, deafened, output, volumes } = useVoice((s) => ({ remote: s.remote, deafened: s.deafened, output: s.prefs.output, volumes: s.volumes }))
+  const { remote, deafened, output, volumes } = useVoice((s) => ({
+    remote: s.remote,
+    deafened: s.deafened,
+    output: s.prefs.output,
+    volumes: s.volumes,
+  }))
+
   return (
     <div hidden>
-      {remote.filter((r) => r.track.kind === 'audio').map((r) => (
-        <RemoteAudio key={`${r.userId}/${r.name}`} track={r.track} muted={deafened} volume={volumes[r.userId] ?? 1} sinkId={output} />
-      ))}
+      {remote
+        .filter((r) => r.track.kind === 'audio')
+        .map((r) => (
+          <RemoteAudio
+            key={`${r.userId}/${r.name}`}
+            track={r.track}
+            muted={deafened}
+            volume={volumes[r.userId] ?? 1}
+            sinkId={output}
+          />
+        ))}
     </div>
   )
 }

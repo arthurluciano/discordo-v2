@@ -6,7 +6,9 @@ const user = (id: string, display_name = ''): User => ({ id, username: `u${id}`,
 
 describe('dmTitle', () => {
   it('names a 1:1 after the other person', () => {
-    expect(dmTitle({ id: 'd', type: ChannelType.DM, name: '', recipients: [user('me', 'Eu'), user('b', 'Bia')] }, 'me')).toBe('Bia')
+    expect(
+      dmTitle({ id: 'd', type: ChannelType.DM, name: '', recipients: [user('me', 'Eu'), user('b', 'Bia')] }, 'me'),
+    ).toBe('Bia')
   })
   it('uses the group name, else the others joined', () => {
     const recipients = [user('me'), user('b', 'Bia'), user('c')]
@@ -17,7 +19,11 @@ describe('dmTitle', () => {
 })
 
 describe('friendsIn', () => {
-  const rel = (id: string, name: string, status: number, online = false): Relationship => ({ user: user(id, name), status, online })
+  const rel = (id: string, name: string, status: number, online = false): Relationship => ({
+    user: user(id, name),
+    status,
+    online,
+  })
   const all = [
     rel('1', 'Zé', RelationshipStatus.Friend, true),
     rel('2', 'Ana', RelationshipStatus.Friend),

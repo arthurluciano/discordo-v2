@@ -1,16 +1,26 @@
 // A channel's settings: rename, topic, delete, and its permission overwrites.
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
 import { Check, Slash, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
+import { filled } from '@/lib/forms'
 import { CHANNEL_SCOPED, has, Permission } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { ChannelType, type Channel, type Guild } from '@/lib/wire'
@@ -24,7 +34,8 @@ const targetName = (guild: Guild, t: Target) => {
     const m = guild.members.find((x) => x.user.id === t.id)
     return m ? displayName(m.user, m.nickname) : 'Membro'
   }
-  return t.id === guild.id ? '@everyone' : guild.roles.find((r) => r.id === t.id)?.name ?? 'Cargo'
+
+  return t.id === guild.id ? '@everyone' : (guild.roles.find((r) => r.id === t.id)?.name ?? 'Cargo')
 }
 
 const STATES: { state: TriState; label: string; icon: typeof Check; on: string }[] = [
@@ -33,45 +44,81 @@ const STATES: { state: TriState; label: string; icon: typeof Check; on: string }
   { state: 'allow', label: 'Permitir', icon: Check, on: 'bg-spring-green text-black' },
 ]
 
+type ChannelForm = { name: string; topic: string }
+
 const Overview = ({ channel, onDeleted }: { channel: Channel; onDeleted: () => void }) => {
-  const [name, setName] = useState(channel.name)
-  const [topic, setTopic] = useState(channel.topic)
   const [confirming, setConfirming] = useState(false)
-  const save = useMutation({ mutationFn: () => api.updateChannel(channel.id, { name: name.trim(), topic: topic.trim() }) })
+
+  const { register, handleSubmit, reset, formState } = useForm<ChannelForm>({
+    defaultValues: { name: channel.name, topic: channel.topic },
+    mode: 'onChange',
+  })
+
+  const save = useMutation({
+    mutationFn: ({ name, topic }: ChannelForm) =>
+      api.updateChannel(channel.id, { name: name.trim(), topic: topic.trim() }),
+    onSuccess: (_, values) => reset(values),
+  })
+
   const remove = useMutation({ mutationFn: () => api.deleteChannel(channel.id), onSuccess: onDeleted })
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    save.mutate()
-  }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={handleSubmit((values) => save.mutate(values))} className="space-y-4">
       <div>
-        <label htmlFor="channel-settings-name" className="section-label">Nome do canal</label>
-        <Input id="channel-settings-name" className="mt-2" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+        <label htmlFor="channel-settings-name" className="section-label">
+          Nome do canal
+        </label>
+        <Input id="channel-settings-name" className="mt-2" maxLength={100} {...register('name', filled)} />
       </div>
+
       {channel.type === ChannelType.Text ? (
         <div>
-          <label htmlFor="channel-settings-topic" className="section-label">Tópico</label>
-          <Textarea id="channel-settings-topic" className="mt-2" maxLength={1024} placeholder="Do que se fala aqui?" value={topic} onChange={(e) => setTopic(e.target.value)} />
+          <label htmlFor="channel-settings-topic" className="section-label">
+            Tópico
+          </label>
+          <Textarea
+            id="channel-settings-topic"
+            className="mt-2"
+            maxLength={1024}
+            placeholder="Do que se fala aqui?"
+            {...register('topic')}
+          />
         </div>
       ) : null}
+
       <FieldError error={save.error} />
       <FieldError error={remove.error} />
+
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={!name.trim() || (name === channel.name && topic === channel.topic)} loading={save.isPending}>
+        <Button type="submit" disabled={!formState.isDirty || !formState.isValid} loading={save.isPending}>
           Salvar
         </Button>
         <span className="flex-1" />
         {confirming ? (
           <>
-            <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>Cancelar</Button>
-            <Button type="button" variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending} autoFocus>
+            <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+              autoFocus
+            >
               {remove.isPending ? <Spinner aria-hidden /> : <Trash2 aria-hidden />}Excluir de vez
             </Button>
           </>
         ) : (
-          <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/15" onClick={() => setConfirming(true)}><Trash2 aria-hidden />Excluir canal</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-destructive hover:bg-destructive/15"
+            onClick={() => setConfirming(true)}
+          >
+            <Trash2 aria-hidden />
+            Excluir canal
+          </Button>
         )}
       </div>
     </form>
@@ -114,7 +161,14 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
         <ul className="space-y-0.5">
           {targets.map((t) => (
             <li key={t.id}>
-              <button type="button" onClick={() => setSelected(t)} className={cn('w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-greyple hover:bg-surface-hover hover:text-snow', t.id === selected.id && 'bg-surface-active text-snow')}>
+              <button
+                type="button"
+                onClick={() => setSelected(t)}
+                className={cn(
+                  'w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-greyple hover:bg-surface-hover hover:text-snow',
+                  t.id === selected.id && 'bg-surface-active text-snow',
+                )}
+              >
                 {targetName(guild, t)}
               </button>
             </li>
@@ -122,10 +176,30 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
         </ul>
         {roles.length + members.length > 0 ? (
           <Select value="" onValueChange={add}>
-            <SelectTrigger size="sm" className="w-full" aria-label="Adicionar cargo ou membro"><SelectValue placeholder="Adicionar…" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-full" aria-label="Adicionar cargo ou membro">
+              <SelectValue placeholder="Adicionar…" />
+            </SelectTrigger>
             <SelectContent position="popper">
-              {roles.length ? <SelectGroup><SelectLabel>Cargos</SelectLabel>{roles.map((r) => <SelectItem key={r.id} value={`r:${r.id}`}>{r.name}</SelectItem>)}</SelectGroup> : null}
-              {members.length ? <SelectGroup><SelectLabel>Membros</SelectLabel>{members.map((m) => <SelectItem key={m.user.id} value={`m:${m.user.id}`}>{displayName(m.user, m.nickname)}</SelectItem>)}</SelectGroup> : null}
+              {roles.length ? (
+                <SelectGroup>
+                  <SelectLabel>Cargos</SelectLabel>
+                  {roles.map((r) => (
+                    <SelectItem key={r.id} value={`r:${r.id}`}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ) : null}
+              {members.length ? (
+                <SelectGroup>
+                  <SelectLabel>Membros</SelectLabel>
+                  {members.map((m) => (
+                    <SelectItem key={m.user.id} value={`m:${m.user.id}`}>
+                      {displayName(m.user, m.nickname)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ) : null}
             </SelectContent>
           </Select>
         ) : null}
@@ -134,7 +208,11 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
       <div className="min-w-0 space-y-2">
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-snow">{targetName(guild, selected)}</h3>
-          {overwrite ? <Button type="button" size="xs" variant="ghost" onClick={() => clear.mutate()} disabled={clear.isPending}>Limpar</Button> : null}
+          {overwrite ? (
+            <Button type="button" size="xs" variant="ghost" onClick={() => clear.mutate()} disabled={clear.isPending}>
+              Limpar
+            </Button>
+          ) : null}
         </div>
         <FieldError error={change.error ?? clear.error} />
         <ul className="max-h-80 space-y-1 overflow-y-auto pr-1">
@@ -154,7 +232,10 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
                       title={stateLabel}
                       disabled={change.isPending || !has(mine, bit)}
                       onClick={() => current !== state && change.mutate({ bit, state })}
-                      className={cn('grid size-7 place-items-center rounded-md text-greyple transition-colors hover:bg-surface-hover disabled:opacity-40', current === state && on)}
+                      className={cn(
+                        'grid size-7 place-items-center rounded-md text-greyple transition-colors hover:bg-surface-hover disabled:opacity-40',
+                        current === state && on,
+                      )}
                     >
                       <Icon className="size-3.5" aria-hidden />
                     </button>
@@ -169,7 +250,15 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
   )
 }
 
-export const ChannelSettingsDialog = ({ guild, channelId, onClose }: { guild: Guild; channelId: string; onClose: () => void }) => {
+export const ChannelSettingsDialog = ({
+  guild,
+  channelId,
+  onClose,
+}: {
+  guild: Guild
+  channelId: string
+  onClose: () => void
+}) => {
   const me = useMe()
   const channel = guild.channels.find((c) => c.id === channelId)
   useEffect(() => {
@@ -190,8 +279,12 @@ export const ChannelSettingsDialog = ({ guild, channelId, onClose }: { guild: Gu
             <TabsTrigger value="overview">Visão geral</TabsTrigger>
             {has(mine, Permission.ManageRoles) ? <TabsTrigger value="permissions">Permissões</TabsTrigger> : null}
           </TabsList>
-          <TabsContent value="overview" className="pt-2"><Overview channel={channel} onDeleted={onClose} /></TabsContent>
-          <TabsContent value="permissions" className="pt-2"><Overwrites guild={guild} channel={channel} mine={mine} /></TabsContent>
+          <TabsContent value="overview" className="pt-2">
+            <Overview channel={channel} onDeleted={onClose} />
+          </TabsContent>
+          <TabsContent value="permissions" className="pt-2">
+            <Overwrites guild={guild} channel={channel} mine={mine} />
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>

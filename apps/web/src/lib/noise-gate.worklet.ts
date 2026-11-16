@@ -3,6 +3,7 @@ import { blockLevel, CLOSED_GAIN, CLOSED_GATE, nextGateState, type GateState } f
 /** Constantes de suavizacao por amostra: abrir e quase instantaneo para nao comer o ataque da
  * silaba; fechar leva ~120 ms para nao produzir o corte seco que denuncia a porta. */
 const ATTACK = 0.02
+
 const RELEASE = 0.0006
 
 class NoiseGate extends AudioWorkletProcessor {

@@ -27,9 +27,17 @@ export const ALL = (Permission.Administrator << 1) - 1
 
 /** Bits a channel overwrite may touch. */
 export const CHANNEL_SCOPED =
-  Permission.ViewChannel | Permission.SendMessages | Permission.ManageMessages | Permission.AttachFiles |
-  Permission.AddReactions | Permission.MentionEveryone | Permission.Connect | Permission.Speak | Permission.Stream |
-  Permission.ManageChannels | Permission.ManageRoles
+  Permission.ViewChannel |
+  Permission.SendMessages |
+  Permission.ManageMessages |
+  Permission.AttachFiles |
+  Permission.AddReactions |
+  Permission.MentionEveryone |
+  Permission.Connect |
+  Permission.Speak |
+  Permission.Stream |
+  Permission.ManageChannels |
+  Permission.ManageRoles
 
 export const has = (set: number, bits: number) => (set & bits) === bits
 
@@ -37,5 +45,6 @@ export const has = (set: number, bits: number) => (set & bits) === bits
 export const topPosition = (guild: Guild, userId: string) => {
   if (guild.owner_id === userId) return Number.MAX_SAFE_INTEGER
   const roles = guild.members.find((m) => m.user.id === userId)?.roles ?? []
+
   return Math.max(0, ...guild.roles.filter((r) => roles.includes(r.id)).map((r) => r.position))
 }

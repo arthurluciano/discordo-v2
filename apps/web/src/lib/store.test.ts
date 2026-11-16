@@ -3,23 +3,57 @@ import { dispatch, getState, initialState, openChannel, reduce, type State } fro
 import type { GatewayEvent, Guild, Message, User } from './wire'
 
 const alice: User = { id: 'a', username: 'alice', display_name: 'Alice', avatar_url: '' }
+
 const bob: User = { id: 'b', username: 'bob', display_name: 'Bob', avatar_url: '' }
+
 const guild: Guild = {
-  id: 'g', name: 'Oficina', icon_url: '', banner_url: '', owner_id: 'a', permissions: 0, roles: [],
-  channels: [{ id: 'c', guild_id: 'g', type: 0, name: 'geral', topic: '', position: 0, overwrites: [], permissions: 0 }],
-  members: [{ user: alice, nickname: '', roles: [], joined_at: '', online: true }, { user: bob, nickname: '', roles: [], joined_at: '', online: false }],
+  id: 'g',
+  name: 'Oficina',
+  icon_url: '',
+  banner_url: '',
+  owner_id: 'a',
+  permissions: 0,
+  roles: [],
+  channels: [
+    { id: 'c', guild_id: 'g', type: 0, name: 'geral', topic: '', position: 0, overwrites: [], permissions: 0 },
+  ],
+  members: [
+    { user: alice, nickname: '', roles: [], joined_at: '', online: true },
+    { user: bob, nickname: '', roles: [], joined_at: '', online: false },
+  ],
 }
+
 const message = (id: string, author = alice): Message => ({
-  id, channel_id: 'c', author, content: id, created_at: '', edited_at: null, mentions: [], mention_everyone: false, attachments: [], reactions: [],
+  id,
+  channel_id: 'c',
+  author,
+  content: id,
+  created_at: '',
+  edited_at: null,
+  mentions: [],
+  mention_everyone: false,
+  attachments: [],
+  reactions: [],
 })
-const ready = (): State => reduce(initialState, { t: 'READY', d: { user: alice, guilds: [guild], dms: [], relationships: [], voice_states: [] } })
+
+const ready = (): State =>
+  reduce(initialState, {
+    t: 'READY',
+    d: { user: alice, guilds: [guild], dms: [], relationships: [], voice_states: [] },
+  })
+
 const withLog = (s: State, list: Message[]): State => ({ ...s, messages: { c: { list, complete: true } } })
 
 describe('reduce', () => {
   it('replaces everything on READY', () => {
     const s = ready()
     expect(s.status).toBe('ready')
-    expect(reduce(withLog(s, [message('1')]), { t: 'READY', d: { user: alice, guilds: [], dms: [], relationships: [], voice_states: [] } }).messages).toEqual({})
+    expect(
+      reduce(withLog(s, [message('1')]), {
+        t: 'READY',
+        d: { user: alice, guilds: [], dms: [], relationships: [], voice_states: [] },
+      }).messages,
+    ).toEqual({})
   })
 
   it('appends new messages once, and only to channels already loaded', () => {
@@ -30,7 +64,10 @@ describe('reduce', () => {
 
   it('toggles reactions per user', () => {
     let s = withLog(ready(), [message('1')])
-    const add = (user: string) => ({ t: 'REACTION_ADD' as const, d: { channel_id: 'c', message_id: '1', user_id: user, emoji: '👍' } })
+    const add = (user: string) => ({
+      t: 'REACTION_ADD' as const,
+      d: { channel_id: 'c', message_id: '1', user_id: user, emoji: '👍' },
+    })
     s = reduce(reduce(reduce(s, add('a')), add('b')), add('a'))
     expect(s.messages.c?.list[0]?.reactions).toEqual([{ emoji: '👍', users: ['b', 'a'] }])
     s = reduce(reduce(s, { ...add('a'), t: 'REACTION_REMOVE' }), { ...add('b'), t: 'REACTION_REMOVE' })
@@ -50,9 +87,17 @@ describe('reduce', () => {
   })
 
   it('tracks who is in a call and who left', () => {
-    const joined = reduce(ready(), { t: 'VOICE_STATE_UPDATE', d: { user_id: 'b', channel_id: 'v', muted: false, deafened: false, tracks: ['mic'] } })
+    const joined = reduce(ready(), {
+      t: 'VOICE_STATE_UPDATE',
+      d: { user_id: 'b', channel_id: 'v', muted: false, deafened: false, tracks: ['mic'] },
+    })
     expect(joined.voice.b?.channel_id).toBe('v')
-    expect(reduce(joined, { t: 'VOICE_STATE_UPDATE', d: { user_id: 'b', channel_id: '', muted: false, deafened: false, tracks: [] } }).voice).toEqual({})
+    expect(
+      reduce(joined, {
+        t: 'VOICE_STATE_UPDATE',
+        d: { user_id: 'b', channel_id: '', muted: false, deafened: false, tracks: [] },
+      }).voice,
+    ).toEqual({})
   })
 
   it('expires typing and clears it when the message arrives', () => {
@@ -64,10 +109,19 @@ describe('reduce', () => {
 
 describe('openChannel', () => {
   it('drops a page requested before a reconnect', async () => {
-    const readyEvent: GatewayEvent = { t: 'READY', d: { user: alice, guilds: [guild], dms: [], relationships: [], voice_states: [] } }
+    const readyEvent: GatewayEvent = {
+      t: 'READY',
+      d: { user: alice, guilds: [guild], dms: [], relationships: [], voice_states: [] },
+    }
     dispatch(readyEvent)
     let resolve!: (page: Message[]) => void
-    const opening = openChannel('c', () => new Promise((r) => { resolve = r }))
+    const opening = openChannel(
+      'c',
+      () =>
+        new Promise((r) => {
+          resolve = r
+        }),
+    )
     dispatch(readyEvent) // reconnected while the first page was in flight
     resolve([message('old')])
     await opening

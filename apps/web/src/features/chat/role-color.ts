@@ -8,5 +8,6 @@ export const roleColors = (guild: Pick<Guild, 'roles' | 'members'>): Map<string,
     const color = colored.find((r) => m.roles.includes(r.id))?.color
     if (color) colors.set(m.user.id, `#${color.toString(16).padStart(6, '0')}`)
   }
+
   return colors
 }

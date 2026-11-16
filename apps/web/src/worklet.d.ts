@@ -6,14 +6,7 @@
 declare class AudioWorkletProcessor {
   readonly port: MessagePort
   constructor()
-  process(
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    parameters: Record<string, Float32Array>,
-  ): boolean
+  process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean
 }
 
-declare function registerProcessor(
-  name: string,
-  constructor: new () => AudioWorkletProcessor,
-): void
+declare function registerProcessor(name: string, constructor: new () => AudioWorkletProcessor): void

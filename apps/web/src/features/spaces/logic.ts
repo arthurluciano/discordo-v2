@@ -7,6 +7,7 @@ export const parseInviteCode = (input: string): string | null => {
   const text = input.trim()
   const fromLink = /\/invite\/([\w-]+)\/?(?:[?#].*)?$/.exec(text)?.[1]
   if (fromLink) return fromLink
+
   return /^[\w-]+$/.test(text) ? text : null
 }
 
@@ -26,6 +27,7 @@ export const bitState = (o: Pick<Overwrite, 'allow' | 'deny'> | undefined, bit: 
 export const setBitState = (o: Pick<Overwrite, 'allow' | 'deny'> | undefined, bit: number, state: TriState) => {
   const allow = (o?.allow ?? 0) & ~bit
   const deny = (o?.deny ?? 0) & ~bit
+
   return { allow: state === 'allow' ? allow | bit : allow, deny: state === 'deny' ? deny | bit : deny }
 }
 

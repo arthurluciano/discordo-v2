@@ -30,19 +30,34 @@ export const nameOf = (source: Track.Source): TrackName | undefined =>
   (Object.keys(SOURCES) as TrackName[]).find((name) => SOURCES[name] === source)
 
 /** The best codec this browser can send (GPU first, see codecs.ts) that LiveKit takes; VP8 is its own default. */
-const bestCodec = async (track: MediaStreamTrack, maxBitrate: number | undefined, choice: CodecChoice | undefined): Promise<VideoCodec> => {
+const bestCodec = async (
+  track: MediaStreamTrack,
+  maxBitrate: number | undefined,
+  choice: CodecChoice | undefined,
+): Promise<VideoCodec> => {
   const [first] = await videoCodecs(probeFor(track, maxBitrate), choice)
   const id = first?.mimeType.toLowerCase().replace('video/', '')
+
   return id && id in CODECS ? (id as VideoCodecId) : 'vp8'
 }
 
-const publishOptions = async (name: TrackName, track: MediaStreamTrack, encoding: Encoding | undefined): Promise<TrackPublishOptions> => {
+const publishOptions = async (
+  name: TrackName,
+  track: MediaStreamTrack,
+  encoding: Encoding | undefined,
+): Promise<TrackPublishOptions> => {
   const options: TrackPublishOptions = { source: SOURCES[name] }
-  if (name === 'mic' || name === 'screen-audio') return encoding ? { ...options, audioPreset: { maxBitrate: encoding.maxBitrate } } : options
+  if (name === 'mic' || name === 'screen-audio')
+    return encoding ? { ...options, audioPreset: { maxBitrate: encoding.maxBitrate } } : options
   // VP9/AV1 go out as SVC; LiveKit then also sends a VP8 backup for viewers that cannot decode them.
-  const video = { ...options, simulcast: true, videoCodec: await bestCodec(track, encoding?.maxBitrate, encoding?.codec) }
+  const video = {
+    ...options,
+    simulcast: true,
+    videoCodec: await bestCodec(track, encoding?.maxBitrate, encoding?.codec),
+  }
   if (!encoding) return video
   const { codec: _, ...limits } = encoding
+
   return { ...video, ...(name === 'camera' ? { videoEncoding: limits } : { screenShareEncoding: limits }) }
 }
 
@@ -55,7 +70,11 @@ const QUALITIES: Record<Quality, VideoQuality> = {
 
 const message = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
-export const createLiveKitTransport = (_send: SendOp, events: TransportEvents, connection: MediaConnection): VoiceTransport => {
+export const createLiveKitTransport = (
+  _send: SendOp,
+  events: TransportEvents,
+  connection: MediaConnection,
+): VoiceTransport => {
   let closed = false
   // adaptiveStream stays off: the UI renders the raw MediaStreamTracks rather than track.attach(), so LiveKit
   // would think no one is watching and pause the video. Video is subscribed explicitly instead.
@@ -91,23 +110,29 @@ export const createLiveKitTransport = (_send: SendOp, events: TransportEvents, c
     .on(RoomEvent.ParticipantDisconnected, emit)
     .on(RoomEvent.ConnectionStateChanged, (s) => {
       if (closed) return
-      events.onState(s === ConnectionState.Connected ? 'connected' : s === ConnectionState.Disconnected ? 'failed' : 'connecting')
+      events.onState(
+        s === ConnectionState.Connected ? 'connected' : s === ConnectionState.Disconnected ? 'failed' : 'connecting',
+      )
     })
 
-  const connected = (connection.url && connection.token
-    ? room.connect(connection.url, connection.token, { autoSubscribe: false })
-    : Promise.reject(new Error('o servidor não enviou o endereço e a credencial'))
+  const connected = (
+    connection.url && connection.token
+      ? room.connect(connection.url, connection.token, { autoSubscribe: false })
+      : Promise.reject(new Error('o servidor não enviou o endereço e a credencial'))
   ).then(() => {
     // TrackPublished only fires for tracks published after we joined.
     for (const p of room.remoteParticipants.values()) p.trackPublications.forEach((pub) => apply(pub, p))
   })
-  const ready = connected.then(() => true, (cause) => {
-    if (!closed) {
-      events.onError(`Falha ao conectar à mídia: ${message(cause)}`)
-      events.onState('failed')
-    }
-    return false
-  })
+  const ready = connected.then(
+    () => true,
+    (cause) => {
+      if (!closed) {
+        events.onError(`Falha ao conectar à mídia: ${message(cause)}`)
+        events.onState('failed')
+      }
+      return false
+    },
+  )
 
   const publish = async (name: TrackName, track: MediaStreamTrack | null, encoding?: Encoding) => {
     if (!(await ready) || closed) return
@@ -122,15 +147,21 @@ export const createLiveKitTransport = (_send: SendOp, events: TransportEvents, c
       if (current.pub.track?.mediaStreamTrack !== track) await current.pub.track?.replaceTrack(track, true)
       return
     }
-    if (track) published.set(name, { pub: await local.publishTrack(track, await publishOptions(name, track, encoding)), encoding: key })
+    if (track)
+      published.set(name, {
+        pub: await local.publishTrack(track, await publishOptions(name, track, encoding)),
+        encoding: key,
+      })
   }
 
   return {
     // Serialized so a quick publish/unpublish pair applies in order; failures are reported, not thrown.
     publish: (name, track, encoding) => {
-      queue = queue.then(() => publish(name, track, encoding)).catch((cause) => {
-        if (!closed) events.onError(`Falha ao transmitir: ${message(cause)}`)
-      })
+      queue = queue
+        .then(() => publish(name, track, encoding))
+        .catch((cause) => {
+          if (!closed) events.onError(`Falha ao transmitir: ${message(cause)}`)
+        })
       return queue
     },
     subscribe: (userId, track, on, quality = 'auto') => {

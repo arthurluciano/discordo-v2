@@ -9,6 +9,7 @@ export type Place = (
 ) & { content: boolean }
 
 export const usePlace = create<Place>()(() => ({ kind: 'home', dmId: null, content: false }))
+
 const lastChannel = new Map<string, string>()
 
 const set = (next: Place) => {
@@ -22,6 +23,7 @@ export const navigate = {
   friends: () => set({ kind: 'home', dmId: null, content: true }),
   dm: (dmId: string) => set({ kind: 'home', dmId, content: true }),
   /** Opens a guild at the channel the user last had open there. */
-  guild: (guildId: string) => set({ kind: 'guild', guildId, channelId: lastChannel.get(guildId) ?? null, content: false }),
+  guild: (guildId: string) =>
+    set({ kind: 'guild', guildId, channelId: lastChannel.get(guildId) ?? null, content: false }),
   channel: (guildId: string, channelId: string) => set({ kind: 'guild', guildId, channelId, content: true }),
 }

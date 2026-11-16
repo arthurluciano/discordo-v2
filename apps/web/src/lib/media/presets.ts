@@ -10,13 +10,19 @@ export const RESOLUTIONS = {
 } as const
 
 export type Resolution = keyof typeof RESOLUTIONS
+
 export type ScreenPreset = { resolution: Resolution; fps: 30 | 60; codec?: CodecChoice }
 
 export const DEFAULT_SCREEN_PRESET: ScreenPreset = { resolution: '1080p', fps: 30 }
 
 export const isScreenPreset = (v: unknown): v is ScreenPreset =>
-  typeof v === 'object' && v !== null && 'resolution' in v && 'fps' in v &&
-  typeof v.resolution === 'string' && v.resolution in RESOLUTIONS && (v.fps === 30 || v.fps === 60) &&
+  typeof v === 'object' &&
+  v !== null &&
+  'resolution' in v &&
+  'fps' in v &&
+  typeof v.resolution === 'string' &&
+  v.resolution in RESOLUTIONS &&
+  (v.fps === 30 || v.fps === 60) &&
   (!('codec' in v) || v.codec === undefined || isCodecChoice(v.codec))
 
 export const presetLabel = (p: ScreenPreset) => `${RESOLUTIONS[p.resolution].label} ${p.fps} fps`
@@ -24,7 +30,12 @@ export const presetLabel = (p: ScreenPreset) => `${RESOLUTIONS[p.resolution].lab
 /** Capture constraints: never above the preset (the browser downscales larger sources). */
 export const screenConstraints = ({ resolution, fps }: ScreenPreset): MediaTrackConstraints => {
   const { width, height } = RESOLUTIONS[resolution]
-  return { width: { ideal: width, max: width }, height: { ideal: height, max: height }, frameRate: { ideal: fps, max: fps } }
+
+  return {
+    width: { ideal: width, max: width },
+    height: { ideal: height, max: height },
+    frameRate: { ideal: fps, max: fps },
+  }
 }
 
 /** `codec` only matters for video; absent means 'auto'. */
@@ -40,8 +51,14 @@ export const screenEncoding = ({ resolution, fps, codec }: ScreenPreset): Encodi
 /** Text stays sharp at 30 fps ('detail' keeps resolution under pressure); 60 fps is for motion (keeps the frame rate). */
 export const screenContentHint = ({ fps }: ScreenPreset) => (fps === 60 ? 'motion' : 'detail')
 
-export const CAMERA_CONSTRAINTS: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
+  width: { ideal: 1280 },
+  height: { ideal: 720 },
+  frameRate: { ideal: 30 },
+}
+
 export const CAMERA_ENCODING: Encoding = { maxBitrate: 2_500_000, maxFramerate: 30 }
+
 export const SCREEN_AUDIO_ENCODING: Encoding = { maxBitrate: 128_000 }
 
 /** Simulcast layers under the full one (rid `h`), lowest first: ~360p and ~720p, at their own bitrates. */
@@ -52,11 +69,15 @@ const LOWER_LAYERS = [
 
 /** What to send for a video of this height: the full encoding plus the lower layers at least 1.5x smaller
  * (so a 480p video sends a single encoding). Without a height, a single encoding. */
-export const sendEncodings = ({ maxBitrate, maxFramerate }: Encoding, height: number | undefined): RTCRtpEncodingParameters[] => {
+export const sendEncodings = (
+  { maxBitrate, maxFramerate }: Encoding,
+  height: number | undefined,
+): RTCRtpEncodingParameters[] => {
   const top = { maxBitrate, ...(maxFramerate ? { maxFramerate } : {}) }
   const layers = LOWER_LAYERS.filter((l) => height && l.height * 1.5 <= height)
   if (!height || layers.length === 0) return [top]
   const motion = maxFramerate === 60 ? 1.5 : 1
+
   return [
     ...layers.map((l) => ({
       ...top,

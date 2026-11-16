@@ -3,6 +3,7 @@ import type { Guild } from '@/lib/wire'
 import { roleColors } from './role-color'
 
 const role = (id: string, color: number, position: number) => ({ id, color, position }) as Guild['roles'][number]
+
 const member = (id: string, roles: string[]) => ({ user: { id }, roles }) as unknown as Guild['members'][number]
 
 describe('roleColors', () => {
