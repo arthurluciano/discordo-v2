@@ -74,11 +74,24 @@ export const captureCamera = async (deviceId: string | null) => {
   return track
 }
 
-/** Screen video, plus its audio when the browser and the chosen source provide it. */
-export const captureScreen = async (preset: ScreenPreset) => {
+/** What the browser's picker opens on: a whole screen, a window or a tab (a hint; the user can still pick another). */
+export type ScreenSurface = 'monitor' | 'window' | 'browser'
+
+export type ScreenSource = { video: MediaStreamTrack; audio: MediaStreamTrack | null }
+
+/** Screen video, plus its audio when asked for and the browser and the chosen source provide it. */
+export const captureScreen = async (
+  preset: ScreenPreset,
+  { surface, audio }: { surface: ScreenSurface; audio: boolean },
+): Promise<ScreenSource> => {
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: screenConstraints(preset),
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+    video: { ...screenConstraints(preset), displaySurface: surface },
+    audio: audio && {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      restrictOwnAudio: true,
+    },
     systemAudio: 'include',
     windowAudio: 'system',
     monitorTypeSurfaces: 'include',

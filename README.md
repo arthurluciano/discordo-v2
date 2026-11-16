@@ -68,7 +68,9 @@ Em produção o build do app (`npm run build`) é embutido no binário do servid
 
 ### Transmissão de tela
 
-Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela".
+Em uma chamada, o botão de tela abre o diálogo de compartilhamento: escolha tela inteira, janela ou aba (o navegador
+abre a seleção dele já nesse tipo), confira a prévia, ajuste resolução (480p a 4K), 30 ou 60 fps, codec e áudio, e
+clique em "Transmitir". Com a transmissão no ar, o mesmo diálogo troca a fonte, muda a qualidade ou para.
 O app pergunta ao navegador quais codecs (H.264, VP8, VP9, AV1) ele codifica na placa de vídeo e transmite com o primeiro deles;
 sem nenhum na GPU, usa o mais leve para a CPU (H.264, depois VP8). O indicador na chamada mostra o codec e se é GPU ou CPU.
 

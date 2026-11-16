@@ -1,7 +1,7 @@
 // The call: one per app session, outside React so that navigating never touches it.
 // The provider (voice-session.tsx) feeds it gateway events and exposes it through useVoice(selector).
 import { create } from 'zustand'
-import { captureCamera, captureError, captureMicrophone, captureScreen, type Microphone } from '@/lib/media/capture'
+import { captureCamera, captureError, captureMicrophone, type Microphone, type ScreenSource } from '@/lib/media/capture'
 import {
   CAMERA_ENCODING,
   DEFAULT_SCREEN_PRESET,
@@ -32,6 +32,8 @@ export type Prefs = {
   camera: string | null
   noiseGate: boolean
   screen: ScreenPreset
+  /** Ask for the source's audio when picking a screen to share. */
+  screenAudio: boolean
 }
 
 export type CallState = {
@@ -67,13 +69,22 @@ const VOLUMES_KEY = 'discordo:voice-volumes'
 const MIC_LOST = 'Seu microfone foi desconectado. Conecte um microfone para voltar a falar.'
 
 const loadPrefs = (): Prefs => {
-  const prefs: Prefs = { input: null, output: null, camera: null, noiseGate: true, screen: DEFAULT_SCREEN_PRESET }
+  const prefs: Prefs = {
+    input: null,
+    output: null,
+    camera: null,
+    noiseGate: true,
+    screen: DEFAULT_SCREEN_PRESET,
+    screenAudio: true,
+  }
+
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')
     if (typeof saved !== 'object' || saved === null) return prefs
     const s = saved as Record<string, unknown>
     for (const k of ['input', 'output', 'camera'] as const) if (typeof s[k] === 'string') prefs[k] = s[k]
     if (typeof s.noiseGate === 'boolean') prefs.noiseGate = s.noiseGate
+    if (typeof s.screenAudio === 'boolean') prefs.screenAudio = s.screenAudio
     if (isScreenPreset(s.screen)) prefs.screen = s.screen
   } catch {
     // Unavailable or corrupt storage: defaults.
@@ -365,25 +376,29 @@ export const stopScreen = async () => {
   await t.publish('screen-audio', null)
 }
 
-export const startScreen = async () => {
+/** Shares a source picked in the share dialog. The call takes the tracks over (and stops them when done). */
+export const startScreen = async (source: ScreenSource) => {
   const t = transport
-  if (!t || call().screen) return
-  const gen = generation
+  const { video, audio } = source
+
+  if (!t || call().screen) {
+    video.stop()
+    audio?.stop()
+    return
+  }
+
   const preset = call().prefs.screen
+  video.contentHint = screenContentHint(preset)
+
+  // The browser's own "stop sharing" button ends the track.
+  video.addEventListener('ended', () => {
+    if (call().screen === video) void stopScreen()
+  })
+
+  screenAudio = audio
+  set({ screen: video, error: null })
+
   try {
-    const { video, audio } = await captureScreen(preset)
-    if (gen !== generation) {
-      video.stop()
-      audio?.stop()
-      return
-    }
-    video.contentHint = screenContentHint(preset)
-    // The browser's own "stop sharing" button ends the track.
-    video.addEventListener('ended', () => {
-      if (call().screen === video) void stopScreen()
-    })
-    screenAudio = audio
-    set({ screen: video, error: null })
     await t.publish('screen', video, screenEncoding(preset))
     if (audio) await t.publish('screen-audio', audio, SCREEN_AUDIO_ENCODING)
   } catch (cause) {
@@ -391,38 +406,39 @@ export const startScreen = async () => {
   }
 }
 
-/** Shares another screen or window in place of the current one, on the same senders (no renegotiation, same encodings). */
-export const switchScreen = async () => {
+/** Shares another source in place of the current one, on the same senders (no renegotiation, same encodings). */
+export const switchScreen = async (source: ScreenSource) => {
   const t = transport
   const old = call().screen
-  if (!t || !old) return
-  const gen = generation
-  const preset = call().prefs.screen
+  const { video, audio } = source
+
+  if (!t || !old) {
+    video.stop()
+    audio?.stop()
+    return
+  }
+
+  video.contentHint = screenContentHint(call().prefs.screen)
+  video.addEventListener('ended', () => {
+    if (call().screen === video) void stopScreen()
+  })
+
+  const oldAudio = screenAudio
+  screenAudio = audio
+  set({ screen: video, error: null })
+
   try {
-    const { video, audio } = await captureScreen(preset)
-    if (gen !== generation || call().screen !== old) {
-      video.stop()
-      audio?.stop()
-      return
-    }
-    video.contentHint = screenContentHint(preset)
-    video.addEventListener('ended', () => {
-      if (call().screen === video) void stopScreen()
-    })
-    const oldAudio = screenAudio
-    screenAudio = audio
-    set({ screen: video, error: null })
-    await t.publish('screen', video, screenEncoding(preset))
+    await t.publish('screen', video, screenEncoding(call().prefs.screen))
+
     // The new source may bring audio where the old one had none, or the other way around.
     if (audio) await t.publish('screen-audio', audio, SCREEN_AUDIO_ENCODING)
     else if (oldAudio) await t.publish('screen-audio', null)
-    old.stop() // after the swap: its "ended" no longer stops sharing, since it is not call().screen
-    oldAudio?.stop()
   } catch (cause) {
-    // Closing the picker keeps the current share.
-    if (!(cause instanceof DOMException && cause.name === 'NotAllowedError'))
-      set({ error: captureError(cause, 'screen') })
+    set({ error: captureError(cause, 'screen') })
   }
+
+  old.stop() // after the swap: its "ended" no longer stops sharing, since it is not call().screen
+  oldAudio?.stop()
 }
 
 const savePrefs = (patch: Partial<Prefs>) => {
@@ -433,6 +449,8 @@ const savePrefs = (patch: Partial<Prefs>) => {
     // Still applies for this session.
   }
 }
+
+export const setScreenAudio = (screenAudio: boolean) => savePrefs({ screenAudio })
 
 export const setScreenPreset = async (screen: ScreenPreset) => {
   savePrefs({ screen })

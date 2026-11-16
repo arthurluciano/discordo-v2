@@ -1,29 +1,20 @@
 import { useEffect, useState, type ComponentType } from 'react'
 import { HeadphoneOff, Headphones, Mic, MicOff, MonitorUp, PhoneOff, Settings2, Video, VideoOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { CODECS, hardwareCodecs, rememberEncoder, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
-import { RESOLUTIONS, screenEncoding, type Resolution } from '@/lib/media/presets'
+import { rememberEncoder } from '@/lib/media/codecs'
+import { RESOLUTIONS } from '@/lib/media/presets'
 import { encoderDetails, encoderLabel, encoderStats, type EncoderStats } from '@/lib/media/stats'
 import { has, Permission } from '@/lib/permissions'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { callPermissions, senderStats } from './call'
+import { ShareDialog } from './share-dialog'
 import { isMuted, useVoice, voice } from './voice-session'
 
 type Icon = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
@@ -67,95 +58,34 @@ export const Control = ({
 const supportsScreenShare = () =>
   typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
-const ShareMenu = () => {
-  const v = useVoice((s) => ({ preset: s.prefs.screen, sharing: s.screen !== null, connection: s.connection }))
-  const { preset, sharing } = v
-  const [hardware, setHardware] = useState<ReadonlySet<string> | null>(null)
-  // Asked each time the menu opens, for the preset in use: GPU support depends on resolution and frame rate.
-  const probe = (open: boolean) => {
-    if (!open) return
-    const { width, height } = RESOLUTIONS[preset.resolution]
-    void hardwareCodecs({ width, height, framerate: preset.fps, bitrate: screenEncoding(preset).maxBitrate }).then(
-      setHardware,
-    )
-  }
-  const codecLabel = (id: keyof typeof CODECS) =>
-    `${CODECS[id]}${hardware === null ? '' : hardware.has(`video/${id}`) ? ' (GPU)' : ' (CPU)'}`
+const ShareButton = () => {
+  const { sharing, connection } = useVoice((s) => ({ sharing: s.screen !== null, connection: s.connection }))
+  const [open, setOpen] = useState(false)
 
   return (
-    <DropdownMenu onOpenChange={probe}>
+    <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Compartilhar tela"
-              disabled={v.connection !== 'connected'}
-              className={cn(
-                'size-10 max-md:size-11',
-                sharing && 'bg-media-screenshare text-white hover:bg-media-screenshare/80',
-              )}
-            >
-              <MonitorUp aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={sharing ? 'Transmitindo a tela' : 'Compartilhar tela'}
+            aria-haspopup="dialog"
+            disabled={connection !== 'connected'}
+            onClick={() => setOpen(true)}
+            className={cn(
+              'size-10 max-md:size-11',
+              sharing && 'bg-media-screenshare text-white hover:bg-media-screenshare/80',
+            )}
+          >
+            <MonitorUp aria-hidden />
+          </Button>
         </TooltipTrigger>
-        <TooltipContent>{sharing ? 'Compartilhando tela' : 'Compartilhar tela'}</TooltipContent>
+        <TooltipContent>{sharing ? 'Transmitindo a tela' : 'Compartilhar tela'}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent side="top" className="w-56">
-        <DropdownMenuLabel>Resolução</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={preset.resolution}
-          onValueChange={(r) => void voice.setScreenPreset({ ...preset, resolution: r as Resolution })}
-        >
-          {Object.entries(RESOLUTIONS).map(([id, { label }]) => (
-            <DropdownMenuRadioItem key={id} value={id} onSelect={(e) => e.preventDefault()}>
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Quadros por segundo</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={String(preset.fps)}
-          onValueChange={(fps) => void voice.setScreenPreset({ ...preset, fps: fps === '60' ? 60 : 30 })}
-        >
-          <DropdownMenuRadioItem value="30" onSelect={(e) => e.preventDefault()}>
-            30 fps (texto nítido)
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="60" onSelect={(e) => e.preventDefault()}>
-            60 fps (movimento)
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Codec</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={preset.codec ?? 'auto'}
-          onValueChange={(codec) => void voice.setScreenPreset({ ...preset, codec: codec as CodecChoice })}
-        >
-          <DropdownMenuRadioItem value="auto" onSelect={(e) => e.preventDefault()}>
-            Automático (GPU primeiro)
-          </DropdownMenuRadioItem>
-          {sendableCodecs().map((id) => (
-            <DropdownMenuRadioItem key={id} value={id} onSelect={(e) => e.preventDefault()}>
-              {codecLabel(id)}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        {sharing ? (
-          <>
-            <DropdownMenuItem onSelect={() => void voice.switchScreen()}>Trocar tela</DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onSelect={() => void voice.stopScreen()}>
-              Parar compartilhamento
-            </DropdownMenuItem>
-          </>
-        ) : (
-          <DropdownMenuItem onSelect={() => void voice.startScreen()}>Compartilhar tela</DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+
+      <ShareDialog open={open} onOpenChange={setOpen} />
+    </>
   )
 }
 
@@ -378,7 +308,7 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
           onPressedChange={(on) => void voice.setCamera(on)}
         />
       ) : null}
-      {canStream && supportsScreenShare() ? <ShareMenu /> : null}
+      {canStream && supportsScreenShare() ? <ShareButton /> : null}
       <Control icon={Settings2} pressed={settings} label="Configurações de voz e vídeo" onPressedChange={setSettings} />
       <Tooltip>
         <TooltipTrigger asChild>
