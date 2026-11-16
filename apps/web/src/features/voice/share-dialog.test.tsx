@@ -35,7 +35,12 @@ describe('ShareDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /Janela/ }))
 
     expect(getDisplayMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ video: expect.objectContaining({ displaySurface: 'window' }) }),
+      // By default only the shared window's own sound: other programs stay out of the stream.
+      expect.objectContaining({
+        video: expect.objectContaining({ displaySurface: 'window' }),
+        systemAudio: 'exclude',
+        windowAudio: 'window',
+      }),
     )
     expect(screen.getByText(/ninguém está vendo ainda/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Transmitir/ })).toBeEnabled()

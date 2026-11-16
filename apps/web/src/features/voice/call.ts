@@ -1,7 +1,15 @@
 // The call: one per app session, outside React so that navigating never touches it.
 // The provider (voice-session.tsx) feeds it gateway events and exposes it through useVoice(selector).
 import { create } from 'zustand'
-import { captureCamera, captureError, captureMicrophone, type Microphone, type ScreenSource } from '@/lib/media/capture'
+import {
+  captureCamera,
+  captureError,
+  captureMicrophone,
+  type Microphone,
+  type ScreenSource,
+  type ScreenAudio,
+  isScreenAudio,
+} from '@/lib/media/capture'
 import {
   CAMERA_ENCODING,
   DEFAULT_SCREEN_PRESET,
@@ -32,8 +40,8 @@ export type Prefs = {
   camera: string | null
   noiseGate: boolean
   screen: ScreenPreset
-  /** Ask for the source's audio when picking a screen to share. */
-  screenAudio: boolean
+  /** Which sound goes with a screen share. */
+  screenAudio: ScreenAudio
 }
 
 export type CallState = {
@@ -75,7 +83,7 @@ const loadPrefs = (): Prefs => {
     camera: null,
     noiseGate: true,
     screen: DEFAULT_SCREEN_PRESET,
-    screenAudio: true,
+    screenAudio: 'source',
   }
 
   try {
@@ -84,7 +92,8 @@ const loadPrefs = (): Prefs => {
     const s = saved as Record<string, unknown>
     for (const k of ['input', 'output', 'camera'] as const) if (typeof s[k] === 'string') prefs[k] = s[k]
     if (typeof s.noiseGate === 'boolean') prefs.noiseGate = s.noiseGate
-    if (typeof s.screenAudio === 'boolean') prefs.screenAudio = s.screenAudio
+    if (isScreenAudio(s.screenAudio)) prefs.screenAudio = s.screenAudio
+    else if (s.screenAudio === false) prefs.screenAudio = 'none' // saved before the three choices
     if (isScreenPreset(s.screen)) prefs.screen = s.screen
   } catch {
     // Unavailable or corrupt storage: defaults.
@@ -450,7 +459,7 @@ const savePrefs = (patch: Partial<Prefs>) => {
   }
 }
 
-export const setScreenAudio = (screenAudio: boolean) => savePrefs({ screenAudio })
+export const setScreenAudio = (screenAudio: ScreenAudio) => savePrefs({ screenAudio })
 
 export const setScreenPreset = async (screen: ScreenPreset) => {
   savePrefs({ screen })

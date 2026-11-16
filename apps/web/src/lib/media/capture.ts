@@ -79,21 +79,27 @@ export type ScreenSurface = 'monitor' | 'window' | 'browser'
 
 export type ScreenSource = { video: MediaStreamTrack; audio: MediaStreamTrack | null }
 
+/** Which sound goes with the share. A page cannot leave out chosen programs, so 'source' is the way to keep them
+ * out: only the shared tab's or window's own sound (a whole screen then has none). */
+export type ScreenAudio = 'none' | 'source' | 'system'
+
+export const isScreenAudio = (v: unknown): v is ScreenAudio => v === 'none' || v === 'source' || v === 'system'
+
 /** Screen video, plus its audio when asked for and the browser and the chosen source provide it. */
 export const captureScreen = async (
   preset: ScreenPreset,
-  { surface, audio }: { surface: ScreenSurface; audio: boolean },
+  { surface, audio }: { surface: ScreenSurface; audio: ScreenAudio },
 ): Promise<ScreenSource> => {
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: { ...screenConstraints(preset), displaySurface: surface },
-    audio: audio && {
+    audio: audio !== 'none' && {
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
       restrictOwnAudio: true,
     },
-    systemAudio: 'include',
-    windowAudio: 'system',
+    systemAudio: audio === 'system' ? 'include' : 'exclude',
+    windowAudio: audio === 'system' ? 'system' : 'window',
     monitorTypeSurfaces: 'include',
     // Sharing this tab would show an infinite tunnel and loop the call's audio.
     selfBrowserSurface: 'exclude',

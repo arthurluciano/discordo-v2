@@ -14,7 +14,7 @@ interface HTMLMediaElement {
  */
 interface DisplayMediaStreamOptions {
   systemAudio?: 'include' | 'exclude'
-  windowAudio?: 'exclude' | 'system'
+  windowAudio?: 'exclude' | 'window' | 'system'
   monitorTypeSurfaces?: 'include' | 'exclude'
   selfBrowserSurface?: 'include' | 'exclude'
   surfaceSwitching?: 'include' | 'exclude'

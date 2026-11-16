@@ -5,11 +5,16 @@ import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { AppWindow, Globe, Monitor, MonitorUp, Radio, RefreshCw, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Toggle } from '@/components/ui/toggle'
-import { captureError, captureScreen, type ScreenSource, type ScreenSurface } from '@/lib/media/capture'
+import {
+  captureError,
+  captureScreen,
+  type ScreenAudio,
+  type ScreenSource,
+  type ScreenSurface,
+} from '@/lib/media/capture'
 import { CODECS, hardwareCodecs, sendableCodecs, type CodecChoice } from '@/lib/media/codecs'
 import { RESOLUTIONS, screenConstraints, screenEncoding, type Resolution, type ScreenPreset } from '@/lib/media/presets'
 import { cn } from '@/lib/utils'
@@ -25,6 +30,16 @@ const SURFACES: {
   { surface: 'monitor', label: 'Tela inteira', description: 'Tudo o que aparece num monitor.', icon: Monitor },
   { surface: 'window', label: 'Janela', description: 'Um aplicativo, mesmo atrás de outros.', icon: AppWindow },
   { surface: 'browser', label: 'Aba do navegador', description: 'Uma aba, com o som dela.', icon: Globe },
+]
+
+const AUDIO_CHOICES: { value: ScreenAudio; label: string; hint: string }[] = [
+  {
+    value: 'source',
+    label: 'Só da fonte',
+    hint: 'Só o som da aba ou janela compartilhada; outros programas ficam de fora. Tela inteira vai sem som.',
+  },
+  { value: 'system', label: 'Todo o sistema', hint: 'Tudo o que toca no computador, de qualquer programa.' },
+  { value: 'none', label: 'Sem som', hint: 'Só a imagem.' },
 ]
 
 const isCancel = (cause: unknown) => cause instanceof DOMException && cause.name === 'NotAllowedError'
@@ -112,9 +127,24 @@ const QualitySettings = ({ preset, hardware }: { preset: ScreenPreset; hardware:
         </Select>
       </Field>
 
-      <Field orientation="horizontal" className="self-end">
-        <Switch id="share-audio" checked={audio} onCheckedChange={voice.setScreenAudio} />
-        <FieldLabel htmlFor="share-audio">Incluir o áudio</FieldLabel>
+      <Field>
+        <FieldLabel className="section-label">Áudio</FieldLabel>
+
+        <Select value={audio} onValueChange={(value) => voice.setScreenAudio(value as ScreenAudio)}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+
+          <SelectContent position="popper">
+            {AUDIO_CHOICES.map(({ value, label }) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <FieldDescription>{AUDIO_CHOICES.find((c) => c.value === audio)?.hint}</FieldDescription>
       </Field>
     </div>
   )
