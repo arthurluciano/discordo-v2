@@ -123,8 +123,8 @@ func (s *Store) UserDMs(ctx context.Context, userID string) ([]dm.Channel, error
 	return cs, mapErr(err)
 }
 
-func (s *Store) AddRecipient(ctx context.Context, channelID, userID string) error {
-	return exec(ctx, s.db, `insert into dm_members values ($1, $2) on conflict do nothing`, channelID, userID)
+func (s *Store) AddRecipients(ctx context.Context, channelID string, userIDs []string) error {
+	return exec(ctx, s.db, `insert into dm_members select $1, unnest($2::uuid[]) on conflict do nothing`, channelID, userIDs)
 }
 
 func (s *Store) RemoveRecipient(ctx context.Context, channelID, userID string) error {

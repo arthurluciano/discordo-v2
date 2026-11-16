@@ -6,7 +6,7 @@ const alice: User = { id: 'a', username: 'alice', display_name: 'Alice', avatar_
 const bob: User = { id: 'b', username: 'bob', display_name: 'Bob', avatar_url: '' }
 const guild: Guild = {
   id: 'g', name: 'Oficina', icon_url: '', banner_url: '', owner_id: 'a', permissions: 0, roles: [],
-  channels: [{ id: 'c', guild_id: 'g', type: 0, name: 'geral', topic: '', position: 0, overwrites: [] }],
+  channels: [{ id: 'c', guild_id: 'g', type: 0, name: 'geral', topic: '', position: 0, overwrites: [], permissions: 0 }],
   members: [{ user: alice, nickname: '', roles: [], joined_at: '', online: true }, { user: bob, nickname: '', roles: [], joined_at: '', online: false }],
 }
 const message = (id: string, author = alice): Message => ({

@@ -12,10 +12,16 @@ import (
 // shortcut: carries the full member list, fine up to a few thousand members; paginate members and go granular beyond that.
 type Snapshot struct {
 	Guild
-	Permissions permission.Set `json:"permissions"` // the viewer's guild-level permissions
-	Roles       []Role         `json:"roles"`
-	Channels    []Channel      `json:"channels"`
-	Members     []Member       `json:"members"`
+	Permissions permission.Set    `json:"permissions"` // the viewer's guild-level permissions
+	Roles       []Role            `json:"roles"`
+	Channels    []SnapshotChannel `json:"channels"`
+	Members     []Member          `json:"members"`
+}
+
+// SnapshotChannel is a channel with what the viewer may do in it, so clients need no permission math.
+type SnapshotChannel struct {
+	Channel
+	Permissions permission.Set `json:"permissions"`
 }
 
 type full struct {
@@ -49,7 +55,7 @@ func (s *Service) snapshot(ctx context.Context, userID, guildID string) (Snapsho
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snap := Snapshot{Guild: f.guild, Roles: f.roles, Members: f.members, Channels: []Channel{}}
+	snap := Snapshot{Guild: f.guild, Roles: f.roles, Members: f.members, Channels: []SnapshotChannel{}}
 	found := false
 	for i, m := range f.members {
 		f.members[i].Online = s.presence.Online(m.User.ID)
@@ -59,8 +65,8 @@ func (s *Service) snapshot(ctx context.Context, userID, guildID string) (Snapsho
 		found = true
 		snap.Permissions, _ = resolve(f.guild, f.roles, m)
 		for _, c := range channels {
-			if permission.Compute(snap.Permissions, guildID, userID, m.RoleIDs, c.Overwrites).Has(permission.ViewChannel) {
-				snap.Channels = append(snap.Channels, c)
+			if p := permission.Compute(snap.Permissions, guildID, userID, m.RoleIDs, c.Overwrites); p.Has(permission.ViewChannel) {
+				snap.Channels = append(snap.Channels, SnapshotChannel{c, p})
 			}
 		}
 	}

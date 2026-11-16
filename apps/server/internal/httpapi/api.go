@@ -156,6 +156,15 @@ func (a *API) Handler() http.Handler {
 		}
 		return g.UpdateRole(r.Context(), u.ID, r.PathValue("guild"), r.PathValue("role"), in)
 	})
+	h("POST /guilds/{guild}/roles/{role}/move", func(r *http.Request, u user.User) (any, error) {
+		var in struct {
+			Up bool `json:"up"`
+		}
+		if err := decode(r, &in); err != nil {
+			return nil, err
+		}
+		return nil, g.MoveRole(r.Context(), u.ID, r.PathValue("guild"), r.PathValue("role"), in.Up)
+	})
 	h("DELETE /guilds/{guild}/roles/{role}", func(r *http.Request, u user.User) (any, error) {
 		return nil, g.DeleteRole(r.Context(), u.ID, r.PathValue("guild"), r.PathValue("role"))
 	})
@@ -295,8 +304,14 @@ func (a *API) Handler() http.Handler {
 		}
 		return dms.CreateGroup(r.Context(), u.ID, in.Name, in.RecipientIDs)
 	})
-	h("PUT /dms/{channel}/recipients/{user}", func(r *http.Request, u user.User) (any, error) {
-		return nil, dms.AddRecipient(r.Context(), u.ID, r.PathValue("channel"), r.PathValue("user"))
+	h("POST /dms/{channel}/recipients", func(r *http.Request, u user.User) (any, error) {
+		var in struct {
+			RecipientIDs []string `json:"recipient_ids"`
+		}
+		if err := decode(r, &in); err != nil {
+			return nil, err
+		}
+		return nil, dms.AddRecipients(r.Context(), u.ID, r.PathValue("channel"), in.RecipientIDs)
 	})
 	h("DELETE /dms/{channel}/recipients/@me", func(r *http.Request, u user.User) (any, error) {
 		return nil, dms.Leave(r.Context(), u.ID, r.PathValue("channel"))

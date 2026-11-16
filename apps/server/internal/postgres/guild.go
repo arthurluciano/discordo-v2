@@ -75,6 +75,17 @@ func (s *Store) SaveRole(ctx context.Context, r guild.Role) error {
 	return exec(ctx, s.db, saveRoleSQL, r.ID, r.GuildID, r.Name, r.Color, r.Permissions, r.Position)
 }
 
+func (s *Store) SaveRoles(ctx context.Context, roles []guild.Role) error {
+	return mapErr(pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		for _, r := range roles {
+			if err := exec(ctx, tx, saveRoleSQL, r.ID, r.GuildID, r.Name, r.Color, r.Permissions, r.Position); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+}
+
 func (s *Store) DeleteRole(ctx context.Context, roleID string) error {
 	return execOne(ctx, s.db, `delete from roles where id = $1`, roleID)
 }

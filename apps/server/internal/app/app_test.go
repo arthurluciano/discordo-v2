@@ -206,8 +206,11 @@ func (s socket) next(typ string, out any) {
 
 type snapshot struct {
 	ID       string
-	Channels []struct{ ID, Name string }
-	Members  []struct {
+	Channels []struct {
+		ID, Name    string
+		Permissions permission.Set
+	}
+	Members []struct {
 		User   struct{ ID string }
 		Online bool
 	}
@@ -419,6 +422,9 @@ func TestGuildRealtimeFlow(t *testing.T) {
 		if c.ID == secret.ID {
 			t.Fatal("hidden channel is in bob's snapshot")
 		}
+		if !c.Permissions.Has(permission.ViewChannel | permission.SendMessages) {
+			t.Fatalf("bob's permissions in %s: %b", c.Name, c.Permissions)
+		}
 	}
 
 	// Bob can neither read, write, nor receive events of the hidden channel.
@@ -467,6 +473,18 @@ func TestGuildRealtimeFlow(t *testing.T) {
 	}
 	if status := e.call(bob, "DELETE", "/guilds/"+guild.ID+"/members/"+guild.Members[0].User.ID, nil, nil); status != http.StatusForbidden {
 		t.Fatalf("bob kicking the owner: status %d", status)
+	}
+
+	// Moving a role swaps it with its neighbor, even when new roles tie at position 1.
+	var low, high struct{ ID string }
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/roles", map[string]any{"name": "a"}, &low)
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/roles", map[string]any{"name": "b"}, &high)
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/roles/"+high.ID+"/move", map[string]bool{"up": true}, nil)
+	if status := e.call(alice, "POST", "/guilds/"+guild.ID+"/roles/"+low.ID+"/move", map[string]bool{"up": false}, nil); status != http.StatusBadRequest {
+		t.Fatalf("moving the lowest role down: status %d", status)
+	}
+	if status := e.call(bob, "POST", "/guilds/"+guild.ID+"/roles/"+high.ID+"/move", map[string]bool{"up": true}, nil); status != http.StatusForbidden {
+		t.Fatalf("bob moving a role above his own: status %d", status)
 	}
 
 	// Invites: only ManageGuild lists them; the creator or ManageGuild revokes.
@@ -671,6 +689,11 @@ func TestSocialFlow(t *testing.T) {
 	// Groups are for friends only.
 	if status := e.call(alice, "POST", "/dms/groups", map[string]any{"recipient_ids": []string{bobID, e.userID(carol)}}, nil); status != http.StatusForbidden {
 		t.Fatalf("group with a non-friend: status %d", status)
+	}
+	var group struct{ ID string }
+	e.must(alice, "POST", "/dms/groups", map[string]any{"recipient_ids": []string{bobID}}, &group)
+	if status := e.call(alice, "POST", "/dms/"+group.ID+"/recipients", map[string]any{"recipient_ids": []string{bobID, e.userID(carol)}}, nil); status != http.StatusForbidden {
+		t.Fatalf("adding a non-friend to a group: status %d", status)
 	}
 
 	// Blocking: nothing new gets through, the block is not announced, and a new request looks like a missing user.

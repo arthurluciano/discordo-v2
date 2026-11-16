@@ -1,6 +1,6 @@
-// Pure helpers for the servers area: invite parsing, overwrite tri-state, labels, role moves.
+// Pure helpers for the servers area: invite parsing, overwrite tri-state, labels, labels.
 import { Permission, type PermissionName } from '@/lib/permissions'
-import type { Overwrite, Role } from '@/lib/wire'
+import type { Overwrite } from '@/lib/wire'
 
 /** Accepts a bare code or any link ending in /invite/CODE. Null when it is neither. */
 export const parseInviteCode = (input: string): string | null => {
@@ -53,13 +53,3 @@ export const permissionList = (mask = -1) =>
   (Object.keys(Permission) as PermissionName[])
     .filter((name) => Permission[name] & mask)
     .map((name) => [Permission[name], PERMISSION_LABELS[name]] as const)
-
-/** Highest first; ties broken by ID (creation order) so the list is stable. */
-export const sortRoles = (roles: Role[]) => [...roles].sort((a, b) => b.position - a.position || a.id.localeCompare(b.id))
-
-/** Position updates that move `role` one step past `neighbor` (up when the neighbor is above it).
- * Positions can tie (new roles start at 1, the minimum), so a tie raises whichever ends on top. */
-export const moveRole = (role: Role, neighbor: Role, up: boolean): [string, number][] => {
-  if (role.position === neighbor.position) return [up ? [role.id, role.position + 1] : [neighbor.id, neighbor.position + 1]]
-  return [[role.id, neighbor.position], [neighbor.id, role.position]]
-}

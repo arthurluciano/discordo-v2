@@ -48,8 +48,9 @@ Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 
 ```
 User         {id, username, display_name, avatar_url}
-Snapshot     {id, name, icon_url, banner_url, owner_id, permissions, roles: [Role], channels: [Channel], members: [Member]}
-             // só os canais que você pode ver; permissions = suas permissões no servidor
+Snapshot     {id, name, icon_url, banner_url, owner_id, permissions, roles: [Role], channels: [Channel & {permissions}], members: [Member]}
+             // só os canais que você pode ver; permissions = suas permissões no servidor e, em cada canal, nele
+             // roles vêm por position desc, id; channels por position, id
 Role         {id, guild_id, name, color, permissions, position}   // id == guild_id é o @everyone
 Member       {user, nickname, roles: [id], joined_at, online}
 Channel      {id, guild_id, type, name, topic, position, overwrites: [Overwrite]}   // type 0 texto, 1 voz
@@ -95,6 +96,7 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 | `PUT` / `DELETE /guilds/{guild}/members/{user}/roles/{role}` | | dar / tirar cargo |
 | `POST /guilds/{guild}/roles` | `{name?, color?, permissions?, position?}` | `Role` |
 | `PATCH` / `DELETE /guilds/{guild}/roles/{role}` | idem | `Role` |
+| `POST /guilds/{guild}/roles/{role}/move` | `{up}` | troca o cargo com o vizinho de cima ou de baixo |
 | `POST /guilds/{guild}/channels` | `{name, type?, topic?, position?}` | `Channel` |
 | `PATCH` / `DELETE /channels/{channel}` | `{name?, topic?, position?}` | `Channel` |
 | `PUT` / `DELETE /channels/{channel}/overwrites/{target}` | `{is_member, allow, deny}` | |
@@ -111,7 +113,7 @@ O dono tem tudo. Ninguém mexe em cargo de posição igual ou acima da sua, nem 
 | `PUT /blocks/{user}` | | bloqueia |
 | `POST /dms` | `{recipient_id}` | `DM` (abre ou reaproveita) |
 | `POST /dms/groups` | `{name?, recipient_ids}` (só amigos, até 10 pessoas) | `DM` |
-| `PUT /dms/{channel}/recipients/{user}` | | adiciona ao grupo |
+| `POST /dms/{channel}/recipients` | `{recipient_ids}` | adiciona amigos ao grupo (todos ou nenhum) |
 | `DELETE /dms/{channel}/recipients/@me` | | sai do grupo |
 
 `{channel}` nas rotas de mensagens aceita canal de servidor ou DM.

@@ -1,5 +1,5 @@
 // Server settings: overview (name, icon, banner), roles, members, invites, bans, and deleting the server.
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Ban, Check, Copy, Crown, ImagePlus, Plus, Search, Trash2, UserMinus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import { inviteLink } from '@/lib/pending-invite'
 import { cn } from '@/lib/utils'
 import type { Guild, Invite, Member, Role, User } from '@/lib/wire'
 import { displayName, useMe } from '../identity/users'
-import { moveRole, permissionList, sortRoles } from './logic'
+import { permissionList } from './logic'
 import { initialsOf } from './server-rail'
 
 const toHex = (color: number) => `#${color.toString(16).padStart(6, '0')}`
@@ -87,7 +87,7 @@ const RoleEditor = ({ guild, role, editable, above, below, onDeleted }: { guild:
   const save = useMutation({ mutationFn: (input: Parameters<typeof api.updateRole>[2]) => api.updateRole(guild.id, role.id, input) })
   const move = useMutation({
     mutationFn: async (neighbor: Role) => {
-      for (const [id, position] of moveRole(role, neighbor, neighbor === above)) await api.updateRole(guild.id, id, { position })
+      await api.moveRole(guild.id, role.id, neighbor === above)
     },
   })
   const remove = useMutation({ mutationFn: () => api.deleteRole(guild.id, role.id), onSuccess: onDeleted })
@@ -154,7 +154,7 @@ const RoleEditor = ({ guild, role, editable, above, below, onDeleted }: { guild:
 }
 
 const Roles = ({ guild, myTop }: { guild: Guild; myTop: number }) => {
-  const sorted = useMemo(() => sortRoles(guild.roles), [guild.roles])
+  const sorted = guild.roles // the server sends them highest first
   const [selectedId, setSelectedId] = useState(guild.id)
   const create = useMutation({ mutationFn: () => api.createRole(guild.id, {}), onSuccess: (r) => setSelectedId(r.id) })
   const role = sorted.find((r) => r.id === selectedId) ?? sorted.find((r) => r.id === guild.id)
@@ -201,8 +201,8 @@ const MemberRow = ({ guild, member, myTop, meId }: { guild: Guild; member: Membe
   const actionable = !isOwner && member.user.id !== meId && topPosition(guild, member.user.id) < myTop
   const canRoles = actionable && has(guild.permissions, Permission.ManageRoles)
   const assignable = (r: Role) => canRoles && r.id !== guild.id && r.position < myTop
-  const held = sortRoles(guild.roles.filter((r) => member.roles.includes(r.id)))
-  const addable = sortRoles(guild.roles.filter((r) => assignable(r) && !member.roles.includes(r.id)))
+  const held = guild.roles.filter((r) => member.roles.includes(r.id))
+  const addable = guild.roles.filter((r) => assignable(r) && !member.roles.includes(r.id))
 
   const setRole = useMutation({ mutationFn: ({ roleId, on }: { roleId: string; on: boolean }) => api.setMemberRole(guild.id, member.user.id, roleId, on) })
   const punish = useMutation({

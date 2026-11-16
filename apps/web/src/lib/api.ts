@@ -64,6 +64,8 @@ export const api = {
     request<Role>('POST', `/guilds/${guildId}/roles`, input),
   updateRole: (guildId: string, roleId: string, input: Partial<Pick<Role, 'name' | 'color' | 'permissions' | 'position'>>) =>
     request<Role>('PATCH', `/guilds/${guildId}/roles/${roleId}`, input),
+  /** Swaps the role with the one right above (or below) it. */
+  moveRole: (guildId: string, roleId: string, up: boolean) => request<void>('POST', `/guilds/${guildId}/roles/${roleId}/move`, { up }),
   deleteRole: (guildId: string, roleId: string) => request<void>('DELETE', `/guilds/${guildId}/roles/${roleId}`),
 
   /** `max_age` in seconds; 0 (or absent) means no limit, for both. */
@@ -105,7 +107,7 @@ export const api = {
 
   openDM: (recipientId: string) => request<DM>('POST', '/dms', { recipient_id: recipientId }),
   createGroup: (recipientIds: string[], name?: string) => request<DM>('POST', '/dms/groups', { recipient_ids: recipientIds, name }),
-  addToGroup: (channelId: string, userId: string) => request<void>('PUT', `/dms/${channelId}/recipients/${userId}`),
+  addToGroup: (channelId: string, userIds: string[]) => request<void>('POST', `/dms/${channelId}/recipients`, { recipient_ids: userIds }),
   leaveGroup: (channelId: string) => request<void>('DELETE', `/dms/${channelId}/recipients/@me`),
 }
 

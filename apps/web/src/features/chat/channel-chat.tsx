@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNo
 import { ArrowLeft, Hash, Paperclip } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api, errorMessage } from '@/lib/api'
-import { ALL, channelPermissions, has, Permission } from '@/lib/permissions'
+import { ALL, has, Permission } from '@/lib/permissions'
 import { loadOlder, openChannel, useStore } from '@/lib/store'
 import { displayName, useMe } from '../identity/users'
 import { Composer, useUploads } from './composer'
@@ -41,11 +41,7 @@ const Chat = ({ channelId, guildId, title }: { channelId: string; guildId: strin
     if (!log && ready && !failed) openChannel(channelId, fetchPage).catch((cause) => setFailed(errorMessage(cause)))
   }, [channelId, fetchPage, log, ready, failed])
 
-  const permissions = useMemo(() => {
-    if (!guild || !me) return ALL
-    const channel = guild.channels.find((c) => c.id === channelId)
-    return channel ? channelPermissions(guild, channel, me.id) : 0
-  }, [guild, me, channelId])
+  const permissions = guild ? guild.channels.find((c) => c.id === channelId)?.permissions ?? 0 : ALL
 
   const mentionable = useMemo(() => {
     const people = guild

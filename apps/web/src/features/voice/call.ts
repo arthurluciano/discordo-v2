@@ -7,7 +7,7 @@ import {
 } from '@/lib/media/presets'
 import { createTransport, type Quality, type RemoteTrack, type TransportState, type VoiceTransport } from '@/lib/media/transport'
 import { sendOp } from '@/lib/gateway'
-import { ALL, channelPermissions, has, Permission } from '@/lib/permissions'
+import { ALL, has, Permission } from '@/lib/permissions'
 import { getState, type State } from '@/lib/store'
 import type { GatewayEvent, GatewayEvents, TrackName } from '@/lib/wire'
 
@@ -98,7 +98,7 @@ export const subscribeCall = (listener: () => void) => {
 export const callPermissions = (s: State, channelId: string) => {
   for (const guild of s.guilds) {
     const channel = guild.channels.find((c) => c.id === channelId)
-    if (channel) return s.me ? channelPermissions(guild, channel, s.me.id) : 0
+    if (channel) return channel.permissions
   }
   return ALL
 }

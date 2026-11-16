@@ -74,7 +74,7 @@ const DMView = ({ dm, onBack }: { dm: DM; onBack: () => void }) => {
             submitLabel="Adicionar"
             exclude={dm.recipients.map((r) => r.id)}
             max={GROUP_MAX - dm.recipients.length}
-            onSubmit={async (ids) => { for (const id of ids) await api.addToGroup(dm.id, id) }}
+            onSubmit={(ids) => api.addToGroup(dm.id, ids)}
           />
           <ConfirmDialog
             open={leaving}

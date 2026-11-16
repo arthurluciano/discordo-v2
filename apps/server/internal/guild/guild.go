@@ -84,6 +84,7 @@ type Store interface {
 
 	Roles(ctx context.Context, guildID string) ([]Role, error)
 	SaveRole(ctx context.Context, r Role) error
+	SaveRoles(ctx context.Context, roles []Role) error // in one transaction
 	DeleteRole(ctx context.Context, roleID string) error
 
 	Members(ctx context.Context, guildID string) ([]Member, error)

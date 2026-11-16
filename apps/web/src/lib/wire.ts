@@ -21,6 +21,9 @@ export type Channel = {
   overwrites: Overwrite[]
 }
 
+/** A channel inside a guild snapshot: `permissions` are what we may do in it (computed by the server). */
+export type GuildChannel = Channel & { permissions: number }
+
 /** A guild as one member sees it: only the channels they can view; `permissions` are theirs. */
 export type Guild = {
   id: string
@@ -30,7 +33,7 @@ export type Guild = {
   owner_id: string
   permissions: number
   roles: Role[]
-  channels: Channel[]
+  channels: GuildChannel[]
   members: Member[]
 }
 

@@ -44,7 +44,7 @@ type Store interface {
 	CreateGroup(ctx context.Context, channelID, name string, userIDs []string) error
 	DM(ctx context.Context, channelID string) (Channel, error)
 	UserDMs(ctx context.Context, userID string) ([]Channel, error)
-	AddRecipient(ctx context.Context, channelID, userID string) error
+	AddRecipients(ctx context.Context, channelID string, userIDs []string) error
 	// RemoveRecipient deletes the channel when nobody is left.
 	RemoveRecipient(ctx context.Context, channelID, userID string) error
 }
@@ -114,18 +114,37 @@ func (s *Service) CreateGroup(ctx context.Context, userID, name string, recipien
 	return s.announce(ctx, channelID, "DM_CREATE")
 }
 
-func (s *Service) AddRecipient(ctx context.Context, userID, channelID, targetID string) error {
+// AddRecipients adds friends to a group, all or none.
+func (s *Service) AddRecipients(ctx context.Context, userID, channelID string, targetIDs []string) error {
 	c, err := s.member(ctx, userID, channelID)
 	if err != nil {
 		return err
 	}
-	if c.Type != TypeGroup || len(c.Recipients) >= maxGroupSize {
-		return errs.Invalid("only groups with fewer than 10 people accept new members")
+	if c.Type != TypeGroup {
+		return errs.Invalid("only groups accept new members")
 	}
-	if err := s.requireFriend(ctx, userID, targetID); err != nil {
-		return err
+	members := c.recipientIDs()
+	added := []string{}
+	for _, t := range targetIDs {
+		if !id.Valid(t) {
+			return errs.Invalid("recipient_ids must be user IDs")
+		}
+		if slices.Contains(members, t) {
+			continue
+		}
+		if err := s.requireFriend(ctx, userID, t); err != nil {
+			return err
+		}
+		members = append(members, t)
+		added = append(added, t)
 	}
-	if err := s.store.AddRecipient(ctx, channelID, targetID); err != nil {
+	if len(members) > maxGroupSize {
+		return errs.Invalid("a group has at most 10 people")
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	if err := s.store.AddRecipients(ctx, channelID, added); err != nil {
 		return err
 	}
 	_, err = s.announce(ctx, channelID, "DM_UPDATE")

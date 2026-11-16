@@ -11,11 +11,11 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
-import { CHANNEL_SCOPED, channelPermissions, has, Permission } from '@/lib/permissions'
+import { CHANNEL_SCOPED, has, Permission } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { ChannelType, type Channel, type Guild } from '@/lib/wire'
 import { displayName, useMe } from '../identity/users'
-import { bitState, permissionList, setBitState, sortRoles, type TriState } from './logic'
+import { bitState, permissionList, setBitState, type TriState } from './logic'
 
 type Target = { id: string; isMember: boolean }
 
@@ -89,7 +89,7 @@ const Overwrites = ({ guild, channel, mine }: { guild: Guild; channel: Channel; 
     return list
   }, [guild.id, channel.overwrites, added])
   const overwrite = channel.overwrites.find((o) => o.target_id === selected.id)
-  const roles = sortRoles(guild.roles).filter((r) => r.id !== guild.id && !targets.some((t) => t.id === r.id))
+  const roles = guild.roles.filter((r) => r.id !== guild.id && !targets.some((t) => t.id === r.id))
   const members = guild.members.filter((m) => !targets.some((t) => t.id === m.user.id))
 
   const change = useMutation({
@@ -176,7 +176,7 @@ export const ChannelSettingsDialog = ({ guild, channelId, onClose }: { guild: Gu
     if (!channel) onClose() // deleted, or we lost sight of it
   }, [channel, onClose])
   if (!channel || !me) return null
-  const mine = channelPermissions(guild, channel, me.id)
+  const mine = channel.permissions
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

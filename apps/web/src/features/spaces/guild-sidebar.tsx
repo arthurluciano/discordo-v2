@@ -13,11 +13,11 @@ import { Spinner } from '@/components/ui/spinner'
 import { Avatar } from '@/design/avatar'
 import { QUICK_EASE, SPRING_SOFT, useTransition } from '@/design/motion'
 import { api, errorMessage } from '@/lib/api'
-import { channelPermissions, has, Permission } from '@/lib/permissions'
+import { has, Permission } from '@/lib/permissions'
 import { inviteLink } from '@/lib/pending-invite'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { ChannelType, type Channel, type Guild } from '@/lib/wire'
+import { ChannelType, type Channel, type Guild, type GuildChannel } from '@/lib/wire'
 import { displayName, useMe } from '../identity/users'
 import { useProfileViewer } from '../identity/profile-viewer'
 import { navigate } from '../shell/navigation'
@@ -217,20 +217,18 @@ const SECTIONS = [
 ] as const
 
 const ChannelList = ({ guild, channelId, onCreate, onSettings }: { guild: Guild; channelId: string | null; onCreate: () => void; onSettings: (id: string) => void }) => {
-  const me = useMe()
   const voice = useVoice()
   const canManage = has(guild.permissions, Permission.ManageChannels)
-  const sorted = useMemo(() => [...guild.channels].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)), [guild.channels])
 
-  const select = (c: Channel) => {
+  const select = (c: GuildChannel) => {
     navigate.channel(guild.id, c.id)
-    if (c.type === ChannelType.Voice && voice.channelId !== c.id && me && has(channelPermissions(guild, c, me.id), Permission.Connect)) voice.join(c.id)
+    if (c.type === ChannelType.Voice && voice.channelId !== c.id && has(c.permissions, Permission.Connect)) voice.join(c.id)
   }
 
   return (
     <nav aria-label="Canais" className="min-h-0 flex-1 space-y-4 overflow-y-auto px-2 py-3">
       {SECTIONS.map(({ type, label, icon: Icon }) => {
-        const channels = sorted.filter((c) => c.type === type)
+        const channels = guild.channels.filter((c) => c.type === type)
         if (channels.length === 0 && !canManage) return null
         return (
           <section key={type}>
@@ -249,7 +247,7 @@ const ChannelList = ({ guild, channelId, onCreate, onSettings }: { guild: Guild;
                           <Icon aria-hidden className="size-[18px] shrink-0" />
                           <span className="min-w-0 flex-1 truncate text-left">{c.name}</span>
                         </button>
-                        {canManage ? (
+                        {has(c.permissions, Permission.ManageChannels) ? (
                           <button type="button" onClick={() => onSettings(c.id)} className="text-greyple opacity-0 transition-opacity hover:text-snow focus-visible:opacity-100 group-hover:opacity-100 max-md:opacity-100" aria-label={`Configurações de ${c.name}`}>
                             <Settings aria-hidden className="size-3.5" />
                           </button>
