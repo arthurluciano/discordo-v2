@@ -2,7 +2,8 @@
 // Two connections, so offers never collide: we offer on `pub` whenever what we send changes,
 // the server offers on `sub` whenever what we receive changes. No trickle ICE: SDPs go out complete.
 import type { TrackName } from '@/lib/wire'
-import { preferH264, sendEncodings, updateEncodings, type Encoding } from './presets'
+import { probeFor, videoCodecs } from './codecs'
+import { sendEncodings, updateEncodings, type Encoding } from './presets'
 import { nameTracks, parseOfferTracks } from './sdp'
 import type { RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
@@ -30,10 +31,9 @@ const applyEncoding = async (sender: RTCRtpSender, encoding: Encoding | undefine
   await sender.setParameters(params)
 }
 
-const preferHardwareCodec = (transceiver: RTCRtpTransceiver) => {
-  if (!('setCodecPreferences' in transceiver)) return
+const setCodecs = (transceiver: RTCRtpTransceiver, codecs: RTCRtpCodec[]) => {
   try {
-    transceiver.setCodecPreferences(preferH264(RTCRtpSender.getCapabilities('video')?.codecs ?? []))
+    transceiver.setCodecPreferences?.(codecs)
   } catch {
     // The browser keeps its default order; still works, maybe with a software codec.
   }
@@ -111,6 +111,9 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
   return {
     publish: async (name, track, encoding) => {
       if (closed) return
+      // Probed before anything else so the rest stays synchronous (no offer can slip in between).
+      const codecs = track?.kind === 'video' && !published.has(name) ? await videoCodecs(probeFor(track, encoding?.maxBitrate)) : null
+      if (closed) return
       const current = published.get(name)
       if (!track) {
         if (!current) return
@@ -135,7 +138,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
         if (!encoding || encodings?.length === 1) throw cause
         transceiver = pub.addTransceiver(track, { direction: 'sendonly', sendEncodings: sendEncodings(encoding, undefined) }) // no simulcast here
       }
-      if (track.kind === 'video') preferHardwareCodec(transceiver)
+      if (codecs) setCodecs(transceiver, codecs)
       published.set(name, transceiver)
       return negotiate()
     },

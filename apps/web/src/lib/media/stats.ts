@@ -3,6 +3,8 @@
 export type EncoderStats = {
   /** `encoderImplementation`, e.g. "ExternalEncoder", "libvpx" or "SimulcastEncoderAdapter (…)". */
   encoder: string | null
+  /** e.g. "H264", "AV1". */
+  codec: string | null
   /** `powerEfficientEncoder` (Chrome): true means a hardware (GPU) encoder. */
   hardware: boolean | null
   /** Of the largest layer being sent. */
@@ -23,17 +25,19 @@ type Outbound = {
   frameHeight?: number
   framesPerSecond?: number
   encoderImplementation?: string
+  codecId?: string
   powerEfficientEncoder?: boolean
 }
 
 /** Sums the outbound-rtp entries of one sender (one per simulcast layer). */
 export const encoderStats = (report: RTCStatsReport, previous: EncoderStats | null): EncoderStats => {
-  const s: EncoderStats = { encoder: null, hardware: null, width: null, height: null, fps: null, bitrate: null, bytesSent: 0, timestamp: 0 }
+  const s: EncoderStats = { encoder: null, codec: null, hardware: null, width: null, height: null, fps: null, bitrate: null, bytesSent: 0, timestamp: 0 }
   report.forEach((o: Outbound) => {
     if (o.type !== 'outbound-rtp') return
     s.bytesSent += o.bytesSent ?? 0
     s.timestamp = Math.max(s.timestamp, o.timestamp)
     s.encoder ??= o.encoderImplementation ?? null
+    s.codec ??= (o.codecId && (report.get(o.codecId) as { mimeType?: string } | undefined)?.mimeType?.replace(/^video\//i, '')) || null
     if (o.powerEfficientEncoder !== undefined) s.hardware = s.hardware === true || o.powerEfficientEncoder
     if (o.frameWidth && o.frameWidth > (s.width ?? 0)) {
       s.width = o.frameWidth
@@ -46,9 +50,10 @@ export const encoderStats = (report: RTCStatsReport, previous: EncoderStats | nu
   return s
 }
 
-export const encoderLabel = ({ hardware, encoder }: EncoderStats) => {
+export const encoderLabel = ({ hardware, encoder, codec }: EncoderStats) => {
   const what = hardware === true ? 'GPU' : hardware === false ? 'CPU' : 'desconhecida'
-  return `Codificação: ${what}${encoder ? ` (${encoder})` : ''}`
+  const detail = [codec, encoder].filter(Boolean).join(', ')
+  return `Codificação: ${what}${detail ? ` (${detail})` : ''}`
 }
 
 export const encoderDetails = ({ width, height, fps, bitrate }: EncoderStats) =>

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -107,6 +108,12 @@ func isKeyframe(mimeType string, payload []byte) bool {
 		return h264Keyframe(payload)
 	case strings.ToLower(webrtc.MimeTypeVP8):
 		return vp8Keyframe(payload)
+	case strings.ToLower(webrtc.MimeTypeVP9):
+		var vp9 codecs.VP9Packet // the start of an intra (not inter-predicted) frame in the base spatial layer
+		_, err := vp9.Unmarshal(payload)
+		return err == nil && vp9.B && !vp9.P && vp9.SID == 0
+	case strings.ToLower(webrtc.MimeTypeAV1):
+		return len(payload) > 0 && payload[0]&0x08 != 0 // N: the first packet of a coded video sequence
 	}
 	return true
 }

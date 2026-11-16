@@ -1,4 +1,4 @@
-// Screen share quality presets and video codec preference.
+// Screen share quality presets.
 
 export const RESOLUTIONS = {
   '480p': { label: '480p', width: 854, height: 480, mbps: 1.5 },
@@ -39,18 +39,6 @@ export const screenContentHint = ({ fps }: ScreenPreset) => (fps === 60 ? 'motio
 export const CAMERA_CONSTRAINTS: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
 export const CAMERA_ENCODING: Encoding = { maxBitrate: 2_500_000, maxFramerate: 30 }
 export const SCREEN_AUDIO_ENCODING: Encoding = { maxBitrate: 128_000 }
-
-type Codec = { mimeType: string; sdpFmtpLine?: string }
-
-/** H.264 first: it has hardware encoders on most machines (the browser falls back to software by itself).
- * packetization-mode=1 before 0, and the other codecs (and RTX) stay as fallbacks. */
-export const preferH264 = <C extends Codec>(codecs: readonly C[]): C[] => {
-  const rank = (c: C) => {
-    if (c.mimeType.toLowerCase() !== 'video/h264') return 2
-    return /packetization-mode=1/.test(c.sdpFmtpLine ?? '') ? 0 : 1
-  }
-  return [...codecs].sort((a, b) => rank(a) - rank(b))
-}
 
 /** Simulcast layers under the full one (rid `h`), lowest first: ~360p and ~720p, at their own bitrates. */
 const LOWER_LAYERS = [

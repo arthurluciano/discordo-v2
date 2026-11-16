@@ -91,7 +91,13 @@ func TestIsKeyframe(t *testing.T) {
 		{"vp8 keyframe, 15-bit picture id", webrtc.MimeTypeVP8, []byte{0x90, 0x80, 0x81, 0x23, 0x00}, true},
 		{"vp8 interframe", webrtc.MimeTypeVP8, []byte{0x10, 0x01}, false},
 		{"vp8 not partition start", webrtc.MimeTypeVP8, []byte{0x00, 0x00}, false},
-		{"unknown codec", webrtc.MimeTypeAV1, []byte{0}, true},
+		{"vp9 keyframe", webrtc.MimeTypeVP9, []byte{0x08, 0x00}, true},
+		{"vp9 keyframe, 15-bit picture id", webrtc.MimeTypeVP9, []byte{0x88, 0x80, 0x01, 0x00}, true},
+		{"vp9 interframe", webrtc.MimeTypeVP9, []byte{0x48, 0x00}, false},
+		{"vp9 not frame start", webrtc.MimeTypeVP9, []byte{0x00, 0x00}, false},
+		{"av1 new sequence", webrtc.MimeTypeAV1, []byte{0x18, 0x00}, true},
+		{"av1 other", webrtc.MimeTypeAV1, []byte{0x10, 0x00}, false},
+		{"unknown codec", webrtc.MimeTypeH265, []byte{0}, true},
 	} {
 		if got := isKeyframe(c.mime, c.payload); got != c.want {
 			t.Errorf("%s: got %v", c.name, got)

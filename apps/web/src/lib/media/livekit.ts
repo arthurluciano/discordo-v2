@@ -10,8 +10,10 @@ import {
   type RemoteParticipant,
   type RemoteTrackPublication,
   type TrackPublishOptions,
+  type VideoCodec,
 } from 'livekit-client'
 import type { MediaConnection, TrackName } from '@/lib/wire'
+import { probeFor, videoCodecs } from './codecs'
 import type { Encoding } from './presets'
 import type { Quality, RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
@@ -27,11 +29,24 @@ export const sourceOf = (name: TrackName): Track.Source => SOURCES[name]
 export const nameOf = (source: Track.Source): TrackName | undefined =>
   (Object.keys(SOURCES) as TrackName[]).find((name) => SOURCES[name] === source)
 
-const publishOptions = (name: TrackName, encoding: Encoding | undefined): TrackPublishOptions => {
+const LIVEKIT_CODECS = ['h264', 'vp8', 'vp9', 'av1'] as const
+
+/** The best codec this browser can send (GPU first, see codecs.ts) that LiveKit takes; VP8 is its own default. */
+const bestCodec = async (track: MediaStreamTrack, encoding: Encoding | undefined): Promise<VideoCodec> => {
+  for (const c of await videoCodecs(probeFor(track, encoding?.maxBitrate))) {
+    const name = LIVEKIT_CODECS.find((n) => c.mimeType.toLowerCase() === `video/${n}`)
+    if (name) return name
+  }
+  return 'vp8'
+}
+
+const publishOptions = async (name: TrackName, track: MediaStreamTrack, encoding: Encoding | undefined): Promise<TrackPublishOptions> => {
   const options: TrackPublishOptions = { source: SOURCES[name] }
   if (name === 'mic' || name === 'screen-audio') return encoding ? { ...options, audioPreset: { maxBitrate: encoding.maxBitrate } } : options
-  if (name === 'camera') return { ...options, simulcast: true, ...(encoding && { videoEncoding: encoding }) }
-  return { ...options, simulcast: true, videoCodec: 'h264', ...(encoding && { screenShareEncoding: encoding }) }
+  // VP9/AV1 go out as SVC; LiveKit then also sends a VP8 backup for viewers that cannot decode them.
+  const video = { ...options, simulcast: true, videoCodec: await bestCodec(track, encoding) }
+  if (name === 'camera') return { ...video, ...(encoding && { videoEncoding: encoding }) }
+  return { ...video, ...(encoding && { screenShareEncoding: encoding }) }
 }
 
 const QUALITIES: Record<Quality, VideoQuality> = {
@@ -110,7 +125,7 @@ export const createLiveKitTransport = (_send: SendOp, events: TransportEvents, c
       if (current.pub.track?.mediaStreamTrack !== track) await current.pub.track?.replaceTrack(track, true)
       return
     }
-    if (track) published.set(name, { pub: await local.publishTrack(track, publishOptions(name, encoding)), encoding: key })
+    if (track) published.set(name, { pub: await local.publishTrack(track, await publishOptions(name, track, encoding)), encoding: key })
   }
 
   return {

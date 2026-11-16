@@ -69,7 +69,8 @@ Em produção o build do app (`npm run build`) é embutido no binário do servid
 ### Transmissão de tela
 
 Em uma chamada, escolha a resolução (480p a 4K) e 30 ou 60 fps e clique em "Transmitir tela".
-O navegador codifica em H.264 com o encoder da placa de vídeo quando disponível e cai para software sozinho.
+O app pergunta ao navegador quais codecs (H.264, VP8, VP9, AV1) ele codifica na placa de vídeo e transmite com o primeiro deles;
+sem nenhum na GPU, usa o mais leve para a CPU (H.264, depois VP8). O indicador na chamada mostra o codec e se é GPU ou CPU.
 
 ## Produção (Openship)
 
