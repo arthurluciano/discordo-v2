@@ -94,7 +94,7 @@ const MicLevel = ({ track }: { track: MediaStreamTrack | null }) => {
 }
 
 const Section = ({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) => (
-  <section className="space-y-5 rounded-xl border border-white/10 bg-surface-raised p-4 sm:p-5">
+  <section className="space-y-5 rounded-xl border border-border bg-surface-raised p-4 sm:p-5">
     <h3 className="flex items-center gap-2 text-base font-bold text-snow">
       {icon}
       {title}
@@ -171,7 +171,7 @@ export const DeviceSettingsDialog = ({
               onChange={(id) => void voice.setDevice('camera', id)}
             />
 
-            <div className="aspect-video overflow-hidden rounded-lg border border-white/10 bg-black">
+            <div className="aspect-video overflow-hidden rounded-lg border border-border bg-black">
               <TrackPreview
                 track={camera}
                 placeholder={

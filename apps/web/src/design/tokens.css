@@ -2,9 +2,11 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
+@import './scenes.css';
 
+/* The Discordo palette, and the base every other skin overrides (`:where` keeps it below their blocks). */
 :root,
-[data-skin='default'] {
+:where([data-skin]) {
   color-scheme: dark;
 
   /* Discordo: dark chrome, calm contrast and Blurple as the only brand accent. */
@@ -200,6 +202,175 @@
   --glass-fill-float: #fafafd;
 }
 
+/* Solid skins: the Discordo layout with another palette. */
+[data-skin='midnight'] {
+  --surface-cosmic: #000000;
+  --surface-rail: #000000;
+  --surface-sidebar: #0a0a0c;
+  --surface-content: #111114;
+  --surface-raised: #1a1a1f;
+  --surface-floating: #000000;
+  --surface-input: #0a0a0c;
+  --surface-hover: #17171b;
+  --surface-active: #222228;
+  --canvas: #000000;
+}
+
+[data-skin='forest'] {
+  --color-blurple: #2f9e6e;
+  --color-blurple-hover: #257f58;
+  --color-blurple-soft: #4cc08b;
+  --color-snow: #eef5f0;
+  --color-fog: #b3c4ba;
+  --color-greyple: #8fa398;
+  --color-dim-grey: #55665c;
+
+  --surface-cosmic: #0b1a14;
+  --surface-rail: #0f1a15;
+  --surface-sidebar: #15231c;
+  --surface-content: #1a2b23;
+  --surface-raised: #22362c;
+  --surface-floating: #0b140f;
+  --surface-input: #0f1a15;
+  --surface-hover: #1f3229;
+  --surface-active: #2a4236;
+  --canvas: #0f1a15;
+}
+
+[data-skin='ocean'] {
+  --color-blurple: #1e9bd7;
+  --color-blurple-hover: #177bab;
+  --color-blurple-soft: #4fb6e8;
+  --color-snow: #eef4fa;
+  --color-fog: #b0c2d3;
+  --color-greyple: #8a9db0;
+  --color-dim-grey: #52657a;
+
+  --surface-cosmic: #08131f;
+  --surface-rail: #0b1724;
+  --surface-sidebar: #10202f;
+  --surface-content: #142636;
+  --surface-raised: #1b3043;
+  --surface-floating: #08111b;
+  --surface-input: #0b1724;
+  --surface-hover: #182b3c;
+  --surface-active: #213a50;
+  --canvas: #0b1724;
+}
+
+[data-skin='dusk'] {
+  --color-blurple: #c75a9b;
+  --color-blurple-hover: #a84a83;
+  --color-blurple-soft: #e08bbd;
+  --color-snow: #f6eef7;
+  --color-fog: #c9b6cc;
+  --color-greyple: #a08fa4;
+  --color-dim-grey: #66586a;
+
+  --surface-cosmic: #1a0f1f;
+  --surface-rail: #1b1220;
+  --surface-sidebar: #241829;
+  --surface-content: #2b1d31;
+  --surface-raised: #36263d;
+  --surface-floating: #140c18;
+  --surface-input: #1b1220;
+  --surface-hover: #312236;
+  --surface-active: #3f2c47;
+  --canvas: #1b1220;
+}
+
+[data-skin='paper'] {
+  color-scheme: light;
+
+  --color-blurple-soft: #4752c4;
+  --color-spring-green: #188a48;
+  --color-cerulean: #0071bc;
+  --color-ekko-red: #d92b2e;
+  --color-snow: #1f2328;
+  --color-fog: #4e5058;
+  --color-greyple: #6d6f78;
+  --color-dim-grey: #a0a3ab;
+
+  --surface-cosmic: #e3e5e8;
+  --surface-rail: #e3e5e8;
+  --surface-sidebar: #f2f3f5;
+  --surface-content: #ffffff;
+  --surface-raised: #ebedef;
+  --surface-floating: #ffffff;
+  --surface-input: #ebedef;
+  --surface-hover: #e8eaed;
+  --surface-active: #dfe1e5;
+  --canvas: #e3e5e8;
+
+  --border: rgb(0 0 0 / 0.1);
+  --sidebar-border: rgb(0 0 0 / 0.08);
+}
+
+[data-skin='neon'] {
+  --color-blurple: #ff2a6d;
+  --color-blurple-hover: #d91c58;
+  --color-blurple-soft: #05d9e8;
+  --color-fuchsia: #ff2a6d;
+  --color-cerulean: #05d9e8;
+  --color-ember-orange: #f3e600;
+  --color-snow: #e8fbff;
+  --color-fog: #9fd8e0;
+  --color-greyple: #6fa3ad;
+  --color-dim-grey: #2e4c55;
+
+  --canvas: #05040c;
+  --wallpaper:
+    radial-gradient(circle at 85% 10%, rgb(255 42 109 / 0.35), transparent 40%),
+    radial-gradient(circle at 10% 95%, rgb(5 217 232 / 0.25), transparent 45%),
+    repeating-linear-gradient(to right, rgb(5 217 232 / 0.07) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(to bottom, rgb(5 217 232 / 0.07) 0 1px, transparent 1px 48px), var(--canvas);
+
+  /* Translucent, so the grid and the scan line show through. */
+  --surface-cosmic: rgb(5 4 12 / 0.9);
+  --surface-rail: rgb(6 5 14 / 0.9);
+  --surface-sidebar: rgb(10 9 22 / 0.85);
+  --surface-content: rgb(12 11 26 / 0.78);
+  --surface-raised: rgb(26 24 52 / 0.9);
+  --surface-floating: #0b0a18;
+  --surface-input: rgb(4 3 10 / 0.85);
+  --surface-hover: rgb(5 217 232 / 0.08);
+  --surface-active: rgb(255 42 109 / 0.22);
+
+  --background: #0c0b1a;
+  --border: rgb(5 217 232 / 0.22);
+  --sidebar-border: rgb(5 217 232 / 0.16);
+}
+
+[data-skin='dragon'] {
+  --color-blurple: #e2552b;
+  --color-blurple-hover: #c0441f;
+  --color-blurple-soft: #ff8a5c;
+  --color-snow: #fbefe8;
+  --color-fog: #d6b8ab;
+  --color-greyple: #a88f84;
+  --color-dim-grey: #5e4840;
+
+  --canvas: #0b0505;
+  --wallpaper:
+    radial-gradient(ellipse at 70% 110%, rgb(226 85 43 / 0.45), transparent 55%),
+    radial-gradient(circle at 15% 10%, rgb(120 20 20 / 0.35), transparent 45%), var(--canvas);
+
+  /* Translucent, so the dragon shows through. */
+  --surface-cosmic: rgb(14 6 6 / 0.85);
+  --surface-rail: rgb(16 7 7 / 0.85);
+  --surface-sidebar: rgb(24 10 10 / 0.78);
+  --surface-content: rgb(20 9 9 / 0.66);
+  --surface-raised: rgb(48 20 18 / 0.85);
+  --surface-floating: #160909;
+  --surface-input: rgb(10 4 4 / 0.8);
+  --surface-hover: rgb(255 120 80 / 0.08);
+  --surface-active: rgb(226 85 43 / 0.25);
+
+  --background: #140808;
+  --border: rgb(255 140 100 / 0.12);
+  --sidebar-border: rgb(255 140 100 / 0.1);
+}
+
 /* Not `inline`: utilities like `text-snow` read `var(--color-snow)`, so a skin can override it. */
 @theme {
   --color-blurple: #5865f2;
@@ -388,8 +559,8 @@
 /* `data-platform="ios"` vem de `markPlatform` (lib/platform.ts). */
 @custom-variant ios (&:where([data-platform="ios"], [data-platform="ios"] *));
 
-/* Inside the glass skin, unless a nearer `data-skin="default"` (a theme preview) says otherwise. */
-@custom-variant glass (&:where([data-skin="glass"] *):not(:where([data-skin="glass"] [data-skin="default"] *)));
+/* Inside the glass skin, unless a nearer solid skin (a theme preview) says otherwise. */
+@custom-variant glass (&:where([data-skin="glass"] *):not(:where([data-skin="glass"] [data-skin]:not([data-skin="glass"]) *)));
 
 /* A floating pane of glass. The 1px specular edge is a gradient painted on the border box under a
    padding-box fill, so it survives `overflow: auto` (a pseudo-element would scroll away). */

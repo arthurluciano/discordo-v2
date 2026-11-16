@@ -21,6 +21,55 @@ export const SKINS = [
     modes: ['light', 'dark'],
     themeColor: { dark: '#0b0c1a', light: '#eef0f8' },
   },
+  {
+    id: 'midnight',
+    label: 'Meia-noite',
+    description: 'Preto puro, bom para telas OLED.',
+    modes: ['dark'],
+    themeColor: { dark: '#000000' },
+  },
+  {
+    id: 'forest',
+    label: 'Floresta',
+    description: 'Verdes escuros e calmos.',
+    modes: ['dark'],
+    themeColor: { dark: '#0f1a15' },
+  },
+  {
+    id: 'ocean',
+    label: 'Oceano',
+    description: 'Azul-marinho com destaque ciano.',
+    modes: ['dark'],
+    themeColor: { dark: '#0b1724' },
+  },
+  {
+    id: 'dusk',
+    label: 'Crepúsculo',
+    description: 'Roxo profundo com destaque rosa.',
+    modes: ['dark'],
+    themeColor: { dark: '#1b1220' },
+  },
+  {
+    id: 'paper',
+    label: 'Papel',
+    description: 'Claro e limpo, para ambientes iluminados.',
+    modes: ['light'],
+    themeColor: { light: '#e3e5e8' },
+  },
+  {
+    id: 'neon',
+    label: 'Neon',
+    description: 'Cidade à noite: rosa, ciano e grade luminosa.',
+    modes: ['dark'],
+    themeColor: { dark: '#05040c' },
+  },
+  {
+    id: 'dragon',
+    label: 'Dragão',
+    description: 'Um dragão animado voando entre brasas.',
+    modes: ['dark'],
+    themeColor: { dark: '#0b0505' },
+  },
 ] as const satisfies ReadonlyArray<SkinInfo>
 
 type SkinInfo = {
@@ -41,17 +90,23 @@ type ThemeContextValue = {
   setTheme: (theme: Theme) => void
   reduceTransparency: boolean
   setReduceTransparency: (reduce: boolean) => void
+  /** Freezes the animated backdrops (Neon, Dragão). */
+  reduceMotion: boolean
+  setReduceMotion: (reduce: boolean) => void
 }
 
 const KEYS = {
   theme: 'discordo-theme',
   skin: 'discordo-skin',
   reduceTransparency: 'discordo-reduce-transparency',
+  reduceMotion: 'discordo-reduce-motion',
 } as const
 
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 const LESS_GLASS_QUERY = '(prefers-reduced-transparency: reduce)'
+
+const LESS_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
@@ -93,6 +148,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [skin, setSkinState] = useState<Skin>(storedSkin)
   const [theme, setThemeState] = useState<Theme>(storedTheme)
   const [reduceTransparency, setReduceState] = useState(() => read(KEYS.reduceTransparency) === 'true')
+  const [reduceMotion, setReduceMotionState] = useState(() => read(KEYS.reduceMotion) === 'true')
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
     resolveTheme(skin, theme, window.matchMedia(DARK_QUERY).matches),
   )
@@ -101,6 +157,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const root = document.documentElement
     const dark = window.matchMedia(DARK_QUERY)
     const lessGlass = window.matchMedia(LESS_GLASS_QUERY)
+    const lessMotion = window.matchMedia(LESS_MOTION_QUERY)
     const apply = () => {
       const resolved = resolveTheme(skin, theme, dark.matches)
       root.dataset.skin = skin
@@ -108,6 +165,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       root.classList.toggle('dark', resolved === 'dark')
       if (reduceTransparency || lessGlass.matches) root.dataset.transparency = 'reduced'
       else delete root.dataset.transparency
+      if (reduceMotion || lessMotion.matches) root.dataset.motion = 'reduced'
+      else delete root.dataset.motion
       document
         .querySelector('meta[name="theme-color"]')
         ?.setAttribute('content', skinOf(skin).themeColor[resolved] ?? '')
@@ -117,11 +176,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     apply()
     dark.addEventListener('change', apply)
     lessGlass.addEventListener('change', apply)
+    lessMotion.addEventListener('change', apply)
+
     return () => {
       dark.removeEventListener('change', apply)
       lessGlass.removeEventListener('change', apply)
+      lessMotion.removeEventListener('change', apply)
     }
-  }, [skin, theme, reduceTransparency])
+  }, [skin, theme, reduceTransparency, reduceMotion])
 
   const value = useMemo<ThemeContextValue>(
     () => ({
@@ -141,8 +203,13 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         write(KEYS.reduceTransparency, String(next))
         setReduceState(next)
       },
+      reduceMotion,
+      setReduceMotion: (next) => {
+        write(KEYS.reduceMotion, String(next))
+        setReduceMotionState(next)
+      },
     }),
-    [skin, theme, resolvedTheme, reduceTransparency],
+    [skin, theme, resolvedTheme, reduceTransparency, reduceMotion],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

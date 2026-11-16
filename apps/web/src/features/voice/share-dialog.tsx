@@ -229,7 +229,7 @@ export const ShareDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
               disabled={picking}
               onClick={() => void pick(surface)}
               className={cn(
-                'group flex items-center gap-3 rounded-xl border border-white/10 bg-surface-raised p-4 text-left transition-colors',
+                'group flex items-center gap-3 rounded-xl border border-border bg-surface-raised p-4 text-left transition-colors',
                 'hover:border-blurple-soft hover:bg-surface-hover disabled:cursor-wait disabled:opacity-60',
               )}
             >
@@ -245,7 +245,7 @@ export const ShareDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
           ))}
         </div>
 
-        <div className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-black">
+        <div className="relative aspect-video overflow-hidden rounded-xl border border-border bg-black">
           <TrackPreview
             track={shown}
             placeholder={

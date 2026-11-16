@@ -50,13 +50,14 @@ const SkinPreview = ({ skin, theme, reduced }: { skin: Skin; theme: ResolvedThem
 
 /** "Aparência": skin, color mode and the glass fallback. */
 export const ThemeDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
-  const { skin, setSkin, theme, setTheme, reduceTransparency, setReduceTransparency } = useTheme()
+  const { skin, setSkin, theme, setTheme, reduceTransparency, setReduceTransparency, reduceMotion, setReduceMotion } =
+    useTheme()
   const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
   const singleMode = skinOf(skin).modes.length === 1
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-5 sm:max-w-md">
+      <DialogContent className="max-h-[92vh] gap-5 overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold text-snow">Aparência</DialogTitle>
           <DialogDescription>Escolha o tema e o modo de cor do Discordo.</DialogDescription>
@@ -64,7 +65,7 @@ export const ThemeDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
 
         <section className="space-y-2">
           <h3 className="section-label">Tema</h3>
-          <div role="radiogroup" aria-label="Tema" className="grid grid-cols-2 gap-3">
+          <div role="radiogroup" aria-label="Tema" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {SKINS.map((s) => (
               <button
                 key={s.id}
@@ -112,7 +113,9 @@ export const ThemeDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
             ))}
           </div>
           {singleMode ? (
-            <p className="text-xs text-greyple">O tema {skinOf(skin).label} só tem a versão escura.</p>
+            <p className="text-xs text-greyple">
+              O tema {skinOf(skin).label} só tem a versão {skinOf(skin).modes[0] === 'light' ? 'clara' : 'escura'}.
+            </p>
           ) : null}
         </section>
 
@@ -124,6 +127,17 @@ export const ThemeDialog = ({ open, onOpenChange }: { open: boolean; onOpenChang
             </span>
           </Label>
           <Switch id="reduce-transparency" checked={reduceTransparency} onCheckedChange={setReduceTransparency} />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <Label htmlFor="reduce-motion" className="flex-col items-start gap-0.5">
+            <span className="text-sm font-semibold text-snow">Tema estático</span>
+            <span className="text-xs font-normal text-greyple">
+              Para o fundo animado do Neon e do Dragão. Também segue o "reduzir movimento" do sistema.
+            </span>
+          </Label>
+
+          <Switch id="reduce-motion" checked={reduceMotion} onCheckedChange={setReduceMotion} />
         </div>
       </DialogContent>
     </Dialog>
