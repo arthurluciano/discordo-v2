@@ -9,6 +9,7 @@ import { HomeSidebar } from '@/features/social/home-sidebar'
 import { GuildSidebar } from '@/features/spaces/guild-sidebar'
 import { ServerRail } from '@/features/spaces/server-rail'
 import { VoiceStage } from '@/features/voice/voice-stage'
+import { WorldView } from '@/features/world/world-view'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { ChannelType } from '@/lib/wire'
@@ -48,6 +49,10 @@ const GuildMain = ({
         ) : channel.type === ChannelType.Voice ? (
           <ErrorBoundary label="Chamada">
             <VoiceStage channelId={channel.id} onBack={onBack} />
+          </ErrorBoundary>
+        ) : channel.type === ChannelType.World ? (
+          <ErrorBoundary label="Mundo">
+            <WorldView channelId={channel.id} guildId={guildId} onBack={onBack} />
           </ErrorBoundary>
         ) : (
           <>

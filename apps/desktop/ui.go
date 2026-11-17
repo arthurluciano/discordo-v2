@@ -115,6 +115,8 @@ func (d *Discordo) workspace(W, H float32) {
 		d.empty("Selecione um canal", "Escolha um canal à esquerda para começar")
 	case ch != nil && ch.Type == ChannelVoice:
 		d.voiceView(g, ch)
+	case ch != nil && ch.Type == ChannelWorld:
+		d.worldView(g, ch)
 	case ch != nil:
 		d.chat(ch.Name, ch.Topic, true, ch.Permissions, mainW, H)
 	default:

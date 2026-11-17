@@ -8,11 +8,13 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"discordo/server/internal/errs"
 	"discordo/server/internal/event"
 	"discordo/server/internal/media"
 	"discordo/server/internal/permission"
+	"discordo/server/internal/world"
 )
 
 // State is one user's presence in a call. An empty ChannelID means they left.
@@ -23,19 +25,36 @@ type State struct {
 	Muted     bool     `json:"muted"`
 	Deafened  bool     `json:"deafened"`
 	Tracks    []string `json:"tracks"` // what they publish: mic, camera, screen, screen-audio
+
+	// In a world: where they stand, and the room they are in ("" in the plaza).
+	X    float32 `json:"x,omitempty"`
+	Y    float32 `json:"y,omitempty"`
+	Zone string  `json:"zone,omitempty"`
+}
+
+// Access is what a user may do in a channel that can host a call.
+type Access struct {
+	Perms      permission.Set
+	GuildID    string   // guild channels
+	Recipients []string // DMs
+	World      bool     // the guild's world: the call has positions
 }
 
 type Authorizer interface {
 	// VoiceAccess fails unless the channel can host a call the user may see.
-	// guildID is set for guild channels, recipients for DMs.
-	VoiceAccess(ctx context.Context, userID, channelID string) (perms permission.Set, guildID string, recipients []string, err error)
+	VoiceAccess(ctx context.Context, userID, channelID string) (Access, error)
 }
 
 type call struct {
 	State
 	sessionID  string
 	recipients []string // DM calls
+	world      bool
+	moved      time.Time // the last world_move taken
 }
+
+// moveEvery is the least time between two moves of one user: clients send 10 a second, more is dropped.
+const moveEvery = 40 * time.Millisecond
 
 // Service implements gateway.Voice.
 // shortcut: calls live in memory and permissions are checked on join only: losing Connect/Speak mid-call
@@ -73,6 +92,11 @@ func (s *Service) Handle(ctx context.Context, userID, sessionID, op string, data
 		if err = json.Unmarshal(data, &in); err == nil {
 			err = s.setFlags(userID, sessionID, in.Muted, in.Deafened)
 		}
+	case "world_move":
+		var in struct{ X, Y float32 }
+		if err = json.Unmarshal(data, &in); err == nil {
+			err = s.move(userID, sessionID, in.X, in.Y)
+		}
 	case "rtc_offer", "rtc_answer", "rtc_subscribe":
 		s.mu.Lock()
 		c := s.calls[userID]
@@ -102,17 +126,21 @@ func (s *Service) Handle(ctx context.Context, userID, sessionID, op string, data
 }
 
 func (s *Service) join(ctx context.Context, userID, sessionID, channelID string, send func(string, any)) error {
-	perms, guildID, recipients, err := s.authz.VoiceAccess(ctx, userID, channelID)
+	access, err := s.authz.VoiceAccess(ctx, userID, channelID)
 	if err != nil {
 		return err
 	}
+	perms := access.Perms
 	if !perms.Has(permission.Connect) {
 		return errs.ErrForbidden
 	}
 	s.leave(userID, "") // one call per user: joining here hangs up anywhere else
 
-	c := &call{sessionID: sessionID, recipients: recipients,
-		State: State{UserID: userID, ChannelID: channelID, GuildID: guildID, Tracks: []string{}}}
+	c := &call{sessionID: sessionID, recipients: access.Recipients, world: access.World,
+		State: State{UserID: userID, ChannelID: channelID, GuildID: access.GuildID, Tracks: []string{}}}
+	if c.world {
+		c.X, c.Y = world.Default.Spawn.X, world.Default.Spawn.Y
+	}
 	s.mu.Lock()
 	s.calls[userID] = c
 	s.mu.Unlock()
@@ -188,6 +216,51 @@ func (s *Service) setFlags(userID, sessionID string, muted, deafened bool) error
 	st := c.State
 	s.mu.Unlock()
 	s.publish(c, st)
+	return nil
+}
+
+// move puts the user somewhere else in the world. The others in the call get the light WORLD_MOVE;
+// walking into or out of a room is a VOICE_STATE_UPDATE, which the whole guild sees ("Jogando Valorant").
+// shortcut: walls are the client's business and audio reaches everyone in the call, with the silence between
+// rooms applied by each client; subscribe audio per room in the SFU if a modified client listening in matters.
+func (s *Service) move(userID, sessionID string, x, y float32) error {
+	if !world.Default.Contains(x, y) {
+		return errs.Invalid("position outside the map")
+	}
+
+	s.mu.Lock()
+	c := s.calls[userID]
+	if c == nil || c.sessionID != sessionID || !c.world {
+		s.mu.Unlock()
+		return errs.Invalid("not in a world")
+	}
+
+	now := time.Now()
+	if now.Sub(c.moved) < moveEvery {
+		s.mu.Unlock()
+		return nil
+	}
+
+	zone := world.Default.ZoneAt(x, y)
+	changed := zone != c.Zone
+	c.moved, c.X, c.Y, c.Zone = now, x, y, zone
+	st := c.State
+
+	var peers []string
+	for id, other := range s.calls {
+		if id != userID && other.ChannelID == c.ChannelID {
+			peers = append(peers, id)
+		}
+	}
+	s.mu.Unlock()
+
+	if changed {
+		s.publish(c, st)
+		return nil
+	}
+
+	s.pub.Publish(event.Event{Kind: event.ToUsers, UserIDs: peers, Type: "WORLD_MOVE",
+		Data: map[string]any{"channel_id": st.ChannelID, "user_id": userID, "x": x, "y": y}})
 	return nil
 }
 

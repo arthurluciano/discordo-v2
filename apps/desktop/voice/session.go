@@ -151,6 +151,9 @@ func (s *Session) MicLevel() float32 {
 // SetVolume sets how loud a user plays, 0 to 2.
 func (s *Session) SetVolume(userID string, v float32) { s.mixer.SetVolume(userID, v) }
 
+// Move tells the others where I stand in a world (world_move; the server takes at most 25 a second).
+func (s *Session) Move(x, y float32) { s.send("world_move", map[string]float32{"x": x, "y": y}) }
+
 // SetMuted applies my mute and deafen choices and tells the others (voice_state; deafened implies muted).
 func (s *Session) SetMuted(muted, deafened bool) {
 	s.mu.Lock()

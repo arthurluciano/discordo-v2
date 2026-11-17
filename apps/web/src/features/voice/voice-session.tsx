@@ -2,6 +2,9 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { onGatewayEvent } from '@/lib/gateway'
+import { useStore } from '@/lib/store'
+import { ChannelType } from '@/lib/wire'
+import { gain as worldGain } from '../world/logic'
 import {
   dismissError,
   handleGatewayEvent,
@@ -48,9 +51,33 @@ export const voice = {
 /** Part of the call state; a selector returning a new object is compared shallowly. */
 export const useVoice = <T,>(pick: (s: CallState) => T): T => useCall(useShallow(pick))
 
-type RemoteAudioProps = { track: MediaStreamTrack; muted: boolean; volume: number; sinkId: string | null }
+/**
+ * In a world, how loud we hear someone from where we stand; 1 in any other call.
+ * In steps of 0.05, so that walking re-renders their audio a few times and not ten times a second.
+ */
+const useWorldGain = (channelId: string | null, userId: string) =>
+  useStore((s) => {
+    const mine = s.me ? s.voice[s.me.id] : undefined
+    const theirs = s.voice[userId]
+    if (!mine || !theirs || mine.channel_id !== channelId || theirs.channel_id !== channelId) return 1
 
-const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
+    const world = s.guilds.some((g) => g.channels.some((c) => c.id === channelId && c.type === ChannelType.World))
+
+    return world ? Math.round(worldGain(mine, theirs) * 20) / 20 : 1
+  })
+
+type RemoteAudioProps = {
+  track: MediaStreamTrack
+  /** Whose it is (for `screen-audio`, who shares). */
+  userId: string
+  channelId: string | null
+  muted: boolean
+  volume: number
+  sinkId: string | null
+}
+
+const RemoteAudio = ({ track, userId, channelId, muted, volume: chosen, sinkId }: RemoteAudioProps) => {
+  const volume = chosen * useWorldGain(channelId, userId)
   const ref = useRef<HTMLAudioElement>(null)
   const gain = useRef<GainNode | null>(null)
   const boosted = volume > 1
@@ -100,7 +127,8 @@ const RemoteAudio = ({ track, muted, volume, sinkId }: RemoteAudioProps) => {
 
 /** Everyone's audio, at the provider so it keeps playing wherever the user navigates. */
 const CallAudio = () => {
-  const { remote, deafened, output, volumes } = useVoice((s) => ({
+  const { channelId, remote, deafened, output, volumes } = useVoice((s) => ({
+    channelId: s.channelId,
     remote: s.remote,
     deafened: s.deafened,
     output: s.prefs.output,
@@ -115,6 +143,8 @@ const CallAudio = () => {
           <RemoteAudio
             key={`${r.userId}/${r.name}`}
             track={r.track}
+            userId={r.userId}
+            channelId={channelId}
             muted={deafened}
             volume={volumes[r.userId] ?? 1}
             sinkId={output}

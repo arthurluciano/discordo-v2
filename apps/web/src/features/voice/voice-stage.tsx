@@ -85,7 +85,15 @@ const StageButton = ({ icon: Icon, label, onClick }: { icon: Icon; label: string
   </Tooltip>
 )
 
-const VideoView = ({ track, contain, mirror }: { track: MediaStreamTrack; contain: boolean; mirror: boolean }) => {
+export const VideoView = ({
+  track,
+  contain,
+  mirror,
+}: {
+  track: MediaStreamTrack
+  contain: boolean
+  mirror: boolean
+}) => {
   const ref = useRef<HTMLVideoElement>(null)
   useEffect(() => {
     const el = ref.current
@@ -307,7 +315,7 @@ const Tile = ({ item, layout, speech, onFocus, onWatch, options }: TileProps) =>
   )
 }
 
-const isTyping = (target: EventTarget | null) =>
+export const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 

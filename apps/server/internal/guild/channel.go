@@ -23,13 +23,13 @@ func (s *Service) ChannelAccess(ctx context.Context, userID, channelID string) (
 	return perms, c.GuildID, err
 }
 
-// VoiceAccess is ChannelAccess for joining a call: the channel must be a voice channel.
-func (s *Service) VoiceAccess(ctx context.Context, userID, channelID string) (permission.Set, string, error) {
+// VoiceAccess is ChannelAccess for joining a call: the channel must be a voice channel or the world.
+func (s *Service) VoiceAccess(ctx context.Context, userID, channelID string) (perms permission.Set, guildID string, world bool, err error) {
 	_, c, perms, err := s.channel(ctx, userID, channelID)
-	if err == nil && c.Type != Voice {
+	if err == nil && c.Type != Voice && c.Type != World {
 		err = errs.Invalid("not a voice channel")
 	}
-	return perms, c.GuildID, err
+	return perms, c.GuildID, c.Type == World, err
 }
 
 func (s *Service) channel(ctx context.Context, userID, channelID string) (actor, Channel, permission.Set, error) {
@@ -104,6 +104,9 @@ func (s *Service) DeleteChannel(ctx context.Context, userID, channelID string) e
 	_, c, _, err := s.channelWith(ctx, userID, channelID, permission.ManageChannels)
 	if err != nil {
 		return err
+	}
+	if c.Type == World {
+		return errs.Invalid("the world cannot be deleted")
 	}
 	if err := s.store.DeleteChannel(ctx, channelID); err != nil {
 		return err

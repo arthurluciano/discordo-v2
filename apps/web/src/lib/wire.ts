@@ -19,12 +19,13 @@ export type Member = { user: User; nickname: string; roles: string[]; joined_at:
 
 export type Overwrite = { target_id: string; is_member: boolean; allow: number; deny: number }
 
-export const ChannelType = { Text: 0, Voice: 1, DM: 2, Group: 3 } as const
+export const ChannelType = { Text: 0, Voice: 1, DM: 2, Group: 3, World: 4 } as const
 
 export type Channel = {
   id: string
   guild_id: string
-  type: typeof ChannelType.Text | typeof ChannelType.Voice
+  /** World: the guild's map, one per guild, a call where everyone has a position. */
+  type: typeof ChannelType.Text | typeof ChannelType.Voice | typeof ChannelType.World
   name: string
   topic: string
   position: number
@@ -75,7 +76,10 @@ export const RelationshipStatus = { None: 0, Friend: 1, Incoming: 2, Outgoing: 3
 
 export type Relationship = { user: User; status: number; online: boolean }
 
-/** Someone in a call. An empty `channel_id` means they left. `tracks` are what they publish. */
+/**
+ * Someone in a call. An empty `channel_id` means they left. `tracks` are what they publish.
+ * In a world: where they stand (a coordinate at exactly 0 is omitted) and the room they are in (absent in the plaza).
+ */
 export type VoiceState = {
   user_id: string
   channel_id: string
@@ -83,7 +87,32 @@ export type VoiceState = {
   muted: boolean
   deafened: boolean
   tracks: TrackName[]
+  x?: number
+  y?: number
+  zone?: string
 }
+
+export type Point = { x: number; y: number }
+
+export type Rect = Point & { w: number; h: number }
+
+/** A room of the world: everyone inside hears each other and nobody outside does. `color` is 0xRRGGBB. */
+export type Zone = Rect & {
+  id: string
+  name: string
+  kind: 'game' | 'cinema'
+  /** What the guild sees of who is inside: "Jogando Valorant". */
+  status: string
+  color: number
+  door: string
+  /** Where "ir para" lands. */
+  spot: Point
+  /** The cinema's. */
+  screen?: Rect
+}
+
+/** GET /world/map: the same for every guild. */
+export type WorldMap = { width: number; height: number; spawn: Point; zones: Zone[]; walls: Rect[] }
 
 export type TrackName = 'mic' | 'screen-audio' | 'camera' | 'screen'
 
@@ -130,6 +159,7 @@ export type GatewayEvents = {
   DM_DELETE: { id: string }
   RELATIONSHIP_UPDATE: Relationship
   VOICE_STATE_UPDATE: VoiceState
+  WORLD_MOVE: { channel_id: string; user_id: string; x: number; y: number }
   VOICE_READY: { channel_id: string; connection: MediaConnection }
   VOICE_ERROR: { op: string; error: string }
   RTC_OFFER: { sdp: string }

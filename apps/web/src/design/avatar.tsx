@@ -15,9 +15,10 @@ const DOT_POSITION = {
 
 const COLORS = ['bg-blurple', 'bg-cerulean', 'bg-fuchsia', 'bg-ember-orange', 'bg-spring-green'] as const
 
-const initialOf = (displayName: string) => (displayName.trim()[0] ?? '?').toUpperCase()
+export const initialOf = (displayName: string) => (displayName.trim()[0] ?? '?').toUpperCase()
 
-const colorOf = (userId: string) =>
+/** A Tailwind class: `bg-` plus the name of a `--color-*` token. */
+export const colorOf = (userId: string) =>
   COLORS[[...userId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % COLORS.length]
 
 type AvatarProps = {

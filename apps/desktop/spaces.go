@@ -355,6 +355,12 @@ func (d *Discordo) guildSidebar(g *Guild, H float32) {
 
 	canManage := has(g.Permissions, permManage)
 
+	if i := slices.IndexFunc(g.Channels, func(ch Channel) bool { return ch.Type == ChannelWorld }); i >= 0 {
+		d.begin("mundo", box{axis: ui.AxisY, w: ui.Pct(1), gap: 2})
+		d.channelRow(g, &g.Channels[i], "globe")
+		c.Pop()
+	}
+
 	for _, s := range sections {
 		any := slices.ContainsFunc(g.Channels, func(ch Channel) bool { return ch.Type == s.typ })
 		if !any && !canManage {
@@ -385,36 +391,7 @@ func (d *Discordo) guildSidebar(g *Guild, H float32) {
 				continue
 			}
 
-			active := ch.ID == d.channel
-			bg := uint32(0)
-			if active {
-				bg = surfaceActive
-			}
-
-			hot := d.press(ui.HashString(c.ParentKey(), ch.ID), box{axis: ui.AxisX, w: ui.Pct(1), l: 8, r: 6, t: 6, b: 6, gap: 8, radius: 6, bg: bg, cross: ui.CrossCenter}, surfaceHover, ch.Name)
-			color := uint32(greyple)
-			if active || hot {
-				color = snow
-			}
-
-			d.icon(s.icon, 18, color)
-			d.text(ch.Name, d.ui.s14, color)
-			d.spacer()
-
-			// The gear shows on hover, for who may manage this channel.
-			gear := hot && has(ch.Permissions, permManage) && d.guildIconPress("settings", "Configurações de "+ch.Name, 14, greyple)
-
-			if d.pop() && !gear {
-				d.open(g.ID, ch.ID)
-			}
-
-			if gear {
-				d.openChannelSettings(g, ch)
-			}
-
-			if ch.Type == ChannelVoice {
-				d.voiceOccupants(g, ch.ID)
-			}
+			d.channelRow(g, ch, s.icon)
 		}
 
 		c.Pop()
@@ -426,6 +403,47 @@ func (d *Discordo) guildSidebar(g *Guild, H float32) {
 	k.CloseScroll(&v)
 
 	d.userDock()
+}
+
+// channelRow is a channel in the sidebar: its icon and name, the gear for who manages it, the callers under it.
+func (d *Discordo) channelRow(g *Guild, ch *Channel, iconName string) {
+	c := d.k.Context()
+
+	active := ch.ID == d.channel
+	bg := uint32(0)
+	if active {
+		bg = surfaceActive
+	}
+
+	hot := d.press(ui.HashString(c.ParentKey(), ch.ID), box{axis: ui.AxisX, w: ui.Pct(1), l: 8, r: 6, t: 6, b: 6, gap: 8, radius: 6, bg: bg, cross: ui.CrossCenter}, surfaceHover, ch.Name)
+	color := uint32(greyple)
+	if active || hot {
+		color = snow
+	}
+
+	d.icon(iconName, 18, color)
+	d.text(ch.Name, d.ui.s14, color)
+	d.spacer()
+
+	// The gear shows on hover, for who may manage this channel.
+	gear := hot && has(ch.Permissions, permManage) && d.guildIconPress("settings", "Configurações de "+ch.Name, 14, greyple)
+
+	if d.pop() && !gear {
+		d.open(g.ID, ch.ID)
+
+		// Going to the world enters it; a call under way elsewhere is kept until "Entrar no mundo".
+		if ch.Type == ChannelWorld && vc.channel == "" && has(ch.Permissions, permConnect) {
+			d.voiceJoin(ch.ID, ch.Permissions)
+		}
+	}
+
+	if gear {
+		d.openChannelSettings(g, ch)
+	}
+
+	if ch.Type == ChannelVoice || ch.Type == ChannelWorld {
+		d.voiceOccupants(g, ch.ID)
+	}
 }
 
 // guildIconPress is a bare icon button that turns snow on hover (the section "+" and the channel gear).
@@ -464,8 +482,12 @@ func (d *Discordo) voiceOccupants(g *Guild, channelID string) {
 
 		d.begin(v.UserID, box{axis: ui.AxisX, w: ui.Pct(1), l: 6, r: 6, t: 4, b: 4, gap: 8, cross: ui.CrossCenter})
 		d.avatar(u, name, 32, rexui.PresenceNone, surfaceSidebar)
+		d.begin("who", box{axis: ui.AxisY, w: ui.Grow(1)})
 		d.text(name, d.ui.s12, greyple)
-		d.spacer()
+		if status := d.worldStatus(v.Zone); status != "" {
+			d.text(status, d.ui.s11, alpha(greyple, 0.8))
+		}
+		c.Pop()
 
 		if slices.Contains(v.Tracks, "screen") {
 			d.begin("live", box{bg: red, radius: 4, l: 4, r: 4})

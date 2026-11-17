@@ -88,8 +88,8 @@ func (d *Discordo) voiceJoin(channelID string, perms int64) {
 
 			vc.starting = false
 			vc.s = voice.Join(opt)
-			for u, v := range vc.volumes {
-				vc.s.SetVolume(u, v)
+			for u := range vc.volumes {
+				d.voiceApplyVolume(u)
 			}
 		})
 	}()
@@ -103,6 +103,16 @@ func (d *Discordo) voiceLeave() {
 
 	vc.s, vc.channel, vc.starting = nil, "", false
 	voiceScreenReset()
+}
+
+// voiceApplyVolume plays someone as loud as I chose, times how well I hear them from where I stand in a world.
+func (d *Discordo) voiceApplyVolume(userID string) {
+	v, ok := vc.volumes[userID]
+	if !ok {
+		v = 1
+	}
+
+	vc.s.SetVolume(userID, v*d.worldGain(userID))
 }
 
 // voiceStatus is the call's state: connecting while the microphone is asked for.
@@ -408,6 +418,16 @@ func (d *Discordo) voiceStage(g *Guild, ch *Channel, stageW float32) {
 		d.voiceGrid(g, items, stageW, inCall)
 	}
 
+	d.voiceFooter(ch, "Entrar na chamada", true)
+	c.Pop()
+}
+
+// voiceFooter ends a call's main area: what went wrong, then joining (the join button) or the controls,
+// with the screen share when share.
+func (d *Discordo) voiceFooter(ch *Channel, join string, share bool) {
+	c := d.k.Context()
+	inCall := vc.channel == ch.ID
+
 	msg := ""
 	if inCall {
 		_, msg = voiceStatus()
@@ -434,7 +454,7 @@ func (d *Discordo) voiceStage(g *Guild, ch *Channel, stageW float32) {
 	switch {
 	case inCall:
 		d.voiceMuteButtons(40)
-		if has(ch.Permissions, permStream) {
+		if share && has(ch.Permissions, permStream) {
 			d.voiceShareButton(40)
 		}
 
@@ -445,9 +465,9 @@ func (d *Discordo) voiceStage(g *Guild, ch *Channel, stageW float32) {
 		d.voiceHangUp(40)
 
 	case has(ch.Permissions, permConnect):
-		d.press(ui.HashString(c.ParentKey(), "join"), box{axis: ui.AxisX, h: ui.Px(d.px(44)), l: 24, r: 24, radius: 8, bg: blurple, gap: 8, cross: ui.CrossCenter}, 0x4752c4ff, "Entrar na chamada")
+		d.press(ui.HashString(c.ParentKey(), "join"), box{axis: ui.AxisX, h: ui.Px(d.px(44)), l: 24, r: 24, radius: 8, bg: blurple, gap: 8, cross: ui.CrossCenter}, 0x4752c4ff, join)
 		d.icon("phone-call", 16, white)
-		d.text("Entrar na chamada", d.ui.s14m, white)
+		d.text(join, d.ui.s14m, white)
 		if d.pop() {
 			d.voiceJoin(ch.ID, ch.Permissions)
 		}
@@ -455,8 +475,6 @@ func (d *Discordo) voiceStage(g *Guild, ch *Channel, stageW float32) {
 	default:
 		d.text("Você não tem permissão para entrar nesta chamada.", d.ui.s14, greyple)
 	}
-	c.Pop()
-
 	c.Pop()
 }
 
@@ -574,7 +592,7 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 		}
 
 		vc.volumes[st.UserID] = float32(item) / 100
-		vc.s.SetVolume(st.UserID, float32(item)/100)
+		d.voiceApplyVolume(st.UserID)
 	}
 }
 
@@ -592,6 +610,8 @@ func (d *Discordo) voiceDialogs() {
 			voiceScreenReset()
 		}
 	}
+
+	d.worldSync()
 
 	if vc.channel == "" {
 		vc.settings = false

@@ -151,8 +151,16 @@ export const EncoderInfo = ({ className }: { className?: string }) => {
   )
 }
 
+type ControlsBarProps = {
+  channelId: string
+  /** False where the call has no camera video (the world). */
+  camera?: boolean
+  /** False where sharing is not allowed right now (the world, outside the cinema). */
+  share?: boolean
+}
+
 /** Mute, deafen, camera, screen, devices, leave: shown on the stage of the call we are in. */
-export const ControlsBar = ({ channelId }: { channelId: string }) => {
+export const ControlsBar = ({ channelId, camera = true, share = true }: ControlsBarProps) => {
   const v = useVoice((s) => ({
     connection: s.connection,
     muted: isMuted(s),
@@ -182,7 +190,7 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
         label={v.deafened ? 'Ativar áudio' : 'Ensurdecer'}
         onPressedChange={(d) => voice.setDeafened(d)}
       />
-      {canStream ? (
+      {canStream && camera ? (
         <Control
           icon={v.camera ? Video : VideoOff}
           pressed={v.camera !== null}
@@ -191,7 +199,7 @@ export const ControlsBar = ({ channelId }: { channelId: string }) => {
           onPressedChange={(on) => void voice.setCamera(on)}
         />
       ) : null}
-      {canStream && supportsScreenShare() ? <ShareButton /> : null}
+      {canStream && share && supportsScreenShare() ? <ShareButton /> : null}
       <Control icon={Settings2} pressed={settings} label="Configurações de voz e vídeo" onPressedChange={setSettings} />
       <Tooltip>
         <TooltipTrigger asChild>

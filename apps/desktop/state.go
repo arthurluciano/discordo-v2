@@ -30,6 +30,7 @@ const (
 	ChannelVoice = 1
 	ChannelDM    = 2
 	ChannelGroup = 3
+	ChannelWorld = 4 // the guild's map: a call where everyone has a position
 )
 
 type Channel struct {
@@ -130,6 +131,11 @@ type VoiceState struct {
 	Muted     bool     `json:"muted"`
 	Deafened  bool     `json:"deafened"`
 	Tracks    []string `json:"tracks"`
+
+	// In a world: where they stand, and the room they are in ("" in the plaza).
+	X    float32 `json:"x,omitempty"`
+	Y    float32 `json:"y,omitempty"`
+	Zone string  `json:"zone,omitempty"`
 }
 
 type Attachment struct {
@@ -413,6 +419,22 @@ func (s *State) Apply(e Event) error {
 			delete(s.Voice, v.UserID)
 		} else {
 			s.Voice[v.UserID] = v
+		}
+
+	case "WORLD_MOVE":
+		m, err := decode[struct {
+			ChannelID string  `json:"channel_id"`
+			UserID    string  `json:"user_id"`
+			X         float32 `json:"x"`
+			Y         float32 `json:"y"`
+		}](e.D)
+		if err != nil {
+			return err
+		}
+
+		if v, ok := s.Voice[m.UserID]; ok && v.ChannelID == m.ChannelID {
+			v.X, v.Y = m.X, m.Y
+			s.Voice[m.UserID] = v
 		}
 
 	case "TYPING_START":

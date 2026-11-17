@@ -1,4 +1,4 @@
-// A channel's settings: rename, topic, delete, and its permission overwrites.
+// A channel's settings: rename, topic, delete (never the world: the server refuses), and its permission overwrites.
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -94,7 +94,7 @@ const Overview = ({ channel, onDeleted }: { channel: Channel; onDeleted: () => v
           Salvar
         </Button>
         <span className="flex-1" />
-        {confirming ? (
+        {channel.type === ChannelType.World ? null : confirming ? (
           <>
             <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
               Cancelar

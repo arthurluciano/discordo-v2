@@ -25,6 +25,7 @@ import (
 	"discordo/server/internal/permission"
 	"discordo/server/internal/relation"
 	"discordo/server/internal/user"
+	"discordo/server/internal/world"
 )
 
 const oauthCookie = "discordo_oauth"
@@ -192,6 +193,7 @@ func (a *API) Handler() http.Handler {
 		return g.Join(r.Context(), u.ID, r.PathValue("code"))
 	})
 
+	h("GET /world/map", func(*http.Request, user.User) (any, error) { return world.Default, nil })
 	h("POST /guilds/{guild}/channels", func(r *http.Request, u user.User) (any, error) {
 		var in guild.ChannelInput
 		if err := decode(r, &in); err != nil {

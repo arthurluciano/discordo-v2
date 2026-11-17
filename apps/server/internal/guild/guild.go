@@ -49,6 +49,7 @@ type ChannelType int
 const (
 	Text ChannelType = iota
 	Voice
+	World ChannelType = 4 // the guild's map, one per guild: a call where everyone has a position. 2 and 3 are DMs
 )
 
 type Channel struct {
@@ -198,6 +199,7 @@ func (s *Service) Create(ctx context.Context, userID, name string) (Snapshot, er
 	channels := []Channel{
 		{ID: id.New(), GuildID: g.ID, Type: Text, Name: "geral"},
 		{ID: id.New(), GuildID: g.ID, Type: Voice, Name: "Geral", Position: 1},
+		{ID: id.New(), GuildID: g.ID, Type: World, Name: "Mundo", Position: 2},
 	}
 	if err := s.store.CreateGuild(ctx, g, everyone, channels); err != nil {
 		return Snapshot{}, err

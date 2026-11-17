@@ -110,6 +110,46 @@ func (c *Client) React(ctx context.Context, channelID, messageID, emoji string, 
 	return c.do(ctx, method, "/channels/"+url.PathEscape(channelID)+"/messages/"+url.PathEscape(messageID)+"/reactions/"+url.PathEscape(emoji), nil, nil)
 }
 
+// The world's map (GET /world/map), in map units: the same for every guild.
+type WorldPoint struct {
+	X float32 `json:"x"`
+	Y float32 `json:"y"`
+}
+
+type WorldRect struct {
+	X float32 `json:"x"`
+	Y float32 `json:"y"`
+	W float32 `json:"w"`
+	H float32 `json:"h"`
+}
+
+// WorldZone is a room: everyone inside hears each other and nobody outside does.
+type WorldZone struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`   // game, cinema
+	Status string `json:"status"` // "Jogando Valorant"
+	Color  uint32 `json:"color"`  // 0xRRGGBB
+	WorldRect
+	Spot   WorldPoint `json:"spot"`   // where "go to" lands
+	Screen *WorldRect `json:"screen"` // the cinema's
+}
+
+type WorldMap struct {
+	Width  float32     `json:"width"`
+	Height float32     `json:"height"`
+	Spawn  WorldPoint  `json:"spawn"`
+	Zones  []WorldZone `json:"zones"`
+	Walls  []WorldRect `json:"walls"`
+}
+
+func (c *Client) WorldMap(ctx context.Context) (*WorldMap, error) {
+	var m WorldMap
+	err := c.do(ctx, "GET", "/world/map", nil, &m)
+
+	return &m, err
+}
+
 // maxImage bounds a downloaded picture: the server takes images up to 8 MB and files up to 25.
 const maxImage = 26 << 20
 

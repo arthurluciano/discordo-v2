@@ -40,6 +40,7 @@ func ready(t *testing.T) *State {
 			Channels: []Channel{
 				{ID: "c1", Name: "geral", Topic: "Conversa livre do time", Permissions: permSend | permReact},
 				{ID: "c2", Name: "avisos"}, {ID: "v1", Type: ChannelVoice, Name: "Sala de voz"},
+				{ID: "w1", Type: ChannelWorld, Name: "Mundo", Permissions: permConnect | permSpeak | permStream},
 			},
 		}, {ID: "g2", Name: "Jogos de sexta"}},
 		"dms":           []DM{{ID: "d1", Type: ChannelDM, Recipients: []User{ana, beto}}, {ID: "d2", Type: ChannelGroup, Name: "Viagem", Recipients: []User{ana, beto, caio}}},
@@ -112,6 +113,14 @@ func TestApply(t *testing.T) {
 		t.Fatal("dm name or callers")
 	}
 
+	// The world: a joiner comes with a position, WORLD_MOVE moves them, and one for a stranger is dropped.
+	s.Apply(event(t, "VOICE_STATE_UPDATE", VoiceState{UserID: "u3", ChannelID: "w1", X: 1200, Y: 800, Zone: "lol"}))
+	s.Apply(event(t, "WORLD_MOVE", map[string]any{"channel_id": "w1", "user_id": "u3", "x": 900.5, "y": 40}))
+	s.Apply(event(t, "WORLD_MOVE", map[string]any{"channel_id": "w1", "user_id": "zz", "x": 1, "y": 1}))
+	if v := s.Voice["u3"]; v.X != 900.5 || v.Y != 40 || v.Zone != "lol" || len(s.Voice) != 2 {
+		t.Fatalf("world move: %+v", s.Voice)
+	}
+
 	s.Apply(event(t, "VOICE_STATE_UPDATE", VoiceState{UserID: "u2"}))
 	s.Apply(event(t, "GUILD_DELETE", map[string]string{"id": "g1"}))
 	if len(s.Guilds) != 1 || len(s.Callers("v1")) != 0 {
@@ -127,6 +136,33 @@ func TestInitials(t *testing.T) {
 	}
 }
 
+// worldFixture is the server's map with the walls it derives (apps/server/internal/world).
+func worldFixture(t *testing.T) *WorldMap {
+	b, err := os.ReadFile("../server/internal/world/map.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m WorldMap
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, z := range m.Zones {
+		side, door := (z.W-140)/2, z.Y
+		if z.Kind != "cinema" {
+			door = z.Y + z.H - 16 // the game rooms open at the bottom
+		}
+
+		m.Walls = append(m.Walls,
+			WorldRect{z.X, z.Y + z.H - 16 - (door - z.Y), z.W, 16},
+			WorldRect{z.X, door, side, 16}, WorldRect{z.X + z.W - side, door, side, 16},
+			WorldRect{z.X, z.Y, 16, z.H}, WorldRect{z.X + z.W - 16, z.Y, 16, z.H})
+	}
+
+	return &m
+}
+
 // TestRender draws the screens offscreen; DISCORDO_SHOTS=dir saves them to compare with the web app.
 func TestRender(t *testing.T) {
 	at := time.Date(2026, 11, 16, 21, 5, 0, 0, time.Local)
@@ -139,11 +175,14 @@ func TestRender(t *testing.T) {
 		w, h           int
 		guild, channel string
 		phase          phase
+		call           string // the call I am in
 	}{
-		{"channel", 1440, 860, "g1", "c1", phaseOnline},
-		{"dm", 1280, 800, "", "d1", phaseOnline},
-		{"friends", 1280, 800, "", "", phaseOnline},
-		{"login", 1440, 860, "", "", phaseSignedOut},
+		{"channel", 1440, 860, "g1", "c1", phaseOnline, ""},
+		{"dm", 1280, 800, "", "d1", phaseOnline, ""},
+		{"friends", 1280, 800, "", "", phaseOnline, ""},
+		{"login", 1440, 860, "", "", phaseSignedOut, ""},
+		{"world", 1440, 860, "g1", "w1", phaseOnline, "w1"},
+		{"world-visit", 1280, 800, "g1", "w1", phaseOnline, ""},
 	}
 
 	for _, s := range shots {
@@ -170,9 +209,27 @@ func TestRender(t *testing.T) {
 
 			d.open(s.guild, s.channel)
 
+			// The world: the map is injected, and the call is one still asking for the microphone (no session).
+			if s.channel == "w1" {
+				wd.m, wd.gen = worldFixture(t), d.gen
+				d.st.Voice["u2"] = VoiceState{UserID: "u2", ChannelID: "w1", X: 1330, Y: 870, Muted: true}
+				d.st.Voice["u3"] = VoiceState{UserID: "u3", ChannelID: "w1", X: 1000, Y: 1110, Zone: "cinema"}
+				defer func() { wd.m, wd.in = nil, false }()
+			}
+
+			if s.call != "" {
+				d.st.Voice["u1"] = VoiceState{UserID: "u1", ChannelID: s.call, X: 1200, Y: 800}
+				vc.channel, vc.gen, vc.starting = s.call, d.gen, true
+				defer func() { vc.channel, vc.starting = "", false }()
+			}
+
 			img, _ := o.Frame()
 			for range 6 {
 				img, _ = o.Frame()
+			}
+
+			if s.call != "" && (!wd.in || wd.pos != WorldPoint{1200, 800}) {
+				t.Fatalf("not standing at the spawn: in %v at %+v", wd.in, wd.pos)
 			}
 
 			if dir := os.Getenv("DISCORDO_SHOTS"); dir != "" {

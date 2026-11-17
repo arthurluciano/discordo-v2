@@ -1,5 +1,18 @@
 // The REST API. Same origin as the app, authenticated by the session cookie (see docs/protocol.md).
-import type { Attachment, Ban, Channel, DM, Guild, Invite, Message, Role, User, UserProfile } from './wire'
+import type {
+  Attachment,
+  Ban,
+  Channel,
+  ChannelType,
+  DM,
+  Guild,
+  Invite,
+  Message,
+  Role,
+  User,
+  UserProfile,
+  WorldMap,
+} from './wire'
 
 export type ProfileInput = Partial<
   Pick<UserProfile, 'display_name' | 'avatar_url' | 'bio' | 'pronouns' | 'banner_color'>
@@ -92,9 +105,16 @@ export const api = {
   invites: (guildId: string) => request<Invite[]>('GET', `/guilds/${guildId}/invites`),
   revokeInvite: (code: string) => request<void>('DELETE', `/invites/${enc(code)}`),
 
+  worldMap: () => request<WorldMap>('GET', '/world/map'),
+
   createChannel: (
     guildId: string,
-    input: { name: string; type?: Channel['type']; topic?: string; position?: number },
+    input: {
+      name: string
+      type?: typeof ChannelType.Text | typeof ChannelType.Voice
+      topic?: string
+      position?: number
+    },
   ) => request<Channel>('POST', `/guilds/${guildId}/channels`, input),
   updateChannel: (channelId: string, input: { name?: string; topic?: string; position?: number }) =>
     request<Channel>('PATCH', `/channels/${channelId}`, input),

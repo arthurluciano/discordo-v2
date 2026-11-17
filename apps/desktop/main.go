@@ -322,7 +322,14 @@ func (d *Discordo) open(guildID, channelID string) {
 
 	d.guild, d.channel, d.status, d.pin = guildID, channelID, "", 2
 
-	if channelID != "" && d.st.Logs[channelID] == nil {
+	world := false
+	if g := d.st.Guild(guildID); g != nil {
+		c := g.Channel(channelID)
+		world = c != nil && c.Type == ChannelWorld
+	}
+
+	// The world has no messages.
+	if channelID != "" && !world && d.st.Logs[channelID] == nil {
 		d.loadPage(channelID)
 	}
 }

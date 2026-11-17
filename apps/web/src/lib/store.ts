@@ -159,6 +159,12 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
       else delete voice[e.d.user_id]
       return { ...s, voice }
     }
+    case 'WORLD_MOVE': {
+      const state = s.voice[e.d.user_id]
+      if (!state) return s
+
+      return { ...s, voice: { ...s.voice, [e.d.user_id]: { ...state, x: e.d.x, y: e.d.y } } }
+    }
     default:
       return s // call signaling is handled by the voice session, not stored
   }

@@ -100,6 +100,16 @@ describe('reduce', () => {
     ).toEqual({})
   })
 
+  it('moves someone in a world, and ignores who is not in a call', () => {
+    const joined = reduce(ready(), {
+      t: 'VOICE_STATE_UPDATE',
+      d: { user_id: 'b', channel_id: 'w', muted: false, deafened: false, tracks: [], x: 1, y: 2, zone: 'cinema' },
+    })
+    const moved = reduce(joined, { t: 'WORLD_MOVE', d: { channel_id: 'w', user_id: 'b', x: 30, y: 40 } })
+    expect(moved.voice.b).toMatchObject({ x: 30, y: 40, zone: 'cinema' })
+    expect(reduce(moved, { t: 'WORLD_MOVE', d: { channel_id: 'w', user_id: 'zz', x: 1, y: 1 } })).toBe(moved)
+  })
+
   it('expires typing and clears it when the message arrives', () => {
     const typing = reduce(withLog(ready(), []), { t: 'TYPING_START', d: { channel_id: 'c', user_id: 'b' } }, 1000)
     expect(typing.typing.c?.b).toBe(9000)

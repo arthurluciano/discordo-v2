@@ -20,10 +20,11 @@ import { filled } from '@/lib/forms'
 import { inviteLink } from '@/lib/pending-invite'
 import { useCopy } from '@/lib/use-copy'
 import { cn } from '@/lib/utils'
-import { ChannelType, type Channel, type Guild } from '@/lib/wire'
+import { ChannelType, type Guild } from '@/lib/wire'
 import { INVITE_EXPIRY } from './logic'
 
-type NewChannel = { name: string; type: Channel['type'] }
+// The world (type 4) comes with the server: it cannot be created.
+type NewChannel = { name: string; type: typeof ChannelType.Text | typeof ChannelType.Voice }
 
 const CHANNEL_TYPES = [
   [ChannelType.Text, 'Texto', Hash],

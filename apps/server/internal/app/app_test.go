@@ -429,8 +429,8 @@ func TestGuildRealtimeFlow(t *testing.T) {
 	// Alice creates a guild and invites Bob.
 	var guild snapshot
 	e.must(alice, "POST", "/guilds", map[string]string{"name": "Oficina"}, &guild)
-	if len(guild.Channels) != 2 {
-		t.Fatalf("new guild has %d channels, want 2", len(guild.Channels))
+	if len(guild.Channels) != 3 {
+		t.Fatalf("new guild has %d channels, want 3", len(guild.Channels))
 	}
 	general := guild.Channels[0].ID
 	var invite struct{ Code string }
@@ -861,5 +861,96 @@ func TestVoiceFlow(t *testing.T) {
 	aliceWS.c.CloseNow()
 	if watcher.next("VOICE_STATE_UPDATE", &st); st.ChannelID != "" {
 		t.Fatalf("state after disconnect: %+v", st)
+	}
+}
+
+// The world is a call with positions: moves go to the others in it, changing room goes to the whole guild.
+func TestWorldFlow(t *testing.T) {
+	e := start(t)
+	alice, _ := e.login("alice")
+	bob, bobID := e.login("bob")
+	var guild snapshot
+	e.must(alice, "POST", "/guilds", map[string]string{"name": "Oficina"}, &guild)
+	if len(guild.Channels) != 3 || guild.Channels[2].Name != "Mundo" {
+		t.Fatalf("a new guild's channels: %+v", guild.Channels)
+	}
+	voiceChannel, world := guild.Channels[1].ID, guild.Channels[2].ID
+	var invite struct{ Code string }
+	e.must(alice, "POST", "/guilds/"+guild.ID+"/invites", map[string]int{}, &invite)
+	e.must(bob, "POST", "/invites/"+invite.Code, nil, nil)
+
+	// One world per guild: it is neither created nor deleted by hand.
+	if status := e.call(alice, "DELETE", "/channels/"+world, nil, nil); status != http.StatusBadRequest {
+		t.Fatalf("deleting the world: %d", status)
+	}
+	if status := e.call(alice, "POST", "/guilds/"+guild.ID+"/channels", map[string]any{"name": "Outro", "type": 4}, nil); status != http.StatusBadRequest {
+		t.Fatalf("creating a second world: %d", status)
+	}
+
+	var m struct {
+		Spawn struct{ X, Y float32 }
+		Zones []struct{ ID string }
+		Walls []struct{ W float32 }
+	}
+	if e.must(alice, "GET", "/world/map", nil, &m); len(m.Zones) != 4 || len(m.Walls) == 0 {
+		t.Fatalf("map: %+v", m)
+	}
+
+	aliceWS, bobWS := e.connect(alice), e.connect(bob)
+	aliceWS.next("READY", nil)
+	bobWS.next("READY", nil)
+
+	type state struct {
+		UserID string `json:"user_id"`
+		X, Y   float32
+		Zone   string
+	}
+	var st state
+	var failure struct{ Op, Error string }
+
+	// Positions only exist in the world.
+	bobWS.send("voice_join", map[string]string{"channel_id": voiceChannel})
+	bobWS.next("VOICE_READY", nil)
+	bobWS.send("world_move", map[string]float32{"x": 10, "y": 10})
+	if bobWS.next("VOICE_ERROR", &failure); failure.Op != "world_move" {
+		t.Fatalf("moving in a voice channel: %+v", failure)
+	}
+
+	// Everyone starts at the spawn.
+	bobWS.send("voice_join", map[string]string{"channel_id": world})
+	bobWS.next("VOICE_READY", nil)
+	for st.X == 0 { // skips the states of the voice channel bob just left
+		aliceWS.next("VOICE_STATE_UPDATE", &st)
+	}
+	if st.UserID != bobID || st.X != m.Spawn.X || st.Y != m.Spawn.Y || st.Zone != "" {
+		t.Fatalf("join state: %+v", st)
+	}
+
+	bobWS.send("world_move", map[string]float32{"x": -5, "y": 10})
+	if bobWS.next("VOICE_ERROR", &failure); failure.Op != "world_move" {
+		t.Fatalf("moving off the map: %+v", failure)
+	}
+
+	// A step in the plaza reaches only who is in the world: alice, outside, sees the next room change first.
+	aliceWS.send("voice_join", map[string]string{"channel_id": world})
+	aliceWS.next("VOICE_READY", nil)
+	bobWS.send("world_move", map[string]float32{"x": 1000, "y": 800})
+	var move struct {
+		UserID string `json:"user_id"`
+		X      float32
+	}
+	if aliceWS.next("WORLD_MOVE", &move); move.UserID != bobID || move.X != 1000 {
+		t.Fatalf("move: %+v", move)
+	}
+
+	// Faster than the limit: dropped without an error.
+	bobWS.send("world_move", map[string]float32{"x": 1001, "y": 800})
+	time.Sleep(60 * time.Millisecond)
+
+	watcher := e.connect(alice) // not in the world
+	watcher.next("READY", nil)
+	bobWS.send("world_move", map[string]float32{"x": 400, "y": 340})
+	if watcher.next("VOICE_STATE_UPDATE", &st); st.UserID != bobID || st.Zone != "valorant" || st.X != 400 {
+		t.Fatalf("entering a room: %+v", st)
 	}
 }

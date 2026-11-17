@@ -44,7 +44,8 @@ Eventos podem chegar repetidos: aplique por ID, de forma idempotente.
 | `DM_DELETE` | `{id}` | você saiu do grupo |
 | `RELATIONSHIP_UPDATE` | `Relationship` | `status` 0 = remova da lista |
 | `USER_UPDATE` | `User` | alguém com quem você divide servidor, amizade ou DM trocou nome ou avatar (inclusive você) |
-| `VOICE_STATE_UPDATE` | `VoiceState` | alguém entrou, saiu (`channel_id` vazio), mutou ou mudou o que transmite |
+| `VOICE_STATE_UPDATE` | `VoiceState` | alguém entrou, saiu (`channel_id` vazio), mutou, mudou o que transmite ou, no mundo, trocou de sala |
+| `WORLD_MOVE` | `{channel_id, user_id, x, y}` | alguém andou no mundo sem trocar de sala; só para quem está no mesmo mundo |
 | `VOICE_READY` / `VOICE_ERROR` / `RTC_OFFER` / `RTC_ANSWER` | ver "Voz e vídeo" | só para a sessão que está na chamada |
 
 ### Tipos
@@ -56,14 +57,14 @@ Snapshot     {id, name, icon_url, banner_url, owner_id, permissions, roles: [Rol
              // roles vêm por position desc, id; channels por position, id
 Role         {id, guild_id, name, color, permissions, position}   // id == guild_id é o @everyone
 Member       {user, nickname, roles: [id], joined_at, online}
-Channel      {id, guild_id, type, name, topic, position, overwrites: [Overwrite]}   // type 0 texto, 1 voz
+Channel      {id, guild_id, type, name, topic, position, overwrites: [Overwrite]}   // type 0 texto, 1 voz, 4 mundo
 Overwrite    {target_id, is_member, allow, deny}
 Message      {id, channel_id, author: User, content, created_at, edited_at, mentions: [user id],
               mention_everyone, attachments: [Attachment], reactions: [{emoji, users: [id]}]}
 Attachment   {id, filename, content_type, size}
 DM           {id, type, name, recipients: [User]}   // type 2 conversa, 3 grupo
 Relationship {user, status, online}   // 1 amigo, 2 pedido recebido, 3 pedido enviado, 4 bloqueado
-VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome]}
+VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome], x?, y?, zone?}   // x, y, zone: só no mundo
 Invite       {code, guild_id, creator_id, max_uses, uses, expires_at}   // max_uses 0 = sem limite; expires_at null = nunca
 ```
 
@@ -133,6 +134,7 @@ Cliente → servidor (`{"op", "d"}`):
 | `voice_join` | `{channel_id}` | exige a permissão conectar; sai de qualquer outra chamada |
 | `voice_leave` | | |
 | `voice_state` | `{muted, deafened}` | só informativo para os outros; quem muta de verdade é o cliente |
+| `world_move` | `{x, y}` | só no mundo; no máximo 25 por segundo (o resto é descartado) |
 | `rtc_offer` | `{sdp, tracks: {mid: nome}}` | oferta da conexão de **envio**; `tracks` nomeia cada faixa pelo `mid` do transceiver |
 | `rtc_answer` | `{sdp}` | resposta à oferta da conexão de **recepção** |
 | `rtc_subscribe` | `{user_id, track, on, quality?}` | começa/para de receber `camera` ou `screen` de alguém; `quality`: `auto` (padrão), `high`, `medium` ou `low` |
@@ -140,6 +142,18 @@ Cliente → servidor (`{"op", "d"}`):
 Servidor → cliente: `VOICE_READY {channel_id, connection: {kind, url?, token?}}`, `VOICE_ERROR {op, error}`, `RTC_ANSWER {sdp}`, `RTC_OFFER {sdp}`.
 
 O `VOICE_READY` chega antes de qualquer outra mensagem da chamada; `connection.kind` diz como a mídia trafega (abaixo).
+
+### Mundo
+
+Cada servidor tem um canal de tipo 4, o mundo: criado com o servidor, não se cria nem se apaga. É uma chamada (`voice_join`
+com o ID dele) em que cada um tem uma posição no mapa, igual para todos os servidores: `GET /world/map` devolve
+`{width, height, spawn: {x, y}, zones: [Zone], walls: [{x, y, w, h}]}`, com
+`Zone {id, name, kind, status, color, x, y, w, h, door, spot: {x, y}, screen?: {x, y, w, h}}` (`kind`: `game` ou `cinema`;
+`status` é o texto de quem está dentro, como "Jogando Valorant"; `spot` é onde "ir para" leva; `screen` é o telão do cinema).
+
+Quem entra começa em `spawn`. O cliente anda (colidindo com `walls`) e manda `world_move`; o servidor só confere que o ponto
+está no mapa e calcula `zone`. O áudio chega de todos: é o cliente que aplica o volume. Com um dos dois em uma sala, ouve-se
+só quem está na mesma sala; na praça (`zone` vazio), o volume é 1 até 120 de distância e cai até 0 em 400.
 
 ### Mídia (`connection.kind == "pion"`)
 

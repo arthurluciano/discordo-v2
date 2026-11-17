@@ -16,7 +16,6 @@ import (
 	"discordo/server/internal/image"
 	"discordo/server/internal/media"
 	"discordo/server/internal/message"
-	"discordo/server/internal/permission"
 	"discordo/server/internal/postgres"
 	"discordo/server/internal/relation"
 	"discordo/server/internal/user"
@@ -81,13 +80,13 @@ func (c channels) ChannelAccess(ctx context.Context, userID, channelID string) (
 	return message.Access{Perms: perms, Recipients: recipients}, err
 }
 
-func (c channels) VoiceAccess(ctx context.Context, userID, channelID string) (permission.Set, string, []string, error) {
-	perms, guildID, err := c.guilds.VoiceAccess(ctx, userID, channelID)
+func (c channels) VoiceAccess(ctx context.Context, userID, channelID string) (voice.Access, error) {
+	perms, guildID, world, err := c.guilds.VoiceAccess(ctx, userID, channelID)
 	if !errors.Is(err, errs.ErrNotFound) {
-		return perms, guildID, nil, err
+		return voice.Access{Perms: perms, GuildID: guildID, World: world}, err
 	}
 	perms, recipients, err := c.dms.Access(ctx, userID, channelID) // any DM can host a call
-	return perms, "", recipients, err
+	return voice.Access{Perms: perms, Recipients: recipients}, err
 }
 
 // social is the gateway's view of a user's DMs, relationships and the calls they can see.

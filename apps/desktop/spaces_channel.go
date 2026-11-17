@@ -167,7 +167,9 @@ func (d *Discordo) channelOverview(ch *Channel) {
 
 	d.spacer()
 
-	if s.confirming {
+	switch {
+	case ch.Type == ChannelWorld: // the server refuses to delete the world
+	case s.confirming:
 		if guildButton(d, "Cancelar", rexui.ButtonPlain, false) {
 			s.confirming = false
 		}
@@ -175,7 +177,7 @@ func (d *Discordo) channelOverview(ch *Channel) {
 		if guildButton(d, "Excluir de vez", rexui.ButtonDestructive, false) {
 			guildCall(d, "DELETE", "/channels/"+ch.ID, nil, func(*Discordo, struct{}) { s.open = false })
 		}
-	} else if guildButton(d, "Excluir canal", rexui.ButtonPlain, false) {
+	case guildButton(d, "Excluir canal", rexui.ButtonPlain, false):
 		s.confirming = true
 	}
 	c.Pop()

@@ -1,7 +1,7 @@
 // A guild's header (menu, settings, invites) and channel list, with who is in each voice channel.
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, Hash, HeadphoneOff, LogOut, MicOff, Plus, Settings, UserPlus, Volume2 } from 'lucide-react'
+import { ChevronDown, Globe, Hash, HeadphoneOff, LogOut, MicOff, Plus, Settings, UserPlus, Volume2 } from 'lucide-react'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   DropdownMenu,
@@ -16,11 +16,12 @@ import { api } from '@/lib/api'
 import { has, Permission } from '@/lib/permissions'
 import { useCallers, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { ChannelType, type Guild, type GuildChannel } from '@/lib/wire'
+import { ChannelType, type Guild, type GuildChannel, type VoiceState } from '@/lib/wire'
 import { displayName, useMe } from '../identity/users'
 import { useProfileViewer } from '../identity/profile-viewer'
 import { navigate } from '../shell/navigation'
 import { useVoice, voice } from '../voice/voice-session'
+import { useWorldMap } from '../world/use-world-map'
 import { ChannelSettingsDialog } from './channel-settings-dialog'
 import { CreateChannelDialog, InviteDialog } from './guild-dialogs'
 import { ServerSettingsDialog, settingsSections } from './server-settings-dialog'
@@ -93,7 +94,14 @@ const GuildHeader = ({ guild, onOpen }: { guild: Guild; onOpen: (what: Open) => 
   )
 }
 
-const VoiceOccupants = ({ guild, channelId }: { guild: Guild; channelId: string }) => {
+type VoiceOccupantsProps = {
+  guild: Guild
+  channelId: string
+  /** A line under someone's name: in the world, what the room they are in says ("Jogando Valorant"). */
+  statusOf?: (v: VoiceState) => string | undefined
+}
+
+const VoiceOccupants = ({ guild, channelId, statusOf }: VoiceOccupantsProps) => {
   const { openProfile } = useProfileViewer()
   const transition = useTransition(SPRING_SOFT)
   const occupants = useCallers(channelId)
@@ -105,6 +113,8 @@ const VoiceOccupants = ({ guild, channelId }: { guild: Guild; channelId: string 
         {occupants.map((v) => {
           const member = guild.members.find((m) => m.user.id === v.user_id)
           const name = member ? displayName(member.user, member.nickname) : 'Alguém'
+          const status = statusOf?.(v)
+
           return (
             <motion.li
               key={v.user_id}
@@ -121,7 +131,10 @@ const VoiceOccupants = ({ guild, channelId }: { guild: Guild; channelId: string 
                 className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-greyple hover:bg-surface-hover hover:text-snow"
               >
                 <Avatar userId={v.user_id} displayName={name} avatarUrl={member?.user.avatar_url} size="small" />
-                <span className="min-w-0 flex-1 truncate">{name}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{name}</span>
+                  {status ? <span className="block truncate text-[11px] text-greyple/70">{status}</span> : null}
+                </span>
                 {v.tracks.includes('screen') ? (
                   <span className="shrink-0 rounded bg-ekko-red px-1 text-[10px] font-bold leading-4 text-white">
                     AO VIVO
@@ -145,6 +158,49 @@ const SECTIONS = [
   { type: ChannelType.Voice, label: 'Canais de voz', icon: Volume2 },
 ] as const
 
+type ChannelRowProps = {
+  channel: GuildChannel
+  icon: typeof Hash
+  active: boolean
+  /** The call we are in. */
+  inCall: boolean
+  onSelect: () => void
+  onSettings: () => void
+}
+
+const ChannelRow = ({ channel: c, icon: Icon, active, inCall, onSelect, onSettings }: ChannelRowProps) => (
+  <div
+    className={cn(
+      'group flex items-center gap-1 rounded-md pr-1.5 transition-colors hover:bg-surface-hover',
+      active && 'bg-surface-active',
+    )}
+  >
+    <button
+      type="button"
+      aria-current={active ? 'page' : undefined}
+      onClick={onSelect}
+      className={cn(
+        'flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm text-greyple hover:text-snow',
+        active && 'text-snow',
+        inCall && 'text-spring-green',
+      )}
+    >
+      <Icon aria-hidden className="size-[18px] shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-left">{c.name}</span>
+    </button>
+    {has(c.permissions, Permission.ManageChannels) ? (
+      <button
+        type="button"
+        onClick={onSettings}
+        className="text-greyple opacity-0 transition-opacity hover:text-snow focus-visible:opacity-100 group-hover:opacity-100 max-md:opacity-100"
+        aria-label={`Configurações de ${c.name}`}
+      >
+        <Settings aria-hidden className="size-3.5" />
+      </button>
+    ) : null}
+  </div>
+)
+
 const ChannelList = ({
   guild,
   channelId,
@@ -157,18 +213,44 @@ const ChannelList = ({
   onSettings: (id: string) => void
 }) => {
   const callId = useVoice((s) => s.channelId)
+  const map = useWorldMap()
   const canManage = has(guild.permissions, Permission.ManageChannels)
+  const world = guild.channels.find((c) => c.type === ChannelType.World)
 
   const select = (c: GuildChannel) => {
     navigate.channel(guild.id, c.id)
-    if (c.type === ChannelType.Voice && callId !== c.id && has(c.permissions, Permission.Connect)) voice.join(c.id)
+    const call = c.type === ChannelType.Voice || c.type === ChannelType.World
+    if (call && callId !== c.id && has(c.permissions, Permission.Connect)) voice.join(c.id)
   }
+
+  const row = (c: GuildChannel, icon: typeof Hash) => (
+    <ChannelRow
+      channel={c}
+      icon={icon}
+      active={c.id === channelId}
+      inCall={callId === c.id}
+      onSelect={() => select(c)}
+      onSettings={() => onSettings(c.id)}
+    />
+  )
 
   return (
     <nav aria-label="Canais" className="min-h-0 flex-1 space-y-4 overflow-y-auto px-2 py-3">
-      {SECTIONS.map(({ type, label, icon: Icon }) => {
+      {world ? (
+        <div>
+          {row(world, Globe)}
+          <VoiceOccupants
+            guild={guild}
+            channelId={world.id}
+            statusOf={(v) => map?.zones.find((z) => z.id === v.zone)?.status}
+          />
+        </div>
+      ) : null}
+
+      {SECTIONS.map(({ type, label, icon }) => {
         const channels = guild.channels.filter((c) => c.type === type)
         if (channels.length === 0 && !canManage) return null
+
         return (
           <section key={type}>
             <div className="mb-1 flex items-center px-1.5 text-greyple/80">
@@ -183,44 +265,12 @@ const ChannelList = ({
               <p className="px-1.5 py-1 text-xs text-greyple/60">Nenhum canal</p>
             ) : (
               <ul className="space-y-0.5">
-                {channels.map((c) => {
-                  const active = c.id === channelId
-                  return (
-                    <li key={c.id}>
-                      <div
-                        className={cn(
-                          'group flex items-center gap-1 rounded-md pr-1.5 transition-colors hover:bg-surface-hover',
-                          active && 'bg-surface-active',
-                        )}
-                      >
-                        <button
-                          type="button"
-                          aria-current={active ? 'page' : undefined}
-                          onClick={() => select(c)}
-                          className={cn(
-                            'flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm text-greyple hover:text-snow',
-                            active && 'text-snow',
-                            callId === c.id && 'text-spring-green',
-                          )}
-                        >
-                          <Icon aria-hidden className="size-[18px] shrink-0" />
-                          <span className="min-w-0 flex-1 truncate text-left">{c.name}</span>
-                        </button>
-                        {has(c.permissions, Permission.ManageChannels) ? (
-                          <button
-                            type="button"
-                            onClick={() => onSettings(c.id)}
-                            className="text-greyple opacity-0 transition-opacity hover:text-snow focus-visible:opacity-100 group-hover:opacity-100 max-md:opacity-100"
-                            aria-label={`Configurações de ${c.name}`}
-                          >
-                            <Settings aria-hidden className="size-3.5" />
-                          </button>
-                        ) : null}
-                      </div>
-                      {c.type === ChannelType.Voice ? <VoiceOccupants guild={guild} channelId={c.id} /> : null}
-                    </li>
-                  )
-                })}
+                {channels.map((c) => (
+                  <li key={c.id}>
+                    {row(c, icon)}
+                    {c.type === ChannelType.Voice ? <VoiceOccupants guild={guild} channelId={c.id} /> : null}
+                  </li>
+                ))}
               </ul>
             )}
           </section>
