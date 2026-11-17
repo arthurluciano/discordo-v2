@@ -332,9 +332,22 @@ type file struct {
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	target, state, verifier := a.Auth.Begin()
+	value := state + "." + verifier
+
+	// The desktop app: the token goes back to its loopback listener (RFC 8252) instead of into a cookie.
+	if q := r.URL.Query(); q.Has("port") {
+		port, err := strconv.Atoi(q.Get("port"))
+		if err != nil || port < 1024 || port > 65535 || !validNonce(q.Get("nonce")) {
+			fail(w, errs.Invalid("bad port or nonce"))
+			return
+		}
+
+		value += "." + strconv.Itoa(port) + "." + q.Get("nonce")
+	}
+
 	// The browser carries the flow state; Lax lets it come back on the provider's redirect.
 	http.SetCookie(w, &http.Cookie{
-		Name: oauthCookie, Value: state + "." + verifier, Path: "/auth", MaxAge: 600,
+		Name: oauthCookie, Value: value, Path: "/auth", MaxAge: 600,
 		HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, target, http.StatusFound)
@@ -349,7 +362,12 @@ func (a *API) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Path: "/auth", MaxAge: -1})
-	state, verifier, _ := strings.Cut(c.Value, ".")
+	parts := strings.Split(c.Value, ".")
+	state, verifier := parts[0], ""
+	if len(parts) > 1 {
+		verifier = parts[1]
+	}
+
 	q := r.URL.Query()
 	if q.Get("code") == "" || subtle.ConstantTimeCompare([]byte(state), []byte(q.Get("state"))) != 1 {
 		back("cancelled")
@@ -361,8 +379,30 @@ func (a *API) callback(w http.ResponseWriter, r *http.Request) {
 		back("failed")
 		return
 	}
+
+	if len(parts) == 4 { // port and nonce, checked in login
+		back := url.Values{"token": {token}, "nonce": {parts[3]}}
+		http.Redirect(w, r, "http://127.0.0.1:"+parts[2]+"/callback?"+back.Encode(), http.StatusFound)
+		return
+	}
+
 	a.setSession(w, token, int(auth.SessionTTL.Seconds()))
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// validNonce: the desktop app's random tag, which comes back with the token so it knows the login is the one it began.
+func validNonce(s string) bool {
+	if len(s) < 16 || len(s) > 64 {
+		return false
+	}
+
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // setSession sets (or with maxAge < 0 clears) the session cookie the web app runs on.

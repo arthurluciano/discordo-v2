@@ -17,6 +17,9 @@ A fonte da verdade são os tipos Go em `apps/server/internal`. Este documento é
    Em falha, redireciona para `/?login_error=expired|cancelled|failed`.
 3. `POST /auth/logout` invalida a sessão e apaga o cookie.
 
+App nativo (RFC 8252): o app escuta em `127.0.0.1:<porta>` e abre no navegador `GET /auth/discord/login?port=<porta>&nonce=<16 a 64 de [A-Za-z0-9_-]>`.
+Em vez do cookie, o callback redireciona para `http://127.0.0.1:<porta>/callback?token=<sessão>&nonce=<o mesmo>`; o app confere o nonce e usa o token como `Bearer`.
+
 Nome e avatar trocados no Discordo (`PATCH /users/@me`) prevalecem sobre os do Discord nos próximos logins. Bio, pronomes e cor do banner não vão no `User` (nem em `USER_UPDATE`): o cartão de perfil busca `GET /users/{user}/profile` ao abrir.
 
 ## Gateway (tempo real)

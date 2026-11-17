@@ -216,6 +216,40 @@ type snapshot struct {
 	}
 }
 
+func TestDesktopLogin(t *testing.T) {
+	e := start(t)
+	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	// A port or nonce the app could not have sent is refused before the provider.
+	for _, q := range []string{"port=80&nonce=0123456789abcdef", "port=5000&nonce=short", "port=x&nonce=0123456789abcdef"} {
+		if resp, _ := browser.Get(e.url + "/auth/discord/login?" + q); resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: status %d", q, resp.StatusCode)
+		}
+	}
+
+	resp, _ := browser.Get(e.url + "/auth/discord/login?port=53682&nonce=0123456789abcdef")
+	toProvider, _ := url.Parse(resp.Header.Get("Location"))
+	req, _ := http.NewRequest("GET", e.url+"/auth/discord/callback?code=alice&state="+toProvider.Query().Get("state"), nil)
+	for _, c := range resp.Cookies() {
+		req.AddCookie(c)
+	}
+
+	resp, _ = browser.Do(req)
+	back, _ := url.Parse(resp.Header.Get("Location"))
+	if back.Host != "127.0.0.1:53682" || back.Path != "/callback" || back.Query().Get("nonce") != "0123456789abcdef" {
+		t.Fatalf("redirect: %s", back)
+	}
+
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.SessionCookie {
+			t.Fatal("the desktop login must not set the browser's session cookie")
+		}
+	}
+
+	// The token in the redirect is a session like the web's.
+	e.must(back.Query().Get("token"), "GET", "/users/@me", nil, nil)
+}
+
 func TestWebSession(t *testing.T) {
 	e := start(t)
 	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
