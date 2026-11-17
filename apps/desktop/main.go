@@ -368,18 +368,26 @@ func (d *Discordo) loadPage(channelID string) {
 	}()
 }
 
+// send is composer.tsx's submit: the text and the uploaded files; with only files, the text may be empty.
 func (d *Discordo) send() {
 	text := strings.TrimSpace(string(d.composer.Text()))
-	if text == "" || d.channel == "" {
+	ids, _ := d.chatReady()
+	if !d.chatCanSend() || d.channel == "" {
 		return
+	}
+
+	if ids == nil {
+		ids = []string{} // the server wants a list
 	}
 
 	d.composer.SetText(nil)
 	d.sending = true
+	d.chatSent() // the mention list and the typing clock start over
 	client, gen, channelID := d.client, d.gen, d.channel
 
 	go func() {
-		m, err := client.Send(context.Background(), channelID, text)
+		var m Message
+		err := client.do(context.Background(), "POST", "/channels/"+channelID+"/messages", map[string]any{"content": text, "attachments": ids}, &m)
 
 		d.post(func(d *Discordo) {
 			if d.gen != gen {
@@ -393,6 +401,7 @@ func (d *Discordo) send() {
 				return
 			}
 
+			d.chatClearUploads(channelID, ids)
 			d.st.AddMessages(channelID, false, m)
 			d.pin = 2
 		})

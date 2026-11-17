@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -139,6 +140,47 @@ func (c *Client) Fetch(ctx context.Context, ref string) ([]byte, error) {
 	}
 
 	return io.ReadAll(io.LimitReader(resp.Body, maxImage))
+}
+
+// Upload sends a file as multipart "file" to path (POST /images, POST /channels/{id}/attachments) and decodes the answer.
+func (c *Client) Upload(ctx context.Context, path, filename string, data []byte, out any) error {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return err
+	}
+
+	part.Write(data)
+	w.Close()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.Server+path, &body)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return errUnauthorized
+	}
+
+	if resp.StatusCode >= 300 {
+		var e struct{ Error string }
+		json.NewDecoder(resp.Body).Decode(&e)
+
+		return fmt.Errorf("POST %s: %d %s", path, resp.StatusCode, e.Error)
+	}
+
+	return json.NewDecoder(resp.Body).Decode(out)
 }
 
 func (c *Client) Logout(ctx context.Context) error {

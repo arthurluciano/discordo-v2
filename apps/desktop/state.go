@@ -33,24 +33,62 @@ const (
 )
 
 type Channel struct {
-	ID          string `json:"id"`
-	Type        int    `json:"type"`
-	Name        string `json:"name"`
-	Topic       string `json:"topic"`
-	Permissions int64  `json:"permissions"`
+	ID          string      `json:"id"`
+	GuildID     string      `json:"guild_id"`
+	Type        int         `json:"type"`
+	Name        string      `json:"name"`
+	Topic       string      `json:"topic"`
+	Position    int         `json:"position"`
+	Overwrites  []Overwrite `json:"overwrites"`
+	Permissions int64       `json:"permissions"` // what I may do in it, computed by the server
+}
+
+type Overwrite struct {
+	TargetID string `json:"target_id"`
+	IsMember bool   `json:"is_member"`
+	Allow    int64  `json:"allow"`
+	Deny     int64  `json:"deny"`
 }
 
 type Role struct {
-	ID       string `json:"id"`
-	Color    int    `json:"color"`
-	Position int    `json:"position"`
+	ID          string `json:"id"`
+	GuildID     string `json:"guild_id"`
+	Name        string `json:"name"`
+	Color       int    `json:"color"`
+	Permissions int64  `json:"permissions"`
+	Position    int    `json:"position"`
 }
 
 type Member struct {
-	User     User     `json:"user"`
-	Nickname string   `json:"nickname"`
-	Roles    []string `json:"roles"`
-	Online   bool     `json:"online"`
+	User     User      `json:"user"`
+	Nickname string    `json:"nickname"`
+	Roles    []string  `json:"roles"`
+	JoinedAt time.Time `json:"joined_at"`
+	Online   bool      `json:"online"`
+}
+
+// Profile is GET /users/{user}/profile. BannerColor is 0xRRGGBB, 0 for the theme's banner.
+type Profile struct {
+	User
+	Bio            string    `json:"bio"`
+	Pronouns       string    `json:"pronouns"`
+	BannerColor    int       `json:"banner_color"`
+	CreatedAt      time.Time `json:"created_at"`
+	MutualGuildIDs []string  `json:"mutual_guild_ids"`
+}
+
+type Invite struct {
+	Code      string     `json:"code"`
+	GuildID   string     `json:"guild_id"`
+	CreatorID string     `json:"creator_id"`
+	MaxUses   int        `json:"max_uses"`
+	Uses      int        `json:"uses"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Creator   *User      `json:"creator"`
+}
+
+type Ban struct {
+	User User `json:"user"`
 }
 
 func (m Member) Name() string {
@@ -65,6 +103,7 @@ type Guild struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	IconURL     string    `json:"icon_url"`
+	BannerURL   string    `json:"banner_url"`
 	OwnerID     string    `json:"owner_id"`
 	Permissions int64     `json:"permissions"`
 	Roles       []Role    `json:"roles"`
@@ -130,16 +169,42 @@ type Span struct {
 	Edited   bool
 }
 
+// Permissions (lib/permissions.ts).
 const (
-	permSend   = 2
-	permReact  = 16
-	permManage = 4096 // manage channels
+	permView           = 1 << 0
+	permSend           = 1 << 1
+	permManageMessages = 1 << 2
+	permAttach         = 1 << 3
+	permReact          = 1 << 4
+	permMentionAll     = 1 << 5
+	permConnect        = 1 << 6
+	permSpeak          = 1 << 7
+	permStream         = 1 << 8
+	permInvite         = 1 << 9
+	permKick           = 1 << 10
+	permBan            = 1 << 11
+	permManage         = 1 << 12 // manage channels
+	permRoles          = 1 << 13
+	permGuild          = 1 << 14
+	permAdmin          = 1 << 15
 )
+
+// permissionLabels are the web's PERMISSION_LABELS, in bit order.
+var permissionLabels = [...]string{
+	"Ver canal", "Enviar mensagens", "Gerenciar mensagens", "Anexar arquivos", "Adicionar reações",
+	"Mencionar @everyone", "Conectar (voz)", "Falar (voz)", "Transmitir vídeo", "Criar convite",
+	"Expulsar membros", "Banir membros", "Gerenciar canais", "Gerenciar cargos", "Gerenciar servidor", "Administrador",
+}
+
+func has(perms, bit int64) bool { return perms&permAdmin != 0 || perms&bit == bit }
 
 type Event struct {
 	T string          `json:"t"`
 	D json.RawMessage `json:"d"`
 }
+
+// typingFor is how long a TYPING_START lasts without another (the web's TYPING_MS).
+const typingFor = 8 * time.Second
 
 // Log is a channel's messages, oldest first. Complete: its first message is the channel's first.
 type Log struct {
@@ -156,12 +221,13 @@ type State struct {
 	Voice         map[string]VoiceState // by user
 
 	Logs   map[string]*Log
-	online map[string]bool // user → online, from members, friends and PRESENCE_UPDATE
-	users  map[string]User // everyone we know, for mentions and DMs
+	Typing map[string]map[string]time.Time // channel → user → when their "typing" ends
+	online map[string]bool                 // user → online, from members, friends and PRESENCE_UPDATE
+	users  map[string]User                 // everyone we know, for mentions and DMs
 }
 
 func NewState() *State {
-	return &State{Logs: map[string]*Log{}, Voice: map[string]VoiceState{}, online: map[string]bool{}, users: map[string]User{}}
+	return &State{Logs: map[string]*Log{}, Typing: map[string]map[string]time.Time{}, Voice: map[string]VoiceState{}, online: map[string]bool{}, users: map[string]User{}}
 }
 
 func decode[T any](raw json.RawMessage) (T, error) {
@@ -349,10 +415,29 @@ func (s *State) Apply(e Event) error {
 			s.Voice[v.UserID] = v
 		}
 
+	case "TYPING_START":
+		t, err := decode[struct {
+			ChannelID string `json:"channel_id"`
+			UserID    string `json:"user_id"`
+		}](e.D)
+		if err != nil {
+			return err
+		}
+
+		if s.Typing[t.ChannelID] == nil {
+			s.Typing[t.ChannelID] = map[string]time.Time{}
+		}
+
+		s.Typing[t.ChannelID][t.UserID] = time.Now().Add(typingFor)
+
 	case "MESSAGE_CREATE", "MESSAGE_UPDATE":
 		m, err := decode[Message](e.D)
 		if err != nil {
 			return err
+		}
+
+		if e.T == "MESSAGE_CREATE" {
+			delete(s.Typing[m.ChannelID], m.Author.ID) // their message ends their typing
 		}
 
 		// A channel never opened has no log: it is loaded whole when opened.
