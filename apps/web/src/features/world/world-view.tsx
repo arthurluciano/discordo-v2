@@ -24,7 +24,7 @@ import { useVoice, voice } from '@/features/voice/voice-session'
 import { isTyping, VideoView } from '@/features/voice/voice-stage'
 import { sendOp } from '@/lib/gateway'
 import { has, Permission } from '@/lib/permissions'
-import { getState, setState, useStore } from '@/lib/store'
+import { addReaction, getState, REACTION_MS, setState, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { Point, VoiceState } from '@/lib/wire'
 import { facingOf, step, walkStep, zoneAt, type Walk } from './logic'
@@ -68,6 +68,18 @@ const KEYS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
   arrowleft: 'left',
   d: 'right',
   arrowright: 'right',
+}
+
+/** What world_react takes: the chat's reactions. */
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
+
+/** The cinema with the lights down, around its screen. */
+const DIM = 'rgba(8, 6, 20, 0.4)'
+
+/** Ours floats at once: the server only tells the others. */
+const react = (meId: string, emoji: string) => {
+  setState((s) => ({ ...s, worldReactions: addReaction(s.worldReactions, meId, emoji, Date.now()) }))
+  sendOp('world_react', { emoji })
 }
 
 /** The skin we wear in every world, '' for our own character. */
@@ -203,6 +215,8 @@ const Level = ({ userId, track, levels }: { userId: string; track: MediaStreamTr
   return null
 }
 
+const watching = (n: number) => (n === 0 ? 'ninguém assistindo' : `${n} assistindo`)
+
 const peopleCount = (n: number) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`
 
 export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
@@ -262,6 +276,14 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
           .map((o) => o.user_id)
           .sort()[0] ?? null)
       : null,
+  )
+  /** Who else is in the cinema: the audience of whoever is on the screen. */
+  const audience = useStore((s) =>
+    cinema
+      ? Object.values(s.voice).filter(
+          (o) => o.channel_id === channelId && o.zone === cinema.id && o.user_id !== screening,
+        ).length
+      : 0,
   )
   /** Only those inside watch it. */
   const sharerId = inCinema ? screening : null
@@ -435,6 +457,17 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
       const art = imageOf('/world/map.png')
       if (art) ctx.drawImage(art, 0, 0, map.width, map.height)
 
+      // A film on: the cinema's lights go down (the screen itself is the element over the canvas).
+      const showing =
+        cinema &&
+        Object.values(voiceStates).some(
+          (o) => o.channel_id === channelId && o.zone === cinema.id && o.tracks.includes('screen'),
+        )
+      if (cinema && showing) {
+        ctx.fillStyle = DIM
+        ctx.fillRect(cinema.x, cinema.y, cinema.w, cinema.h)
+      }
+
       const at = shown.current
       for (const id of at.keys()) if (voiceStates[id]?.channel_id !== channelId) at.delete(id)
 
@@ -483,6 +516,21 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
         const speaking = (levels.get(state.user_id)?.get() ?? 0) > 0
         if (name) drawPill(ctx, font, snap(p.x), snap(p.y - FRAME_H + FEET), name, state, speaking)
       }
+
+      // Reactions rise from over the name and fade.
+      const clock = Date.now()
+      ctx.font = `22px ${font}`
+      ctx.textAlign = 'center'
+      for (const r of getState().worldReactions) {
+        const t = (clock - r.at) / REACTION_MS
+        const who = characters.find((c) => c.state.user_id === r.user_id)
+        if (t < 0 || t >= 1 || !who) continue
+
+        ctx.globalAlpha = 1 - t * t
+        ctx.fillText(r.emoji, snap(who.p.x + Math.sin(r.at) * 10), snap(who.p.y - FRAME_H + FEET - 32 - t * 40))
+      }
+      ctx.globalAlpha = 1
+      ctx.textAlign = 'start'
     }
 
     frame = requestAnimationFrame(draw)
@@ -504,6 +552,10 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
     pos.current = p
     target.current = null
   }
+
+  // Never the same picture twice: not our own share (a mirror of our screen), nor under the full screen.
+  const ownShare = inCinema && screening === meId
+  const onScreen = ownShare || expanded ? null : video
 
   const zoneName = map?.zones.find((z) => z.id === myZone)?.name ?? 'Praça'
 
@@ -593,13 +645,16 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
             ref={screenRef}
             className={cn(
               'absolute left-0 top-0',
-              video ? 'bg-black' : 'pointer-events-none flex flex-col items-center justify-center gap-1 text-center',
+              onScreen ? 'bg-black' : 'pointer-events-none flex flex-col items-center justify-center gap-1 text-center',
             )}
             style={{ width: cinema.screen.w, height: cinema.screen.h }}
           >
-            {video ? (
+            {onScreen ? (
               <>
-                <VideoView track={video} contain mirror={false} />
+                <VideoView track={onScreen} contain mirror={false} />
+                <p className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                  {people.get(sharerId ?? '') ?? 'Alguém'} · {watching(audience)}
+                </p>
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -613,16 +668,26 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
             ) : (
               <>
                 <p className="text-sm font-semibold text-white/60">
-                  {screening ? 'Transmissão em andamento' : 'Ninguém transmitindo'}
+                  {ownShare
+                    ? 'Você está transmitindo'
+                    : expanded && video
+                      ? 'Assistindo em tela cheia'
+                      : screening
+                        ? 'Transmissão em andamento'
+                        : 'Ninguém transmitindo'}
                 </p>
                 <p className="text-xs text-white/40">
-                  {screening
-                    ? inCinema
-                      ? 'Carregando…'
-                      : 'Entre no cinema para assistir.'
-                    : inCinema
-                      ? 'Use o botão de compartilhar tela para transmitir aqui.'
-                      : 'Entre no cinema para compartilhar sua tela.'}
+                  {ownShare
+                    ? watching(audience)
+                    : expanded && video
+                      ? 'Feche a tela cheia para voltar a ver aqui.'
+                      : screening
+                        ? inCinema
+                          ? 'Carregando…'
+                          : 'Entre no cinema para assistir.'
+                        : inCinema
+                          ? 'Use o botão de compartilhar tela para transmitir aqui.'
+                          : 'Entre no cinema para compartilhar sua tela.'}
                 </p>
               </>
             )}
@@ -641,9 +706,25 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
         </Alert>
       ) : null}
 
-      <footer className="flex shrink-0 justify-center">
+      <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2">
         {inCall ? (
-          <ControlsBar channelId={channelId} camera={false} share={inCinema} />
+          <>
+            <div role="group" aria-label="Reagir" className="flex gap-0.5 rounded-full bg-surface-raised p-1">
+              {REACTIONS.map((emoji) => (
+                <Button
+                  key={emoji}
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-lg"
+                  aria-label={`Reagir com ${emoji}`}
+                  onClick={() => react(meId, emoji)}
+                >
+                  {emoji}
+                </Button>
+              ))}
+            </div>
+            <ControlsBar channelId={channelId} camera={false} share={inCinema} />
+          </>
         ) : has(perms, Permission.Connect) ? (
           <Button size="lg" onClick={() => voice.join(channelId)}>
             <Globe aria-hidden />

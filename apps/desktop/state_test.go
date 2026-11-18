@@ -258,3 +258,16 @@ func TestRender(t *testing.T) {
 		})
 	}
 }
+
+func TestReactions(t *testing.T) {
+	s := NewState()
+	now := time.Now()
+	if err := s.Apply(Event{T: "WORLD_REACT", D: []byte(`{"channel_id":"w","user_id":"b","emoji":"🔥"}`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	s.React("c", "🎉", now.Add(reactionFor+time.Second))
+	if len(s.Reactions) != 1 || s.Reactions[0].UserID != "c" {
+		t.Fatalf("an old reaction stays: %+v", s.Reactions)
+	}
+}

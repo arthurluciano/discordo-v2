@@ -161,6 +161,10 @@ Skins: `GET /world/skins` lista `[{id, name, zone}]` (`zone` agrupa na escolha).
 no lugar de `/world/sprites/{user_id}`. O servidor esquece a skin ao sair da chamada: o cliente guarda a escolha e a manda
 de novo ao entrar.
 
+Reações: `world_react {emoji}` (um dos emojis das reações do chat: 👍 ❤️ 😂 😮 😢 🎉 🔥 👀) chega como
+`WORLD_REACT {channel_id, user_id, emoji}` a quem está na mesma sala (ou na praça); quem reagiu não recebe o próprio.
+Mais de 4 por segundo são descartadas sem erro.
+
 Quem entra começa em `spawn`. O cliente anda (colidindo com `walls`) e manda `world_move`; o servidor só confere que o ponto
 está no mapa e calcula `zone`. O áudio chega de todos: é o cliente que aplica o volume. Com um dos dois em uma sala, ouve-se
 só quem está na mesma sala; na praça (`zone` vazio), o volume é 1 até 120 de distância e cai até 0 em 400.

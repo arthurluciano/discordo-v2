@@ -24,7 +24,14 @@ export type State = {
   typing: Record<string, Record<string, number>>
   /** Only for channels opened since the last READY. */
   messages: Record<string, MessageLog>
+  /** Emojis floating over someone in a world, newest last; `at` is when they were sent (ms). */
+  worldReactions: WorldReaction[]
 }
+
+export type WorldReaction = { user_id: string; emoji: string; at: number }
+
+/** How long a reaction floats. */
+export const REACTION_MS = 2500
 
 export const initialState: State = {
   status: 'connecting',
@@ -35,9 +42,16 @@ export const initialState: State = {
   voice: {},
   typing: {},
   messages: {},
+  worldReactions: [],
 }
 
 const TYPING_MS = 8000
+
+/** Appends a reaction and forgets those done floating. */
+export const addReaction = (list: WorldReaction[], userId: string, emoji: string, now: number) => [
+  ...list.filter((r) => now - r.at < REACTION_MS),
+  { user_id: userId, emoji, at: now },
+]
 
 const upsert = <T extends { id: string }>(list: T[], item: T) =>
   list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]
@@ -159,6 +173,8 @@ export const reduce = (s: State, e: GatewayEvent, now = Date.now()): State => {
       else delete voice[e.d.user_id]
       return { ...s, voice }
     }
+    case 'WORLD_REACT':
+      return { ...s, worldReactions: addReaction(s.worldReactions, e.d.user_id, e.d.emoji, now) }
     case 'WORLD_MOVE': {
       const state = s.voice[e.d.user_id]
       if (!state) return s

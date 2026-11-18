@@ -157,6 +157,9 @@ func (s *Session) Move(x, y float32) { s.send("world_move", map[string]float32{"
 // WearSkin dresses me in a world skin, or in my own character with "" (world_skin).
 func (s *Session) WearSkin(id string) { s.send("world_skin", map[string]string{"skin": id}) }
 
+// React floats an emoji over me for the others in my room (world_react).
+func (s *Session) React(emoji string) { s.send("world_react", map[string]string{"emoji": emoji}) }
+
 // SetMuted applies my mute and deafen choices and tells the others (voice_state; deafened implies muted).
 func (s *Session) SetMuted(muted, deafened bool) {
 	s.mu.Lock()

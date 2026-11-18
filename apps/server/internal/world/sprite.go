@@ -39,7 +39,7 @@ func SpritePNG(seed string) []byte {
 		return rgb(v)
 	}
 
-	return look{skin: pick(tones), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), style: int(n>>9) % 4}.sheet()
+	return look{skin: pick(tones), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), style: int(n>>9) % 7, top: int(n>>15) % 4}.sheet()
 }
 
 func (l look) sheet() []byte {
@@ -70,7 +70,8 @@ const (
 
 type look struct {
 	skin, hair, shirt, pants color.RGBA
-	style                    int // 0 short, 1 long, 2 spiky, 3 cap
+	style                    int // 0 short, 1 long, 2 spiky, 3 cap, 4 bun, 5 curls, 6 ponytail
+	top                      int // 0 a tee, 1 a hoodie, 2 an open jacket, 3 stripes
 
 	// What a skin adds to a made-up person.
 	eyes  color.RGBA              // ink when unset
@@ -84,112 +85,248 @@ type pen func(x, y, w, h int, col color.RGBA)
 // frame draws one pose. Everything is placed for facing right or down; left is right mirrored.
 func (l look) frame(facing, step int) canvas {
 	c := newCanvas(20, 26)
-	ox, oy := 2, 3 // room for the outline and the spikes
+	ox, oy := 2, 3 // room for the outline, the spikes and the buns
 	r := func(x, y, w, h int, col color.RGBA) { c.rect(ox+x, oy+y, w, h, col) }
 
 	dark := func(col color.RGBA) color.RGBA { return mix(col, rgb(0x000000), 0.25) }
-	shoe := rgb(0x2b2e3a)
+	light := func(col color.RGBA) color.RGBA { return mix(col, rgb(0xffffff), 0.28) }
+	shoe, sole := rgb(0x2b2e3a), rgb(0xd9dbe3)
 	eye := l.eyes
 	if eye.A == 0 {
 		eye = ink
 	}
 	hat := mix(l.shirt, rgb(0xffffff), 0.15)
+	blush := mix(l.skin, rgb(0xff7a7a), 0.4)
+	inner := rgb(0xeceef3) // under an open jacket
 
-	// Steps: one leg lifts, and the body rises a pixel with it.
+	// Steps: one leg lifts and the arms swing the other way.
 	lift := [2]int{}
-	bob := 0
+	swing := 0
 	if step == 1 {
-		lift[0], bob = 1, 0
+		lift[0], swing = 1, 1
 	} else if step == 2 {
-		lift[1], bob = 1, 0
+		lift[1], swing = 1, -1
 	}
 
-	side := facing == right || facing == left
-
-	if side {
-		// Legs: apart on one step, together and lifted on the other.
-		switch step {
-		case 0:
-			r(6, 16, 4, 4, l.pants)
-			r(6, 20, 5, 1, shoe)
-		case 1:
-			r(4, 16, 3, 4, l.pants)
-			r(9, 16, 3, 4, dark(l.pants))
-			r(4, 20, 4, 1, shoe)
-			r(9, 20, 4, 1, shoe)
-		case 2:
-			r(6, 16, 4, 3, l.pants)
-			r(6, 19, 5, 1, shoe)
+	if facing == right || facing == left {
+		// Legs: apart on one step, together and lifted on the other; a light sole under each shoe.
+		leg := func(x, y, h int, col color.RGBA) {
+			r(x, y, 3, h, col)
+			r(x, y+h, 4, 1, shoe)
+			r(x, y+h+1, 4, 1, sole)
 		}
 
-		r(5, 10, 6, 6, l.shirt)
-		r(5, 15, 6, 1, dark(l.shirt))
-		r(7, 11, 2, 4, dark(l.shirt)) // the arm
-		r(7, 15, 2, 1, l.skin)
+		switch step {
+		case 0:
+			leg(6, 16, 2, l.pants)
+		case 1:
+			leg(9, 16, 2, dark(l.pants))
+			leg(4, 16, 2, l.pants)
+		case 2:
+			leg(6, 16, 1, l.pants)
+		}
 
-		r(4, 2, 9, 8, l.skin)
-		r(4, 0, 9, 4, l.hair)
-		r(4, 4, 3, 5, l.hair)
+		// The body: lit from the front, the back in shade.
+		r(5, 10, 6, 6, l.shirt)
+		r(5, 10, 1, 6, dark(l.shirt))
+		r(10, 11, 1, 4, light(l.shirt))
+		r(5, 15, 6, 1, dark(l.pants)) // a belt
+		switch l.top {
+		case 1: // a hoodie: the hood behind the neck
+			r(5, 10, 3, 2, dark(l.shirt))
+		case 2: // an open jacket
+			r(9, 10, 2, 5, inner)
+		case 3: // stripes
+			r(6, 12, 5, 1, light(l.shirt))
+			r(6, 14, 5, 1, light(l.shirt))
+		}
+
+		ax := 7 + swing // the arm, and the hand under it
+		r(ax, 11, 2, 4, dark(l.shirt))
+		r(ax, 11, 2, 1, mix(dark(l.shirt), rgb(0x000000), 0.15))
+		r(ax, 15, 2, 1, l.skin)
+
+		// The head: a round shape, the face to the right, a nose, an ear in the middle.
+		r(4, 3, 9, 6, l.skin)
+		r(5, 2, 7, 8, l.skin)
+		r(13, 6, 1, 1, l.skin)
+		r(5, 9, 6, 1, dark(l.skin))
+		r(7, 5, 1, 2, dark(l.skin))
 		r(10, 5, 1, 2, eye)
-		r(11, 8, 1, 1, dark(l.skin))
+		r(10, 5, 1, 1, light(eye))
+		if !l.plain {
+			r(11, 8, 1, 1, mix(l.skin, rgb(0x8a3a3a), 0.5))
+			r(11, 7, 1, 1, blush)
+		}
+
+		r(5, 0, 7, 1, l.hair)
+		r(4, 1, 9, 3, l.hair)
+		r(4, 4, 3, 4, l.hair)
+		r(12, 3, 1, 1, l.hair) // the fringe over the brow
+		r(6, 1, 4, 1, light(l.hair))
+		r(4, 3, 2, 1, dark(l.hair))
 
 		switch l.style {
-		case 1:
-			r(4, 4, 3, 9, l.hair)
-		case 2:
+		case 1: // long
+			r(3, 3, 3, 10, l.hair)
+			r(3, 3, 1, 10, dark(l.hair))
+		case 2: // spiky
 			r(5, -1, 1, 1, l.hair)
-			r(8, -1, 1, 1, l.hair)
-			r(11, -1, 1, 1, l.hair)
-		case 3:
+			r(7, -2, 1, 2, l.hair)
+			r(10, -1, 1, 1, l.hair)
+			r(3, 1, 1, 1, l.hair)
+		case 3: // a cap with its brim forward
 			r(4, 0, 9, 3, hat)
+			r(5, 0, 5, 1, light(hat))
 			r(10, 3, 5, 1, dark(hat))
+		case 4: // a bun at the back
+			r(2, 0, 3, 3, l.hair)
+			r(2, 0, 2, 1, light(l.hair))
+		case 5: // curls
+			r(3, -1, 10, 6, l.hair)
+			r(3, 5, 4, 3, l.hair)
+			for _, p := range [][2]int{{4, 0}, {7, -1}, {10, 0}, {5, 2}, {8, 1}, {4, 5}} {
+				r(p[0], p[1], 1, 1, dark(l.hair))
+			}
+			r(6, 0, 1, 1, light(l.hair))
+		case 6: // a ponytail with its tie
+			r(2, 3, 2, 7, l.hair)
+			r(2, 3, 1, 7, dark(l.hair))
+			r(4, 3, 1, 1, hat)
 		}
 	} else {
 		for i, lx := range []int{5, 9} {
-			r(lx, 16, 2, 4-lift[i], l.pants)
-			r(lx, 20-lift[i], 2, 1, shoe)
+			h := 3 - lift[i]
+			r(lx, 16, 2, h, l.pants)
+			r(lx, 16, 1, h, light(l.pants))
+			r(lx, 16+h, 2, 1, shoe)
+			r(lx, 17+h, 2, 1, sole)
 		}
 
-		r(4, 10+bob, 8, 6, l.shirt)
-		r(4, 15, 8, 1, dark(l.shirt))
-		r(3, 10+bob, 1, 5, dark(l.shirt))
-		r(12, 10+bob, 1, 5, dark(l.shirt))
-		r(3, 15, 1, 1, l.skin)
-		r(12, 15, 1, 1, l.skin)
+		// The body, lit from the left; the arms swing with the steps.
+		r(4, 10, 8, 6, l.shirt)
+		r(10, 10, 2, 6, dark(l.shirt))
+		r(5, 10, 1, 5, light(l.shirt))
+		r(4, 15, 8, 1, dark(l.pants)) // a belt
+		r(7, 15, 2, 1, rgb(0xc9a24a)) // its buckle
 
-		r(3, 2, 10, 8, l.skin)
+		for i, ax := range []int{3, 12} {
+			dy := swing
+			if i == 1 {
+				dy = -swing
+			}
+
+			r(ax, 10, 1, 5+min(dy, 0), dark(l.shirt))
+			r(ax, 15+min(dy, 0), 1, 1, l.skin)
+		}
 
 		if facing == down {
-			r(3, 0, 10, 4, l.hair)
+			switch l.top {
+			case 0:
+				r(6, 10, 4, 1, dark(l.shirt)) // a collar
+			case 1: // a hoodie: its strings and the pocket
+				r(5, 10, 6, 1, dark(l.shirt))
+				r(6, 11, 1, 2, rgb(0xf2f3f5))
+				r(9, 11, 1, 2, rgb(0xf2f3f5))
+				r(5, 13, 6, 2, dark(l.shirt))
+			case 2: // an open jacket over a light shirt
+				r(7, 10, 2, 5, inner)
+				r(6, 10, 1, 5, dark(l.shirt))
+				r(9, 10, 1, 5, dark(l.shirt))
+			case 3: // stripes
+				r(4, 12, 8, 1, light(l.shirt))
+				r(4, 14, 8, 1, light(l.shirt))
+				r(6, 10, 4, 1, dark(l.shirt))
+			}
+		} else if l.top == 1 {
+			r(5, 10, 6, 2, dark(l.shirt)) // the hood, down
+		}
+
+		// The head: rounded corners, ears, the far side in shade.
+		r(4, 2, 8, 8, l.skin)
+		r(3, 3, 10, 6, l.skin)
+		r(2, 5, 1, 2, l.skin)
+		r(13, 5, 1, 2, l.skin)
+		r(11, 3, 1, 6, dark(l.skin))
+		r(5, 9, 6, 1, dark(l.skin))
+
+		if facing == down {
+			// Eyes with a light in them, a mouth, cheeks.
+			for _, ex := range []int{5, 9} {
+				r(ex, 5, 2, 2, eye)
+				r(ex+1, 5, 1, 1, mix(eye, rgb(0xffffff), 0.75))
+			}
+
+			if !l.plain {
+				r(7, 8, 2, 1, mix(l.skin, rgb(0x8a3a3a), 0.3))
+				r(4, 7, 1, 1, blush)
+				r(11, 7, 1, 1, blush)
+			}
+
+			r(4, 0, 8, 1, l.hair)
+			r(3, 1, 10, 3, l.hair)
 			r(3, 4, 1, 3, l.hair)
 			r(12, 4, 1, 3, l.hair)
-			r(6, 5, 1, 2, eye)
-			r(9, 5, 1, 2, eye)
-			if !l.plain {
-				r(4, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
-				r(11, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
-			}
-			r(7, 11+bob, 2, 1, dark(l.shirt)) // a collar
+			r(4, 4, 2, 1, l.hair) // the fringe
+			r(8, 4, 1, 1, l.hair)
+			r(11, 4, 1, 1, l.hair)
+			r(5, 1, 4, 1, light(l.hair))
+			r(10, 2, 2, 1, dark(l.hair))
 		} else {
-			r(3, 0, 10, 9, l.hair)
-			r(5, 9, 6, 1, l.skin)
+			r(4, 0, 8, 1, l.hair)
+			r(3, 1, 10, 8, l.hair)
+			r(4, 9, 8, 1, dark(l.hair))
+			r(5, 1, 4, 1, light(l.hair))
+			r(11, 2, 1, 6, dark(l.hair))
 		}
 
 		switch l.style {
-		case 1:
+		case 1: // long
 			r(2, 3, 2, 10, l.hair)
 			r(12, 3, 2, 10, l.hair)
+			r(2, 3, 1, 10, dark(l.hair))
+			r(13, 3, 1, 10, dark(l.hair))
 			if facing == up {
 				r(3, 9, 10, 3, l.hair)
+				r(3, 11, 10, 1, dark(l.hair))
 			}
-		case 2:
+		case 2: // spiky
 			r(4, -1, 1, 1, l.hair)
-			r(7, -1, 2, 1, l.hair)
+			r(6, -2, 1, 2, l.hair)
+			r(9, -2, 1, 2, l.hair)
 			r(11, -1, 1, 1, l.hair)
-		case 3:
+		case 3: // a cap
 			r(3, 0, 10, 3, hat)
+			r(5, 0, 4, 1, light(hat))
+			r(7, -1, 2, 1, dark(hat))
 			if facing == down {
 				r(2, 3, 12, 1, dark(hat))
+			} else {
+				r(5, 3, 6, 1, dark(hat)) // the strap
+			}
+		case 4: // a bun on top
+			r(6, -3, 4, 3, l.hair)
+			r(6, -3, 2, 1, light(l.hair))
+			r(6, -1, 4, 1, dark(l.hair))
+		case 5: // curls, around the face
+			r(2, -1, 12, 5, l.hair)
+			r(1, 1, 2, 6, l.hair)
+			r(13, 1, 2, 6, l.hair)
+			if facing == up {
+				r(2, 4, 12, 5, l.hair)
+			}
+			for _, p := range [][2]int{{3, 0}, {6, -1}, {9, 0}, {12, 1}, {1, 4}, {14, 3}, {5, 2}, {10, 2}} {
+				r(p[0], p[1], 1, 1, dark(l.hair))
+			}
+			r(5, 0, 2, 1, light(l.hair))
+		case 6: // a ponytail: from the front its tie, from the back all of it
+			if facing == up {
+				r(7, 8, 2, 5, l.hair)
+				r(8, 8, 1, 5, dark(l.hair))
+				r(7, 8, 2, 1, hat)
+			} else {
+				r(13, 2, 1, 2, hat)
+				r(13, 4, 1, 4, l.hair)
 			}
 		}
 	}

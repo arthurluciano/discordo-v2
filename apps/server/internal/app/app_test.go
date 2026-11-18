@@ -867,7 +867,7 @@ func TestVoiceFlow(t *testing.T) {
 // The world is a call with positions: moves go to the others in it, changing room goes to the whole guild.
 func TestWorldFlow(t *testing.T) {
 	e := start(t)
-	alice, _ := e.login("alice")
+	alice, aliceID := e.login("alice")
 	bob, bobID := e.login("bob")
 	var guild snapshot
 	e.must(alice, "POST", "/guilds", map[string]string{"name": "Oficina"}, &guild)
@@ -970,5 +970,23 @@ func TestWorldFlow(t *testing.T) {
 	bobWS.send("world_skin", map[string]string{"skin": "jett"})
 	if watcher.next("VOICE_STATE_UPDATE", &worn); worn.UserID != bobID || worn.Skin != "jett" {
 		t.Fatalf("wearing a skin: %+v", worn)
+	}
+
+	// Reactions reach the room: alice walks in with bob, and gets his; an unknown one is refused.
+	aliceWS.send("world_move", map[string]float32{"x": 400, "y": 340})
+	for st.UserID != aliceID || st.Zone != "valorant" {
+		bobWS.next("VOICE_STATE_UPDATE", &st)
+	}
+	bobWS.send("world_react", map[string]string{"emoji": "nope"})
+	if bobWS.next("VOICE_ERROR", &failure); failure.Op != "world_react" {
+		t.Fatalf("unknown reaction: %+v", failure)
+	}
+	var react struct {
+		UserID string `json:"user_id"`
+		Emoji  string
+	}
+	bobWS.send("world_react", map[string]string{"emoji": "🔥"})
+	if aliceWS.next("WORLD_REACT", &react); react.UserID != bobID || react.Emoji != "🔥" {
+		t.Fatalf("reaction: %+v", react)
 	}
 }

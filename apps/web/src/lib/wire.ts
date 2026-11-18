@@ -165,6 +165,7 @@ export type GatewayEvents = {
   RELATIONSHIP_UPDATE: Relationship
   VOICE_STATE_UPDATE: VoiceState
   WORLD_MOVE: { channel_id: string; user_id: string; x: number; y: number }
+  WORLD_REACT: { channel_id: string; user_id: string; emoji: string }
   VOICE_READY: { channel_id: string; connection: MediaConnection }
   VOICE_ERROR: { op: string; error: string }
   RTC_OFFER: { sdp: string }

@@ -227,10 +227,25 @@ type State struct {
 	Relationships []Relationship
 	Voice         map[string]VoiceState // by user
 
-	Logs   map[string]*Log
-	Typing map[string]map[string]time.Time // channel → user → when their "typing" ends
-	online map[string]bool                 // user → online, from members, friends and PRESENCE_UPDATE
-	users  map[string]User                 // everyone we know, for mentions and DMs
+	Logs      map[string]*Log
+	Typing    map[string]map[string]time.Time // channel → user → when their "typing" ends
+	Reactions []WorldReaction                 // emojis floating over someone in a world, newest last
+	online    map[string]bool                 // user → online, from members, friends and PRESENCE_UPDATE
+	users     map[string]User                 // everyone we know, for mentions and DMs
+}
+
+// WorldReaction is an emoji someone sent in a world (world_react), floating for reactionFor after At.
+type WorldReaction struct {
+	UserID, Emoji string
+	At            time.Time
+}
+
+const reactionFor = 2500 * time.Millisecond
+
+// React floats an emoji over a user and forgets the reactions done floating.
+func (s *State) React(userID, emoji string, now time.Time) {
+	s.Reactions = slices.DeleteFunc(s.Reactions, func(r WorldReaction) bool { return now.Sub(r.At) >= reactionFor })
+	s.Reactions = append(s.Reactions, WorldReaction{userID, emoji, now})
 }
 
 func NewState() *State {
@@ -421,6 +436,17 @@ func (s *State) Apply(e Event) error {
 		} else {
 			s.Voice[v.UserID] = v
 		}
+
+	case "WORLD_REACT":
+		r, err := decode[struct {
+			UserID string `json:"user_id"`
+			Emoji  string `json:"emoji"`
+		}](e.D)
+		if err != nil {
+			return err
+		}
+
+		s.React(r.UserID, r.Emoji, time.Now())
 
 	case "WORLD_MOVE":
 		m, err := decode[struct {

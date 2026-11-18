@@ -101,7 +101,9 @@ var solid = map[string]image.Rectangle{
 	"popcorn":  image.Rect(0, 6, 18, 26),
 	"counter":  image.Rect(0, 2, 40, 18),
 	"speaker":  image.Rect(0, 0, 12, 30),
-	"screen":   image.Rect(-14, -8, 238, 132), // with the curtains
+	"screen":   image.Rect(-16, -14, 240, 132), // with the curtains and the stage in front
+	"booth":    image.Rect(0, 2, 28, 14),
+	"post":     image.Rect(0, 4, 3, 12),
 	"planter":  image.Rect(0, 2, 30, 12),
 }
 
@@ -119,21 +121,39 @@ func (m Map) furniture() []piece {
 
 		if z.Kind == "cinema" {
 			s := z.Screen
-			add("screen", art(s.X), art(s.Y), accent)
-			add("speaker", art(s.X)-30, art(s.Y)+40, accent)
-			add("speaker", art(s.X+s.W)+18, art(s.Y)+40, accent)
+			sx, sy, sw := art(s.X), art(s.Y), art(s.W)
+			doorX := x + (w-art(door))/2
 
+			add("screen", sx, sy, accent)
+			add("speaker", sx-34, sy+24, accent)
+			add("speaker", sx+sw+22, sy+24, accent)
+			add("speaker", sx-34, sy+76, accent)
+			add("speaker", sx+sw+22, sy+76, accent)
+
+			// Three tiers on each side of the aisle, the back rows wider, as in a theatre.
 			for row := range 3 {
-				for i := range 8 {
-					add("seat", x+22+i*14, y+50+row*20, accent)
-					add("seat", x+w-34-i*14, y+50+row*20, accent)
+				n := 7 + row/2
+				for i := range n {
+					add("seat", doorX-20-i*15, y+46+row*19, accent)
+					add("seat", doorX+art(door)+8+i*15, y+46+row*19, accent)
 				}
 			}
 
-			add("popcorn", x+12, y+20, accent)
-			add("counter", x+w-54, y+22, accent)
-			add("plant", x+40, y+26, accent)
-			add("plant", x+w-70, y+26, accent)
+			// The lobby by the door: snacks on one side, the projection booth and the queue's posts on the other.
+			add("popcorn", x+10, y+20, accent)
+			add("counter", x+32, y+22, accent)
+			add("booth", x+w-44, y+20, accent)
+			add("plant", x+w-60, y+24, accent)
+			add("post", doorX+2, y+18, accent)
+			add("post", doorX+art(door)-5, y+18, accent)
+
+			for _, sy := range []int{y + 60, y + 150, y + 230} {
+				add("sconce", x+art(wall)-1, sy, accent)
+				add("sconce", x+w-art(wall)-3, sy, accent)
+			}
+
+			add("exit", x+art(wall)+4, y+h-art(wall)-10, accent)
+			add("exit", x+w-art(wall)-16, y+h-art(wall)-10, accent)
 
 			continue
 		}
@@ -340,13 +360,38 @@ func (c canvas) room(z Zone) {
 			}
 		}
 
-		// The aisle's red carpet, from the door to the screen.
-		ax, aw := doorX+8, gap-16
-		c.rect(ax, y, aw, art(z.Screen.Y-z.Y)-12, rgb(0xa8263c))
-		c.rect(ax, y, 1, art(z.Screen.Y-z.Y)-12, rgb(0xe6b84a))
-		c.rect(ax+aw-1, y, 1, art(z.Screen.Y-z.Y)-12, rgb(0xe6b84a))
+		// The tiers: each row of seats stands on a step, its edge lit.
+		for row := range 3 {
+			ty := y + 44 + row*19
+			c.rect(x+side, ty, w-2*side, 17, mix(carpet, rgb(0x000000), 0.18+float32(row)*0.06))
+			c.rect(x+side, ty+17, w-2*side, 1, mix(carpet, rgb(0xffffff), 0.12))
+			for i := x + side + 3; i < x+w-side; i += 9 {
+				c.px(i, ty+17, rgb(0xffd27a))
+			}
+		}
 
-		for j := y + top + 6; j < art(z.Screen.Y)-16; j += 12 {
+		// The projector's beam, from the booth's window to the screen: a faint light over the floor.
+		sx, sy, sw := art(z.Screen.X), art(z.Screen.Y), art(z.Screen.W)
+		bx, by := x+w-30, y+top+4
+		for j := by; j < sy-14; j++ {
+			t := float32(j-by) / float32(sy-14-by)
+			l := int(float32(bx-2) + (float32(sx+sw/2-40)-float32(bx-2))*t)
+			r := int(float32(bx+2) + (float32(sx+sw/2+40)-float32(bx+2))*t)
+			for i := l; i <= r; i++ {
+				if image.Pt(i, j).In(c.Rect) {
+					c.SetRGBA(i, j, mix(c.RGBAAt(i, j), rgb(0xcdb8ff), 0.10))
+				}
+			}
+		}
+
+		// The aisle's red carpet, from the door to the stage.
+		ax, aw := doorX+8, gap-16
+		c.rect(ax, y, aw, sy-y-14, rgb(0xa8263c))
+		c.rect(ax+2, y, aw-4, sy-y-14, rgb(0xb72d44))
+		c.rect(ax, y, 1, sy-y-14, rgb(0xe6b84a))
+		c.rect(ax+aw-1, y, 1, sy-y-14, rgb(0xe6b84a))
+
+		for j := y + top + 6; j < sy-18; j += 8 {
 			c.px(ax-3, j, rgb(0xffe08a))
 			c.px(ax+aw+2, j, rgb(0xffe08a))
 		}
@@ -428,14 +473,40 @@ func (c canvas) room(z Zone) {
 		c.rect(sx-4, y+6, tw+8, 7, ink)
 		c.rect(sx-5, y+7, tw+10, 5, ink)
 		c.write(sx, y+6, name, mix(accent, rgb(0xffffff), 0.35))
+
+		if z.Kind == "cinema" { // a marquee: bulbs above and below the name
+			for i := sx - 4; i < sx+tw+4; i += 3 {
+				c.px(i, y+4, rgb(0xffe08a))
+				c.px(i+1, y+14, rgb(0xffe08a))
+			}
+		}
 	}
 
 	// Posters and pennants on what is left of the wall.
 	for i, px := range []int{x + side + 8, x + w - side - 20} {
 		if z.Kind == "cinema" {
-			c.rect(px, y+6, 10, 8, ink)
-			c.rect(px+1, y+7, 8, 6, []color.RGBA{rgb(0xe6b84a), rgb(0x4aa3e6)}[i])
-			c.rect(px+3, y+9, 4, 3, rgb(0xfff3d6))
+			// Two film posters in gold frames: a sunset over hills, and a rocket under the stars.
+			px += []int{0, -4}[i]
+			c.rect(px-1, y+3, 13, 12, rgb(0xe6b84a))
+			c.rect(px, y+4, 11, 10, ink)
+			if i == 0 {
+				c.rect(px, y+4, 11, 5, rgb(0xff8a5c))
+				c.rect(px, y+7, 11, 2, rgb(0xffc36b))
+				c.disc(px+5, y+8, 2, 1, rgb(0xfff3b0))
+				c.rect(px, y+10, 11, 4, rgb(0x5a3b7a))
+				c.rect(px+2, y+9, 4, 1, rgb(0x5a3b7a))
+			} else {
+				c.rect(px, y+4, 11, 10, rgb(0x1d2450))
+				c.px(px+2, y+5, rgb(0xffffff))
+				c.px(px+8, y+6, rgb(0xffffff))
+				c.px(px+1, y+10, rgb(0xffffff))
+				c.rect(px+5, y+6, 2, 5, rgb(0xe9e4dc))
+				c.px(px+5, y+5, rgb(0xd13a4f))
+				c.px(px+6, y+5, rgb(0xd13a4f))
+				c.px(px+4, y+10, rgb(0xd13a4f))
+				c.px(px+7, y+10, rgb(0xd13a4f))
+				c.rect(px+5, y+11, 2, 2, rgb(0xff8a3d))
+			}
 
 			continue
 		}
@@ -608,14 +679,22 @@ func (c canvas) piece(p piece) {
 		c.px(x+23, y+1, rgb(0xffffff))
 
 	case "seat":
-		red := rgb(0xc23148)
-		c.shade(x+1, y+11, 10, 1, 0.3)
-		c.rect(x, y+3, 12, 8, mix(red, rgb(0x000000), 0.45))
-		c.rect(x+1, y+2, 10, 7, red)
-		c.rect(x+2, y+3, 8, 3, mix(red, rgb(0xffffff), 0.18))
-		c.rect(x+1, y+8, 10, 3, mix(red, rgb(0x000000), 0.25)) // the back, toward the door
-		c.rect(x, y+4, 1, 5, ink)
-		c.rect(x+11, y+4, 1, 5, ink)
+		// Seen from behind, facing the screen: the back on top, the cushion and the armrests under it.
+		plush, dark := rgb(0xc23148), rgb(0x7d1a2c)
+		c.shade(x+1, y+12, 12, 1, 0.3)
+		c.rect(x+1, y, 11, 8, ink)
+		c.rect(x+2, y+1, 9, 6, plush)
+		c.rect(x+2, y+1, 9, 1, mix(plush, rgb(0xffffff), 0.3))
+		c.rect(x+3, y+3, 1, 3, mix(plush, rgb(0xffffff), 0.15))
+		c.rect(x+9, y+3, 1, 3, dark)
+		c.rect(x+1, y+8, 11, 4, dark)
+		c.rect(x+2, y+8, 9, 2, mix(plush, rgb(0x000000), 0.15))
+		c.rect(x, y+5, 2, 7, rgb(0x2b2e3a))
+		c.rect(x+11, y+5, 2, 7, rgb(0x2b2e3a))
+		c.px(x, y+5, rgb(0x50556a))
+		c.px(x+12, y+5, rgb(0x50556a))
+		c.px(x+5, y+2, rgb(0xe6b84a)) // the seat's number plate
+		c.px(x+6, y+2, rgb(0xe6b84a))
 
 	case "popcorn":
 		c.shade(x+1, y+26, 18, 2, 0.3)
@@ -648,32 +727,93 @@ func (c canvas) piece(p piece) {
 		c.shade(x+1, y+30, 12, 2, 0.3)
 		c.rect(x, y, 12, 30, ink)
 		c.rect(x+1, y+1, 10, 28, rgb(0x2b2e3a))
+		c.rect(x+1, y+1, 10, 1, rgb(0x50556a))
 		c.disc(x+6, y+8, 3, 1, rgb(0x50556a))
-		c.disc(x+6, y+8, 1, 1, ink)
+		c.disc(x+6, y+8, 1, 1, rgb(0xe6b84a))
 		c.disc(x+6, y+20, 4, 1, rgb(0x50556a))
 		c.disc(x+6, y+20, 2, 1, ink)
+		c.px(x+5, y+19, rgb(0x6b7391))
+
+	case "booth":
+		// The projector on its stand, its lens lit toward the screen.
+		c.shade(x+1, y+14, 28, 2, 0.3)
+		c.box(x, y+4, 28, 10, 4, rgb(0x4a3a5c))
+		c.rect(x+3, y, 18, 7, ink)
+		c.rect(x+4, y+1, 16, 5, rgb(0x6b7391))
+		c.rect(x+4, y+1, 16, 1, rgb(0x9aa2c0))
+		c.disc(x+7, y-1, 3, 1, ink)
+		c.disc(x+16, y-1, 3, 1, ink)
+		c.disc(x+7, y-1, 1, 1, rgb(0x9aa2c0))
+		c.disc(x+16, y-1, 1, 1, rgb(0x9aa2c0))
+		c.rect(x+20, y+2, 3, 3, ink)
+		c.rect(x+21, y+3, 2, 1, rgb(0xfff3b0))
+
+	case "post":
+		// A queue's stanchion: a brass post holding a velvet rope across the lobby.
+		c.shade(x, y+12, 4, 1, 0.3)
+		c.rect(x, y+11, 3, 1, rgb(0xb8892f))
+		c.rect(x+1, y+3, 1, 8, rgb(0xe6b84a))
+		c.rect(x, y+2, 3, 2, rgb(0xffe08a))
+		c.rect(x+1, y+5, 1, 1, rgb(0xa8263c))
+
+	case "sconce":
+		// A wall lamp: a warm glow spilling down the wall.
+		for j := -8; j <= 8; j++ {
+			for i := -8; i <= 8; i++ {
+				if d := i*i + j*j; d <= 64 && image.Pt(x+2+i, y+3+j).In(c.Rect) {
+					c.SetRGBA(x+2+i, y+3+j, mix(c.RGBAAt(x+2+i, y+3+j), rgb(0xffd27a), 0.16*float32(64-d)/64))
+				}
+			}
+		}
+		c.disc(x+2, y+3, 4, 1, mix(rgb(0x3a2147), rgb(0xffd27a), 0.25))
+		c.rect(x, y, 4, 5, rgb(0xb8892f))
+		c.rect(x+1, y+1, 2, 3, rgb(0xfff3b0))
+
+	case "exit":
+		// The green exit sign over the corner.
+		c.rect(x, y, 12, 6, ink)
+		c.rect(x+1, y+1, 10, 4, rgb(0x2fbf71))
+		c.rect(x+3, y+2, 2, 2, rgb(0xeafff3))
+		c.rect(x+6, y+2, 4, 1, rgb(0xeafff3))
+		c.px(x+9, y+3, rgb(0xeafff3))
 
 	case "screen":
-		// The picture itself is the client's: here go the frame, the curtains and the stage light.
+		// The picture itself is the client's: here go the frame, the stage, the curtains and the valance.
 		c.shade(x-16, y+126, 256, 8, 0.35)
+
+		// The stage, in front of the screen: wood with footlights.
+		c.rect(x-16, y-14, 256, 10, rgb(0x6b4a2f))
+		c.rect(x-16, y-14, 256, 1, rgb(0x9a6d45))
+		c.rect(x-16, y-6, 256, 2, rgb(0x4a321f))
+		for i := x - 12; i < x+236; i += 8 {
+			c.rect(i, y-11, 2, 1, rgb(0x9a6d45))
+			c.px(i+4, y-6, rgb(0xfff3b0))
+		}
+
 		c.rect(x-3, y-3, 230, 132, rgb(0x8a8fa3))
 		c.rect(x-2, y-2, 228, 130, ink)
 		c.rect(x, y, 224, 126, rgb(0x0c0d12))
 
-		for _, cx := range []int{x - 14, x + 228} {
-			for i := range 10 {
-				red := rgb(0xa8263c)
-				if i%3 == 0 {
-					red = rgb(0x7d1a2c)
-				} else if i%3 == 1 {
-					red = rgb(0xc93a52)
-				}
-
-				c.rect(cx+i, y-8, 1, 140, red)
+		// Side curtains in folds, tied back with gold.
+		for _, cx := range []int{x - 15, x + 227} {
+			for i := range 12 {
+				red := []color.RGBA{rgb(0x7d1a2c), rgb(0xa8263c), rgb(0xc93a52)}[i%3]
+				c.rect(cx+i, y-4, 1, 136, red)
 			}
 
-			c.rect(cx-1, y-9, 12, 3, rgb(0xe6b84a))
+			c.rect(cx, y+70, 12, 3, rgb(0xe6b84a))
+			c.px(cx+5, y+73, rgb(0xffe08a))
+			c.rect(cx-1, y-5, 14, 2, rgb(0xb8892f))
 		}
+
+		// The valance: a scalloped drape across the top, trimmed in gold.
+		c.rect(x-16, y-4, 256, 6, rgb(0xa8263c))
+		c.rect(x-16, y-4, 256, 1, rgb(0xc93a52))
+		for i := x - 16; i < x+240; i += 8 {
+			c.disc(i+4, y+2, 3, 0.6, rgb(0xa8263c))
+			c.px(i+4, y+4, rgb(0xe6b84a))
+		}
+		c.rect(x-16, y-5, 256, 1, rgb(0xe6b84a))
 	}
 }
 

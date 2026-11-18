@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dispatch, getState, initialState, openChannel, reduce, type State } from './store'
+import { dispatch, getState, initialState, openChannel, REACTION_MS, reduce, type State } from './store'
 import type { GatewayEvent, Guild, Message, User } from './wire'
 
 const alice: User = { id: 'a', username: 'alice', display_name: 'Alice', avatar_url: '' }
@@ -108,6 +108,16 @@ describe('reduce', () => {
     const moved = reduce(joined, { t: 'WORLD_MOVE', d: { channel_id: 'w', user_id: 'b', x: 30, y: 40 } })
     expect(moved.voice.b).toMatchObject({ x: 30, y: 40, zone: 'cinema' })
     expect(reduce(moved, { t: 'WORLD_MOVE', d: { channel_id: 'w', user_id: 'zz', x: 1, y: 1 } })).toBe(moved)
+  })
+
+  it('floats world reactions and forgets the old ones', () => {
+    const first = reduce(ready(), { t: 'WORLD_REACT', d: { channel_id: 'w', user_id: 'b', emoji: '🔥' } }, 1000)
+    const later = reduce(
+      first,
+      { t: 'WORLD_REACT', d: { channel_id: 'w', user_id: 'c', emoji: '🎉' } },
+      1000 + REACTION_MS,
+    )
+    expect(later.worldReactions).toEqual([{ user_id: 'c', emoji: '🎉', at: 1000 + REACTION_MS }])
   })
 
   it('expires typing and clears it when the message arrives', () => {

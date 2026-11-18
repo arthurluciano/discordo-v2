@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -52,10 +53,17 @@ type call struct {
 	recipients []string // DM calls
 	world      bool
 	moved      time.Time // the last world_move taken
+	reacted    time.Time // the last world_react taken
 }
 
 // moveEvery is the least time between two moves of one user: clients send 10 a second, more is dropped.
 const moveEvery = 40 * time.Millisecond
+
+// reactEvery is the least time between two reactions of one user: a held key must not flood the room.
+const reactEvery = 250 * time.Millisecond
+
+// Reactions are what world_react may send: the chat's reactions, so every client already draws them.
+var Reactions = []string{"👍", "❤️", "😂", "😮", "😢", "🎉", "🔥", "👀"}
 
 // Service implements gateway.Voice.
 // shortcut: calls live in memory and permissions are checked on join only: losing Connect/Speak mid-call
@@ -102,6 +110,11 @@ func (s *Service) Handle(ctx context.Context, userID, sessionID, op string, data
 		var in struct{ Skin string }
 		if err = json.Unmarshal(data, &in); err == nil {
 			err = s.setSkin(userID, sessionID, in.Skin)
+		}
+	case "world_react":
+		var in struct{ Emoji string }
+		if err = json.Unmarshal(data, &in); err == nil {
+			err = s.react(userID, sessionID, in.Emoji)
 		}
 	case "rtc_offer", "rtc_answer", "rtc_subscribe":
 		s.mu.Lock()
@@ -241,6 +254,41 @@ func (s *Service) setSkin(userID, sessionID, skin string) error {
 	st := c.State
 	s.mu.Unlock()
 	s.publish(c, st)
+	return nil
+}
+
+// react floats an emoji over the user's head for the others in their room (in the plaza, for those in the plaza).
+// Like moves, those faster than reactEvery are dropped without an error.
+func (s *Service) react(userID, sessionID, emoji string) error {
+	if !slices.Contains(Reactions, emoji) {
+		return errs.Invalid("unknown reaction")
+	}
+
+	s.mu.Lock()
+	c := s.calls[userID]
+	if c == nil || c.sessionID != sessionID || !c.world {
+		s.mu.Unlock()
+		return errs.Invalid("not in a world")
+	}
+
+	now := time.Now()
+	if now.Sub(c.reacted) < reactEvery {
+		s.mu.Unlock()
+		return nil
+	}
+	c.reacted = now
+
+	var peers []string
+	for id, other := range s.calls {
+		if id != userID && other.ChannelID == c.ChannelID && other.Zone == c.Zone {
+			peers = append(peers, id)
+		}
+	}
+	channelID := c.ChannelID
+	s.mu.Unlock()
+
+	s.pub.Publish(event.Event{Kind: event.ToUsers, UserIDs: peers, Type: "WORLD_REACT",
+		Data: map[string]any{"channel_id": channelID, "user_id": userID, "emoji": emoji}})
 	return nil
 }
 

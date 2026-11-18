@@ -329,6 +329,17 @@ func (d *Discordo) worldView(g *Guild, ch *Channel) {
 		c.Pop()
 	}
 
+	if mine && vc.s != nil {
+		d.begin("reactions", box{axis: ui.AxisX, w: ui.Pct(1), gap: 4, justify: ui.JustifyCenter})
+		for _, e := range emojis { // the chat's, which the server takes
+			if d.secondaryText(e) {
+				d.st.React(d.st.Me.ID, e, time.Now())
+				vc.s.React(e)
+			}
+		}
+		c.Pop()
+	}
+
 	d.voiceFooter(ch, "Entrar no mundo", wd.cinema)
 	c.Pop()
 }
@@ -415,13 +426,41 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 	for i := range m.Zones {
 		zn := &m.Zones[i]
 
-		if s := zn.Screen; s != nil && at(s.X, s.Y, s.W, s.H) {
-			d.begin("screen "+zn.ID, box{axis: ui.AxisY, floating: true, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter})
+		// A film on: the cinema's lights go down around the screen.
+		showing, audience := "", 0
+		if zn.Screen != nil {
+			for _, v := range callers {
+				if v.Zone == zn.ID && slices.Contains(v.Tracks, voice.TrackScreen) && showing == "" {
+					showing = v.UserID
+				}
+			}
 
-			if who := d.worldScreening(); mine && who != "" {
-				own := who == d.st.Me.ID
-				d.voiceScreenTile(g, voiceStageItem{st: d.st.Voice[who], screen: true, own: own, live: true, watched: !own, inCall: true}, ui.Pct(1), ui.Pct(1), false, true)
-			} else {
+			for _, v := range callers {
+				if v.Zone == zn.ID && v.UserID != showing {
+					audience++
+				}
+			}
+		}
+
+		if showing != "" && at(zn.X, zn.Y, zn.W, zn.H) {
+			d.begin("dim "+zn.ID, box{floating: true, bg: 0x08061466})
+			c.Pop()
+		}
+
+		if s := zn.Screen; s != nil && at(s.X, s.Y, s.W, s.H) {
+			d.begin("screen "+zn.ID, box{axis: ui.AxisY, floating: true, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter, gap: 4})
+
+			who := d.worldScreening()
+			switch {
+			case mine && who == d.st.Me.ID:
+				// Not my own screen on the screen: sharing all of it, that would be a mirror in a mirror.
+				d.text("Você está transmitindo", d.ui.s14m, alpha(greyple, 0.8))
+				d.text(watching(audience), d.ui.s12, alpha(greyple, 0.6))
+
+			case mine && who != "":
+				d.voiceScreenTile(g, voiceStageItem{st: d.st.Voice[who], screen: true, live: true, watched: true, inCall: true}, ui.Pct(1), ui.Pct(1), false, true)
+
+			default:
 				d.text("Ninguém transmitindo", d.ui.s14m, alpha(greyple, 0.7))
 			}
 
@@ -521,6 +560,27 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 		d.text(d.voiceName(g, a.v.UserID), d.ui.s12s, white)
 		c.Pop()
 		c.Pop()
+	}
+
+	// Reactions rise from over the name and fade.
+	for i, r := range d.st.Reactions {
+		t := float32(now.Sub(r.At)) / float32(reactionFor)
+		if t < 0 || t >= 1 {
+			continue
+		}
+
+		c.RequestFrame()
+		for _, a := range actors {
+			if a.v.UserID != r.UserID {
+				continue
+			}
+
+			y := a.y - (spriteH-spriteFeet)*cz - d.px(pillH) - d.px(30) - t*d.px(40)
+			c.NextPos(theme.Snap(a.x-colW/2), theme.Snap(y))
+			d.begin(fmt.Sprint("react ", i), box{axis: ui.AxisX, w: ui.Px(colW), justify: ui.JustifyCenter, floating: true})
+			d.text(r.Emoji, d.ui.s16b, alpha(white, 1-t*t))
+			c.Pop()
+		}
 	}
 
 	c.Pop()
@@ -639,4 +699,12 @@ func (d *Discordo) worldSkinDialog() {
 	}
 
 	k.EndDialog(&dlg)
+}
+
+func watching(n int) string {
+	if n == 0 {
+		return "ninguém assistindo"
+	}
+
+	return itoa(n) + " assistindo"
 }
