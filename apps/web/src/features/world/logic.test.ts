@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WorldMap } from '@/lib/wire'
-import { gain, RADIUS, SPEED, step, zoneAt } from './logic'
+import { facingOf, gain, RADIUS, SPEED, step, walkStep, zoneAt, type Walk } from './logic'
 
 const map: WorldMap = {
   width: 1000,
@@ -45,6 +45,37 @@ describe('step', () => {
 
   it('stays inside the map', () => {
     expect(step({ x: 30, y: 30 }, { x: -1, y: -1 }, 1, [], map)).toEqual({ x: RADIUS, y: RADIUS })
+  })
+})
+
+describe('walkStep', () => {
+  /** Runs a walk at 50 fps until it ends. */
+  const run = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    let pos = from
+    let walk: Walk | null = { to, best: Infinity, since: 0 }
+    let now = 0
+    while (walk && now < 10_000) ({ pos, walk } = walkStep(pos, walk, (now += 20), 0.02, map.walls, map))
+
+    return { pos, now }
+  }
+
+  it('arrives at a free point', () => {
+    const { pos } = run({ x: 100, y: 400 }, { x: 300, y: 500 })
+    expect(Math.hypot(pos.x - 300, pos.y - 500)).toBeLessThan(1)
+  })
+
+  it('slides along what is in the way, then gives up once it stops getting closer', () => {
+    // The target is behind the wall: it reaches the wall, slides down to the target's height and stops there.
+    const { pos, now } = run({ x: 500, y: 300 }, { x: 700, y: 500 })
+    expect(pos.x).toBeLessThan(600 - RADIUS + 1)
+    expect(pos.y).toBeCloseTo(500, 0)
+    expect(now).toBeLessThan(2000)
+  })
+})
+
+describe('facingOf', () => {
+  it('faces the larger axis of the movement', () => {
+    expect([facingOf(1, 5), facingOf(-5, 1), facingOf(5, -1), facingOf(1, -5)]).toEqual([0, 1, 2, 3])
   })
 })
 

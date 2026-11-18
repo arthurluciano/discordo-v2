@@ -36,6 +36,39 @@ export const step = (pos: Point, dir: Point, dt: number, walls: Rect[], map: { w
   return { x, y }
 }
 
+/** A walk to a clicked point: `best` is the closest it got, at `since`. */
+export type Walk = { to: Point; best: number; since: number }
+
+/** Without getting closer for this long, a walk gives up. */
+const STUCK_MS = 300
+
+/** One frame of a walk. It slides along what is in the way; `walk` comes back null once it arrived or got stuck. */
+export const walkStep = (
+  pos: Point,
+  walk: Walk,
+  now: number,
+  dt: number,
+  walls: Rect[],
+  map: { width: number; height: number },
+): { pos: Point; walk: Walk | null } => {
+  const dir = { x: walk.to.x - pos.x, y: walk.to.y - pos.y }
+  let next = step(pos, dir, Math.min(dt, Math.hypot(dir.x, dir.y) / SPEED), walls, map)
+
+  // Blocked on one axis, the other gets the whole speed: otherwise the slide slows to a crawl as it lines up.
+  const free = { x: next.x === pos.x ? 0 : dir.x, y: next.y === pos.y ? 0 : dir.y }
+  if (!free.x !== !free.y) next = step(pos, free, Math.min(dt, Math.hypot(free.x, free.y) / SPEED), walls, map)
+
+  const left = Math.hypot(walk.to.x - next.x, walk.to.y - next.y)
+
+  if (left < 1) return { pos: next, walk: null }
+  if (left < walk.best - 0.5) return { pos: next, walk: { ...walk, best: left, since: now } }
+
+  return { pos: next, walk: now - walk.since > STUCK_MS ? null : walk }
+}
+
+/** The sprite sheet's row for a movement: down, left, right, up; the larger axis wins. */
+export const facingOf = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0)
+
 /** The room at a point, as the server computes it. */
 export const zoneAt = (map: WorldMap, x: number, y: number) =>
   map.zones.find((z) => x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h)

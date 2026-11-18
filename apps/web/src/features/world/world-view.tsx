@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { colorOf, initialOf } from '@/design/avatar'
 import { displayName, useMe } from '@/features/identity/users'
 import { callPermissions } from '@/features/voice/call'
 import { useAudioLevel } from '@/features/voice/use-audio-level'
@@ -17,8 +16,9 @@ import { isTyping, VideoView } from '@/features/voice/voice-stage'
 import { sendOp } from '@/lib/gateway'
 import { has, Permission } from '@/lib/permissions'
 import { getState, setState, useStore } from '@/lib/store'
-import type { Point, VoiceState, WorldMap } from '@/lib/wire'
-import { RADIUS, SPEED, step, zoneAt } from './logic'
+import { cn } from '@/lib/utils'
+import type { Point, VoiceState } from '@/lib/wire'
+import { facingOf, step, walkStep, zoneAt, type Walk } from './logic'
 import { useWorldMap } from './use-world-map'
 
 type WorldViewProps = {
@@ -28,15 +28,27 @@ type WorldViewProps = {
   onBack: () => void
 }
 
-type Person = { name: string; avatarUrl: string; color: string }
-
 /** The server drops more than 25 moves a second; 10 is plenty for others to interpolate. */
 const SEND_MS = 100
 
-const GRID = 100
-
 /** Someone who moved further than this between two updates teleported: no gliding through walls. */
 const TELEPORT = 300
+
+/** Slower than this (map units per second) is standing: the end of a glide must not keep the legs going. */
+const WALKING = 30
+
+/** A frame of the character sheet: 3 columns (standing, two steps) by 4 rows (see `facingOf`). */
+const FRAME_W = 60
+
+const FRAME_H = 78
+
+/** The feet are this far above the frame's bottom edge. */
+const FEET = 6
+
+const STEP_MS = 150
+
+/** The map's grass, for what the view shows past its edges. */
+const GRASS = '#8ccf7e'
 
 const KEYS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
   w: 'up',
@@ -49,26 +61,9 @@ const KEYS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
   arrowright: 'right',
 }
 
-/** The theme's colors, for the canvas: read again whenever the skin or theme changes. */
-const readColors = () => {
-  const css = getComputedStyle(document.documentElement)
-  const cache = new Map<string, string>()
-
-  const token = (name: string) => {
-    let value = cache.get(name)
-    if (value === undefined) cache.set(name, (value = css.getPropertyValue(name).trim()))
-
-    return value
-  }
-
-  return { token, font: getComputedStyle(document.body).fontFamily || 'sans-serif' }
-}
-
-type Colors = ReturnType<typeof readColors>
-
 const images = new Map<string, HTMLImageElement>()
 
-/** Null until it has loaded (or if it never does): the initial is drawn meanwhile. */
+/** Null until it has loaded (or if it never does). */
 const imageOf = (url: string) => {
   let image = images.get(url)
   if (!image) {
@@ -80,104 +75,84 @@ const imageOf = (url: string) => {
   return image.complete && image.naturalWidth > 0 ? image : null
 }
 
-const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`
+const SPEAKING = '#57f287'
 
-const drawMap = (ctx: CanvasRenderingContext2D, c: Colors, map: WorldMap) => {
-  ctx.fillStyle = c.token('--surface-rail')
-  ctx.fillRect(0, 0, map.width, map.height)
+const OFF = '#ed4245'
 
-  ctx.globalAlpha = 0.08
-  ctx.strokeStyle = c.token('--color-greyple')
-  ctx.lineWidth = 1
+/** The name above a character, its pointer's tip at (x, y): a status mark and the name on a dark pill. */
+const drawPill = (
+  ctx: CanvasRenderingContext2D,
+  font: string,
+  x: number,
+  y: number,
+  name: string,
+  state: VoiceState,
+  speaking: boolean,
+) => {
+  ctx.font = `600 12px ${font}`
+  const width = Math.ceil(ctx.measureText(name).width) + 32
+  const left = Math.round(x - width / 2)
+  const top = y - 25
+
+  ctx.fillStyle = 'rgba(17, 18, 20, 0.85)'
   ctx.beginPath()
-  for (let x = 0; x <= map.width; x += GRID) {
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, map.height)
-  }
-  for (let y = 0; y <= map.height; y += GRID) {
-    ctx.moveTo(0, y)
-    ctx.lineTo(map.width, y)
-  }
-  ctx.stroke()
+  ctx.roundRect(left, top, width, 20, 10)
+  ctx.moveTo(x - 5, y - 5)
+  ctx.lineTo(x, y)
+  ctx.lineTo(x + 5, y - 5)
+  ctx.fill()
 
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.font = `700 18px ${c.font}`
-  for (const z of map.zones) {
-    ctx.globalAlpha = 0.18
-    ctx.fillStyle = hex(z.color)
-    ctx.fillRect(z.x, z.y, z.w, z.h)
+  const mx = left + 13
+  const my = top + 10
+  ctx.lineWidth = 1.5
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = ctx.fillStyle = OFF
+  ctx.beginPath()
 
-    ctx.globalAlpha = 1
-    ctx.fillStyle = c.token('--color-snow')
-    ctx.fillText(z.name, z.x + z.w / 2, z.y + 48)
+  if (state.deafened) {
+    // Headphones: the band, then the two cups.
+    ctx.arc(mx, my + 1, 4, Math.PI, 0)
+    ctx.stroke()
+    ctx.fillRect(mx - 5, my + 1, 2.5, 4)
+    ctx.fillRect(mx + 2.5, my + 1, 2.5, 4)
+  } else if (state.muted) {
+    // A microphone: the capsule, its cradle and the stem.
+    ctx.roundRect(mx - 1.5, my - 5, 3, 6, 1.5)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.arc(mx, my, 3.5, 0, Math.PI)
+    ctx.moveTo(mx, my + 3.5)
+    ctx.lineTo(mx, my + 5.5)
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = speaking ? SPEAKING : '#3ba55d'
+    ctx.shadowColor = SPEAKING
+    ctx.shadowBlur = speaking ? 6 : 0
+    ctx.arc(mx, my, 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 0
 
-    if (z.screen) {
-      ctx.fillStyle = '#000'
-      ctx.fillRect(z.screen.x, z.screen.y, z.screen.w, z.screen.h)
-      ctx.strokeStyle = c.token('--color-fog')
-      ctx.lineWidth = 4
-      ctx.strokeRect(z.screen.x, z.screen.y, z.screen.w, z.screen.h)
+    if (speaking) {
+      ctx.globalAlpha = 0.6
+      ctx.strokeStyle = SPEAKING
+      ctx.beginPath()
+      ctx.arc(mx, my, 6, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
     }
   }
 
-  ctx.globalAlpha = 1
-  ctx.fillStyle = c.token('--color-fog')
-  for (const w of map.walls) ctx.fillRect(w.x, w.y, w.w, w.h)
-}
-
-const drawAvatar = (
-  ctx: CanvasRenderingContext2D,
-  c: Colors,
-  p: Point,
-  person: Person,
-  state: VoiceState,
-  level: number,
-) => {
-  if (level > 0) {
-    ctx.strokeStyle = c.token('--media-speaking')
-    ctx.lineWidth = 2 + level * 4
+  if (state.deafened || state.muted) {
     ctx.beginPath()
-    ctx.arc(p.x, p.y, RADIUS + 2 + ctx.lineWidth / 2, 0, Math.PI * 2)
+    ctx.moveTo(mx - 5, my + 5)
+    ctx.lineTo(mx + 5, my - 5)
     ctx.stroke()
   }
 
-  const image = person.avatarUrl ? imageOf(person.avatarUrl) : null
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(p.x, p.y, RADIUS, 0, Math.PI * 2)
-  ctx.clip()
-  if (image) {
-    ctx.drawImage(image, p.x - RADIUS, p.y - RADIUS, RADIUS * 2, RADIUS * 2)
-  } else {
-    ctx.fillStyle = c.token(person.color)
-    ctx.fillRect(p.x - RADIUS, p.y - RADIUS, RADIUS * 2, RADIUS * 2)
-    ctx.fillStyle = '#fff'
-    ctx.font = `700 18px ${c.font}`
-    ctx.textBaseline = 'middle'
-    ctx.fillText(initialOf(person.name), p.x, p.y + 1)
-  }
-  ctx.restore()
-
-  ctx.font = `600 12px ${c.font}`
-  ctx.textBaseline = 'top'
-  ctx.fillStyle = c.token('--color-snow')
-  ctx.fillText(person.name, p.x, p.y + RADIUS + 6)
-
-  if (state.muted) {
-    const x = p.x + 15
-    const y = p.y + 15
-    ctx.fillStyle = c.token('--media-muted')
-    ctx.beginPath()
-    ctx.arc(x, y, 7, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(x - 3, y - 3)
-    ctx.lineTo(x + 3, y + 3)
-    ctx.stroke()
-  }
+  ctx.fillStyle = '#fff'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(name, left + 24, my + 0.5)
 }
 
 /** Where the view starts on one axis: centered on `center`, never past the map; a map smaller than the view is centered. */
@@ -238,14 +213,16 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
   const inCinema = inCall && !!cinema && myZone === cinema.id
 
   /** Who is on the cinema's screen: of those sharing in there, the first by ID (it may be us). */
-  const sharerId = useStore((s) =>
-    inCinema
+  const screening = useStore((s) =>
+    cinema
       ? (Object.values(s.voice)
-          .filter((o) => o.channel_id === channelId && o.zone === myZone && o.tracks.includes('screen'))
+          .filter((o) => o.channel_id === channelId && o.zone === cinema.id && o.tracks.includes('screen'))
           .map((o) => o.user_id)
           .sort()[0] ?? null)
       : null,
   )
+  /** Only those inside watch it. */
+  const sharerId = inCinema ? screening : null
   const video =
     sharerId === null
       ? null
@@ -260,21 +237,17 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
   /** Where we stand: ours to decide, the server only follows. Null while not in this world. */
   const pos = useRef<Point | null>(null)
   /** Where a click told us to walk to. */
-  const target = useRef<Point | null>(null)
+  const target = useRef<Walk | null>(null)
   const keys = useRef(new Set<string>())
   const camera = useRef<Point>({ x: 0, y: 0 })
-  /** Where the others are drawn, on their way to where they are. */
-  const shown = useRef(new Map<string, Point>())
+  /** Where everyone is drawn (the others on their way to where they are) and which way they face. */
+  const shown = useRef(new Map<string, Point & { facing: number }>())
 
   const people = useMemo(() => {
-    const list = new Map<string, Person>()
+    const list = new Map<string, string>()
     for (const id of ids) {
       const member = guild?.members.find((m) => m.user.id === id)
-      list.set(id, {
-        name: member ? displayName(member.user, member.nickname) : 'Alguém',
-        avatarUrl: member?.user.avatar_url ?? '',
-        color: `--color-${(colorOf(id) ?? 'bg-blurple').slice(3)}`,
-      })
+      list.set(id, member ? displayName(member.user, member.nickname) : 'Alguém')
     }
 
     return list
@@ -335,8 +308,10 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
 
     if (!inCall) pos.current = target.current = null
 
-    let colors = readColors()
-    const observer = new MutationObserver(() => (colors = readColors()))
+    // The skin can change the font.
+    const readFont = () => getComputedStyle(document.body).fontFamily || 'sans-serif'
+    let font = readFont()
+    const observer = new MutationObserver(() => (font = readFont()))
     observer.observe(document.documentElement, { attributes: true })
 
     let last = performance.now()
@@ -353,16 +328,13 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
         x: Number(held.has('right')) - Number(held.has('left')),
         y: Number(held.has('down')) - Number(held.has('up')),
       }
-      const to = target.current
 
       if (dir.x || dir.y) {
         p = step(p, dir, dt, map.walls, map)
-      } else if (to) {
-        const time = Math.min(dt, Math.hypot(to.x - p.x, to.y - p.y) / SPEED)
-        const next = step(p, { x: to.x - p.x, y: to.y - p.y }, time, map.walls, map)
-        // Arrived, or something is in the way.
-        if (time < dt || Math.hypot(next.x - p.x, next.y - p.y) < SPEED * time - 0.01) target.current = null
-        p = next
+      } else if (target.current) {
+        const walked = walkStep(p, target.current, now, dt, map.walls, map)
+        p = walked.pos
+        target.current = walked.walk
       }
       pos.current = p
 
@@ -398,10 +370,13 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
       const mine = inCall ? voiceStates[meId] : undefined
       if (mine?.channel_id === channelId) walk(now, dt, mine)
 
+      // Whole device pixels, or the art blurs and shimmers as the camera moves.
+      const snap = (value: number) => Math.round(value * dpr) / dpr
+
       const focus = pos.current ?? map.spawn
       const cam = {
-        x: Math.round(cameraAxis(focus.x, width, map.width)),
-        y: Math.round(cameraAxis(focus.y, height, map.height)),
+        x: snap(cameraAxis(focus.x, width, map.width)),
+        y: snap(cameraAxis(focus.y, height, map.height)),
       }
       camera.current = cam
 
@@ -410,32 +385,61 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
         screenRef.current.style.transform = `translate(${screen.x - cam.x}px, ${screen.y - cam.y}px)`
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.clearRect(0, 0, width, height)
+      ctx.imageSmoothingEnabled = false // resizing the canvas turns it back on
+      ctx.fillStyle = GRASS
+      ctx.fillRect(0, 0, width, height)
       ctx.translate(-cam.x, -cam.y)
-      drawMap(ctx, colors, map)
+
+      const art = imageOf('/world/map.png')
+      if (art) ctx.drawImage(art, 0, 0, map.width, map.height)
 
       const at = shown.current
       for (const id of at.keys()) if (voiceStates[id]?.channel_id !== channelId) at.delete(id)
 
-      const avatars = Object.values(voiceStates)
+      const characters = Object.values(voiceStates)
         .filter((o) => o.channel_id === channelId)
         .map((state) => {
-          if (state.user_id === meId && pos.current) return { state, p: pos.current }
+          const id = state.user_id
+          const own = id === meId ? pos.current : null
+          const to = own ?? { x: state.x ?? 0, y: state.y ?? 0 }
+          const from = at.get(id) ?? { ...to, facing: 0 }
 
-          const to = { x: state.x ?? 0, y: state.y ?? 0 }
-          const from = at.get(state.user_id) ?? to
-          const t = Math.hypot(to.x - from.x, to.y - from.y) > TELEPORT ? 1 : 1 - Math.exp(-dt * 12)
-          const p = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }
-          at.set(state.user_id, p)
+          const jumped = Math.hypot(to.x - from.x, to.y - from.y) > TELEPORT
+          const t = own || jumped ? 1 : 1 - Math.exp(-dt * 12)
+          const dx = (to.x - from.x) * t
+          const dy = (to.y - from.y) * t
+          const walking = !jumped && Math.hypot(dx, dy) > WALKING * dt
 
-          return { state, p }
+          const p = { x: from.x + dx, y: from.y + dy, facing: walking ? facingOf(dx, dy) : from.facing }
+          at.set(id, p)
+
+          return { state, p, walking }
         })
         .sort((a, b) => a.p.y - b.p.y)
 
-      ctx.textAlign = 'center'
-      for (const { state, p } of avatars) {
-        const person = people.get(state.user_id)
-        if (person) drawAvatar(ctx, colors, p, person, state, levels.get(state.user_id)?.get() ?? 0)
+      const stepFrame = 1 + (Math.floor(now / STEP_MS) % 2)
+      for (const { state, p, walking } of characters) {
+        const sheet = imageOf(`/world/sprites/${encodeURIComponent(state.user_id)}`)
+        if (!sheet) continue
+
+        ctx.drawImage(
+          sheet,
+          (walking ? stepFrame : 0) * FRAME_W,
+          p.facing * FRAME_H,
+          FRAME_W,
+          FRAME_H,
+          snap(p.x - FRAME_W / 2),
+          snap(p.y - FRAME_H + FEET),
+          FRAME_W,
+          FRAME_H,
+        )
+      }
+
+      // The names go over every character, as nobody's should hide behind someone else.
+      for (const { state, p } of characters) {
+        const name = people.get(state.user_id)
+        const speaking = (levels.get(state.user_id)?.get() ?? 0) > 0
+        if (name) drawPill(ctx, font, snap(p.x), snap(p.y - FRAME_H + FEET), name, state, speaking)
       }
     }
 
@@ -450,7 +454,8 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
   const walkTo = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!inCall) return
     const box = e.currentTarget.getBoundingClientRect()
-    target.current = { x: e.clientX - box.left + camera.current.x, y: e.clientY - box.top + camera.current.y }
+    const to = { x: e.clientX - box.left + camera.current.x, y: e.clientY - box.top + camera.current.y }
+    target.current = { to, best: Infinity, since: performance.now() }
   }
 
   const goTo = (p: Point) => {
@@ -513,22 +518,44 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
           onPointerDown={walkTo}
           className="absolute inset-0 size-full touch-none"
         />
-        {cinema?.screen && video ? (
+        {cinema?.screen ? (
           <div
             ref={screenRef}
-            className="absolute left-0 top-0 bg-black"
+            className={cn(
+              'absolute left-0 top-0',
+              video ? 'bg-black' : 'pointer-events-none flex flex-col items-center justify-center gap-1 text-center',
+            )}
             style={{ width: cinema.screen.w, height: cinema.screen.h }}
           >
-            <VideoView track={video} contain mirror={false} />
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label="Ampliar o telão"
-              onClick={() => setExpanded(true)}
-              className="absolute right-2 top-2 border-white/10 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
-            >
-              <Maximize2 aria-hidden />
-            </Button>
+            {video ? (
+              <>
+                <VideoView track={video} contain mirror={false} />
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Ampliar o telão"
+                  onClick={() => setExpanded(true)}
+                  className="absolute right-2 top-2 border-white/10 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                >
+                  <Maximize2 aria-hidden />
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-white/60">
+                  {screening ? 'Transmissão em andamento' : 'Ninguém transmitindo'}
+                </p>
+                <p className="text-xs text-white/40">
+                  {screening
+                    ? inCinema
+                      ? 'Carregando…'
+                      : 'Entre no cinema para assistir.'
+                    : inCinema
+                      ? 'Use o botão de compartilhar tela para transmitir aqui.'
+                      : 'Entre no cinema para compartilhar sua tela.'}
+                </p>
+              </>
+            )}
           </div>
         ) : null}
       </div>

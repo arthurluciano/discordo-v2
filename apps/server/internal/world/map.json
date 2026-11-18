@@ -1,16 +1,16 @@
 {
-  "width": 2400,
-  "height": 1700,
-  "spawn": {"x": 1200, "y": 800},
+  "width": 2448,
+  "height": 1920,
+  "spawn": {"x": 1224, "y": 816},
   "zones": [
-    {"id": "valorant", "name": "Valorant", "kind": "game", "status": "Jogando Valorant", "color": 16729172,
-     "x": 100, "y": 100, "w": 600, "h": 480, "door": "bottom", "spot": {"x": 400, "y": 340}},
-    {"id": "lol", "name": "League of Legends", "kind": "game", "status": "Jogando League of Legends", "color": 13148750,
-     "x": 900, "y": 100, "w": 600, "h": 480, "door": "bottom", "spot": {"x": 1200, "y": 340}},
-    {"id": "cs2", "name": "CS2", "kind": "game", "status": "Jogando CS2", "color": 15120167,
-     "x": 1700, "y": 100, "w": 600, "h": 480, "door": "bottom", "spot": {"x": 2000, "y": 340}},
-    {"id": "cinema", "name": "Cinema", "kind": "cinema", "status": "No cinema", "color": 10181046,
-     "x": 700, "y": 1000, "w": 1000, "h": 600, "door": "top", "spot": {"x": 1200, "y": 1110},
-     "screen": {"x": 880, "y": 1200, "w": 640, "h": 360}}
+    {"id": "valorant", "name": "Valorant", "kind": "game", "status": "Jogando Valorant", "color": 16729685,
+     "x": 96, "y": 96, "w": 624, "h": 480, "door": "bottom", "spot": {"x": 408, "y": 495}},
+    {"id": "lol", "name": "League of Legends", "kind": "game", "status": "Jogando League of Legends", "color": 13150830,
+     "x": 912, "y": 96, "w": 624, "h": 480, "door": "bottom", "spot": {"x": 1224, "y": 495}},
+    {"id": "cs2", "name": "CS2", "kind": "game", "status": "Jogando CS2", "color": 15638587,
+     "x": 1728, "y": 96, "w": 624, "h": 480, "door": "bottom", "spot": {"x": 2040, "y": 495}},
+    {"id": "cinema", "name": "Cinema", "kind": "cinema", "status": "No cinema", "color": 11032055,
+     "x": 720, "y": 1056, "w": 1008, "h": 768, "door": "top", "spot": {"x": 1224, "y": 1158},
+     "screen": {"x": 888, "y": 1398, "w": 672, "h": 378}}
   ]
 }

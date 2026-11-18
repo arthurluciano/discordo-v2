@@ -1,5 +1,6 @@
 // Package world is the map every guild's world shares: a plaza, the game rooms and the cinema.
-// The server only needs to know where the map ends and which room a point is in; clients draw it and collide with it.
+// The server knows where the map ends and which room a point is in, and paints it (art.go) and the characters
+// (sprite.go) as pixel art; clients show those pictures and collide with Walls.
 package world
 
 import (
@@ -39,12 +40,15 @@ type Map struct {
 	Height float32 `json:"height"`
 	Spawn  Point   `json:"spawn"`
 	Zones  []Zone  `json:"zones"`
-	Walls  []Rect  `json:"walls"` // derived from the zones
+	Walls  []Rect  `json:"walls"` // everything solid: the rooms' walls and the furniture. Derived, as the art is
 }
 
+// Art is drawn on a grid of Pixel world units, so every measure here is a multiple of it.
 const (
-	wall = 16  // thickness
-	door = 140 // gap
+	Pixel   = 3
+	wall    = 18  // thickness of a side or bottom wall
+	topWall = 48  // the top wall shows its face
+	door    = 144 // gap
 )
 
 //go:embed map.json
@@ -60,21 +64,29 @@ func load() Map {
 
 	for _, z := range m.Zones {
 		side := (z.W - door) / 2
-		top := []Rect{{z.X, z.Y, z.W, wall}}
+		top := []Rect{{z.X, z.Y, z.W, topWall}}
 		bottom := []Rect{{z.X, z.Y + z.H - wall, z.W, wall}}
-		gap := func(y float32) []Rect {
-			return []Rect{{z.X, y, side, wall}, {z.X + z.W - side, y, side, wall}}
+		gap := func(y, h float32) []Rect {
+			return []Rect{{z.X, y, side, h}, {z.X + z.W - side, y, side, h}}
 		}
 
 		if z.Door == "top" {
-			top = gap(z.Y)
+			top = gap(z.Y, topWall)
 		} else {
-			bottom = gap(z.Y + z.H - wall)
+			bottom = gap(z.Y+z.H-wall, wall)
 		}
 
 		m.Walls = append(m.Walls, top...)
 		m.Walls = append(m.Walls, bottom...)
 		m.Walls = append(m.Walls, Rect{z.X, z.Y, wall, z.H}, Rect{z.X + z.W - wall, z.Y, wall, z.H})
+	}
+
+	for _, p := range m.furniture() {
+		if f := solid[p.kind]; !f.Empty() {
+			m.Walls = append(m.Walls, Rect{
+				float32(p.x+f.Min.X) * Pixel, float32(p.y+f.Min.Y) * Pixel, float32(f.Dx()) * Pixel, float32(f.Dy()) * Pixel,
+			})
+		}
 	}
 
 	return m

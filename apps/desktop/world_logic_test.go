@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"math"
 	"testing"
 )
@@ -73,5 +76,32 @@ func TestZoneAt(t *testing.T) {
 
 	if zoneAt(m, 300, 150) != nil || zoneAt(m, 50, 150) != nil {
 		t.Fatal("the right edge and the plaza are outside")
+	}
+}
+
+func TestSprite(t *testing.T) {
+	var b bytes.Buffer
+	png.Encode(&b, image.NewNRGBA(image.Rect(0, 0, 3*spriteW, 4*spriteH)))
+
+	frames := cutSprite(b.Bytes())
+	if len(frames) != 12 {
+		t.Fatalf("%d frames", len(frames))
+	}
+
+	if cfg, err := png.DecodeConfig(bytes.NewReader(frames[11])); err != nil || cfg.Width != spriteW || cfg.Height != spriteH {
+		t.Errorf("frame: %+v %v", cfg, err)
+	}
+
+	if cutSprite([]byte("no picture")) != nil {
+		t.Error("cut something that is not a sheet")
+	}
+
+	// Walking left steps on the second row; standing still keeps facing there.
+	if f, face := spriteFrame(0, -3, 1, true, 150); f != 5 || face != 1 {
+		t.Errorf("walking left: frame %d facing %d", f, face)
+	}
+
+	if f, _ := spriteFrame(1, 0, 0, false, 150); f != 3 {
+		t.Errorf("standing: frame %d", f)
 	}
 }

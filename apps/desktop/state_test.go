@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gonativeui/app"
+	"gonativeui/img"
 )
 
 func event(t *testing.T, kind string, d any) Event {
@@ -136,31 +137,31 @@ func TestInitials(t *testing.T) {
 	}
 }
 
-// worldFixture is the server's map with the walls it derives (apps/server/internal/world).
-func worldFixture(t *testing.T) *WorldMap {
-	b, err := os.ReadFile("../server/internal/world/map.json")
-	if err != nil {
-		t.Fatal(err)
+// worldFixture is a map of the server's size with its cinema; the walls play no part in a still picture.
+func worldFixture() *WorldMap {
+	return &WorldMap{
+		Width: 2448, Height: 1920, Spawn: WorldPoint{1224, 816},
+		Zones: []WorldZone{{
+			ID: "cinema", Name: "Cinema", Kind: "cinema", Status: "No cinema",
+			WorldRect: WorldRect{720, 1056, 1008, 768}, Spot: WorldPoint{1224, 1158}, Screen: &WorldRect{888, 1398, 672, 378},
+		}},
+	}
+}
+
+// worldArt injects the server's pictures from DISCORDO_ART (a folder made by the server's
+// WORLD_ART=dir go test ./internal/world/), so that nothing is downloaded; false without them.
+func worldArt(d *Discordo) bool {
+	dir := os.Getenv("DISCORDO_ART")
+	if dir == "" {
+		return false
 	}
 
-	var m WorldMap
-	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatal(err)
+	for ref, file := range map[string]string{"/world/map.png": "map.png", "/world/sprites/u1": "sprite-u1.png", "/world/sprites/u2": "sprite-u2.png", "/world/sprites/u3": "sprite-u3.png"} {
+		data, err := os.ReadFile(filepath.Join(dir, file))
+		d.pictures[ref] = &picture{data: data, hash: img.HashString(ref), failed: err != nil}
 	}
 
-	for _, z := range m.Zones {
-		side, door := (z.W-140)/2, z.Y
-		if z.Kind != "cinema" {
-			door = z.Y + z.H - 16 // the game rooms open at the bottom
-		}
-
-		m.Walls = append(m.Walls,
-			WorldRect{z.X, z.Y + z.H - 16 - (door - z.Y), z.W, 16},
-			WorldRect{z.X, door, side, 16}, WorldRect{z.X + z.W - side, door, side, 16},
-			WorldRect{z.X, z.Y, 16, z.H}, WorldRect{z.X + z.W - 16, z.Y, 16, z.H})
-	}
-
-	return &m
+	return true
 }
 
 // TestRender draws the screens offscreen; DISCORDO_SHOTS=dir saves them to compare with the web app.
@@ -209,16 +210,19 @@ func TestRender(t *testing.T) {
 
 			d.open(s.guild, s.channel)
 
+			art := false
+
 			// The world: the map is injected, and the call is one still asking for the microphone (no session).
 			if s.channel == "w1" {
-				wd.m, wd.gen = worldFixture(t), d.gen
+				wd.m, wd.gen = worldFixture(), d.gen
+				art = worldArt(d)
 				d.st.Voice["u2"] = VoiceState{UserID: "u2", ChannelID: "w1", X: 1330, Y: 870, Muted: true}
-				d.st.Voice["u3"] = VoiceState{UserID: "u3", ChannelID: "w1", X: 1000, Y: 1110, Zone: "cinema"}
+				d.st.Voice["u3"] = VoiceState{UserID: "u3", ChannelID: "w1", X: 1180, Y: 1180, Zone: "cinema"}
 				defer func() { wd.m, wd.in = nil, false }()
 			}
 
 			if s.call != "" {
-				d.st.Voice["u1"] = VoiceState{UserID: "u1", ChannelID: s.call, X: 1200, Y: 800}
+				d.st.Voice["u1"] = VoiceState{UserID: "u1", ChannelID: s.call, X: 1224, Y: 816}
 				vc.channel, vc.gen, vc.starting = s.call, d.gen, true
 				defer func() { vc.channel, vc.starting = "", false }()
 			}
@@ -228,7 +232,17 @@ func TestRender(t *testing.T) {
 				img, _ = o.Frame()
 			}
 
-			if s.call != "" && (!wd.in || wd.pos != WorldPoint{1200, 800}) {
+			// The art decodes on workers: give it the time.
+			for range 50 {
+				if !art {
+					break
+				}
+
+				time.Sleep(20 * time.Millisecond)
+				img, _ = o.Frame()
+			}
+
+			if s.call != "" && (!wd.in || wd.pos != WorldPoint{1224, 816}) {
 				t.Fatalf("not standing at the spawn: in %v at %+v", wd.in, wd.pos)
 			}
 

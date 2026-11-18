@@ -151,6 +151,11 @@ com o ID dele) em que cada um tem uma posição no mapa, igual para todos os ser
 `Zone {id, name, kind, status, color, x, y, w, h, door, spot: {x, y}, screen?: {x, y, w, h}}` (`kind`: `game` ou `cinema`;
 `status` é o texto de quem está dentro, como "Jogando Valorant"; `spot` é onde "ir para" leva; `screen` é o telão do cinema).
 
+`walls` é tudo o que é sólido: as paredes das salas e os móveis. O desenho vem pronto do servidor, em pixel art:
+`GET /world/map.png` é o mapa inteiro (`width`×`height`, um pixel de arte = 3 unidades; mostre sem suavizar) e
+`GET /world/sprites/{user_id}` é a folha do personagem daquele usuário: 3 colunas (parado, passo, passo) × 4 linhas
+(de frente, esquerda, direita, de costas), cada quadro com 60×78, os pés no centro da base. As duas rotas são públicas.
+
 Quem entra começa em `spawn`. O cliente anda (colidindo com `walls`) e manda `world_move`; o servidor só confere que o ponto
 está no mapa e calcula `zone`. O áudio chega de todos: é o cliente que aplica o volume. Com um dos dois em uma sala, ouve-se
 só quem está na mesma sala; na praça (`zone` vazio), o volume é 1 até 120 de distância e cai até 0 em 400.

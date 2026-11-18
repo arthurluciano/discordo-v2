@@ -1,9 +1,11 @@
 package main
 
-// The world (docs/protocol.md, "Mundo"): a guild's map, a call where everyone stands somewhere. Walking, the rooms
-// and the cinema's screen are drawn here; who hears whom is world_logic.go, the call itself voice.go.
+// The world (docs/protocol.md, "Mundo"): a guild's map, a call where everyone stands somewhere. The server paints
+// the map and the characters; walking, the names and the cinema's screen are drawn here; who hears whom is
+// world_logic.go, the call itself voice.go.
 
 import (
+	"cmp"
 	"context"
 	"math"
 	"slices"
@@ -11,6 +13,7 @@ import (
 
 	"discordo/desktop/voice"
 
+	"gonativeui/img"
 	"gonativeui/rexui"
 	"gonativeui/theme"
 	"gonativeui/ui"
@@ -27,14 +30,47 @@ var wd struct {
 	in     bool        // I am in a world's call, and pos is where I stand
 	pos    WorldPoint  // mine is local: the server does not echo my moves
 	target *WorldPoint // where a click sent me
+	moved  time.Time   // the last time walking there got me anywhere
 	held   [4]bool     // up, down, left, right
 	sent   WorldPoint  // the last world_move
 	sentAt time.Time
 	cinema bool // I was in the cinema at the last frame
 
-	last  time.Time             // the view's previous frame
-	shown map[string]WorldPoint // where the others are drawn, easing toward their state
-	drawn bool                  // the view was built this frame
+	last    time.Time             // the view's previous frame
+	shown   map[string]worldShown // how everyone was drawn in the last frame
+	sprites map[string][][]byte   // sheet → its 12 frames, cut once (nil: not a sheet)
+	drawn   bool                  // the view was built this frame
+}
+
+// worldShown is where a character was drawn (the others ease toward their state) and the row of the sheet it faces.
+type worldShown struct {
+	pos  WorldPoint
+	face int
+}
+
+// worldSprite is a frame (row × 3 + column) of someone's sheet; not Ready until the sheet arrived.
+func (d *Discordo) worldSprite(userID string, frame int) (img.Handle, img.State) {
+	ref := "/world/sprites/" + userID
+	p := d.fetched(ref)
+	if p == nil {
+		return 0, img.Failed
+	}
+
+	frames, cut := wd.sprites[ref]
+	if !cut {
+		if wd.sprites == nil {
+			wd.sprites = map[string][][]byte{}
+		}
+
+		frames = cutSprite(p.data)
+		wd.sprites[ref] = frames
+	}
+
+	if frames == nil {
+		return 0, img.Failed
+	}
+
+	return d.request(p.hash+uint64(frame)+1, frames[frame], 0, 0, false)
 }
 
 var worldKeys = map[ui.KeyCode]int{
@@ -286,6 +322,12 @@ func worldCam(focus, view, size float32) float32 {
 	return max(0, min(size-view, focus-view/2))
 }
 
+// The name over a character, in points.
+const (
+	pillH         = 20
+	pillBG uint32 = 0x111214d9
+)
+
 // worldStage draws the map through a camera, and walks me when mine: keys, or a click to walk to.
 func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine bool) {
 	k, c := d.k, d.k.Context()
@@ -323,7 +365,7 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 
 	if mine {
 		if s := c.Signal(id); s.Clicked {
-			wd.target = &WorldPoint{(s.Mouse[0] + camX) / z, (s.Mouse[1] + camY) / z}
+			wd.target, wd.moved = &WorldPoint{(s.Mouse[0] + camX) / z, (s.Mouse[1] + camY) / z}, now
 		}
 
 		d.worldWalk(m, dt)
@@ -342,125 +384,120 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 		return true
 	}
 
+	// The whole map is one picture, at its own size: decoded smaller it would lose its pixels.
 	if at(0, 0, m.Width, m.Height) {
-		d.begin("floor", box{bg: surfaceContent, floating: true})
-		c.Pop()
-	}
-
-	// A faint grid, so that walking the open plaza shows.
-	for x := float32(200); x < m.Width; x += 200 {
-		if at(x, 0, 1/z, m.Height) {
-			d.begin("grid x "+itoa(int(x)), box{bg: line5, floating: true})
-			c.Pop()
-		}
-	}
-
-	for y := float32(200); y < m.Height; y += 200 {
-		if at(0, y, m.Width, 1/z) {
-			d.begin("grid y "+itoa(int(y)), box{bg: line5, floating: true})
-			c.Pop()
-		}
+		pic, _ := d.image("/world/map.png", 0, 0, false)
+		c.NextFlags(base.Floating)
+		k.Image(1, pic, ui.FitFill, 0, "")
 	}
 
 	for i := range m.Zones {
 		zn := &m.Zones[i]
-		if at(zn.X, zn.Y, zn.W, zn.H) {
-			d.begin("zone "+zn.ID, box{axis: ui.AxisY, bg: alpha(zn.Color<<8, 0.16), floating: true, l: 28, t: 24, clip: true})
-			d.text(zn.Name, d.ui.s16b, snow)
-			c.Pop()
-		}
 
 		if s := zn.Screen; s != nil && at(s.X, s.Y, s.W, s.H) {
-			outline(c, line10, d.px(2))
-			d.begin("screen "+zn.ID, box{axis: ui.AxisY, bg: 0x000000ff, radius: 12, floating: true, clip: true, gap: 8, cross: ui.CrossCenter, justify: ui.JustifyCenter})
+			d.begin("screen "+zn.ID, box{axis: ui.AxisY, floating: true, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter})
 
 			if who := d.worldScreening(); mine && who != "" {
 				own := who == d.st.Me.ID
 				d.voiceScreenTile(g, voiceStageItem{st: d.st.Voice[who], screen: true, own: own, live: true, watched: !own, inCall: true}, ui.Pct(1), ui.Pct(1), false, true)
 			} else {
-				d.icon("film", 32, greyple)
-				d.text("Telão", d.ui.s14m, greyple)
+				d.text("Ninguém transmitindo", d.ui.s14m, alpha(greyple, 0.7))
 			}
 
-			c.Pop()
-		}
-	}
-
-	for i, w := range m.Walls {
-		if at(w.X, w.Y, w.W, w.H) {
-			color := greyple
-			if zn := zoneAt(m, w.X, w.Y); zn != nil {
-				color = zn.Color<<8 | 0xff
-			}
-
-			d.begin("wall "+itoa(i), box{bg: color, floating: true})
 			c.Pop()
 		}
 	}
 
 	if wd.shown == nil {
-		wd.shown = map[string]WorldPoint{}
+		wd.shown = map[string]worldShown{}
 	}
 
-	size := max(24, 2*worldRadius*z/d.ui.scale) // the avatar, in points: still a face on a visitor's small map
-	pad := d.px(4)                              // the ring's room around it
-	colW := d.px(160)                           // the avatar and the name under it
+	type actor struct {
+		v      VoiceState
+		x, y   float32 // the feet, in the view's pixels
+		sprite img.Handle
+	}
+
+	actors := make([]actor, 0, len(callers))
+	cz := max(z, d.ui.scale/2) // a visitor's small map keeps characters one can tell apart
+	colW := d.px(200)          // the room a name is centred in
 
 	for _, v := range callers {
 		p := WorldPoint{v.X, v.Y}
-		own := v.UserID == d.st.Me.ID
+		was, seen := wd.shown[v.UserID]
 
-		switch {
-		case own && mine:
+		if v.UserID == d.st.Me.ID && mine {
 			p = wd.pos
-		default:
+		} else if dist := math.Hypot(float64(p.X-was.pos.X), float64(p.Y-was.pos.Y)); seen && dist > 0.5 && dist < worldFar {
 			// The others ease toward where they are; a teleport ("Ir para") does not slide across the map.
-			from, seen := wd.shown[v.UserID]
-			dx, dy := p.X-from.X, p.Y-from.Y
-			if dist := math.Hypot(float64(dx), float64(dy)); seen && dist > 0.5 && dist < worldFar {
-				rate := float32(1 - math.Exp(float64(-12*dt)))
-				p = WorldPoint{from.X + dx*rate, from.Y + dy*rate}
-				c.RequestFrame()
-			}
-
-			wd.shown[v.UserID] = p
+			rate := float32(1 - math.Exp(float64(-12*dt)))
+			p = WorldPoint{was.pos.X + (p.X-was.pos.X)*rate, was.pos.Y + (p.Y-was.pos.Y)*rate}
+			c.RequestFrame()
 		}
 
-		x0, y0 := p.X*z-camX-colW/2, p.Y*z-camY-d.px(size)/2-pad
-		if x0 >= vw || y0 >= vh || x0+colW <= 0 || y0+d.px(size+40) <= 0 {
+		// Walking is moving faster than an eased stop's last crawl.
+		dx, dy := p.X-was.pos.X, p.Y-was.pos.Y
+		dist := float32(math.Hypot(float64(dx), float64(dy)))
+		walking := seen && dist > max(20*dt, 0.01) && dist < worldFar
+
+		frame, face := spriteFrame(was.face, dx, dy, walking, now.UnixMilli())
+		wd.shown[v.UserID] = worldShown{p, face}
+
+		if walking {
+			c.RequestFrame() // the frame after the last step is the one standing
+		}
+
+		a := actor{v: v, x: p.X*z - camX, y: p.Y*z - camY}
+		if a.x+colW/2 <= 0 || a.x-colW/2 >= vw || a.y+spriteFeet*cz <= 0 || a.y-spriteH*cz-d.px(pillH) >= vh {
 			continue
 		}
 
-		name, u := d.voiceName(g, v.UserID), User{ID: v.UserID}
-		if own {
-			u = d.st.Me
-		} else if i := slices.IndexFunc(g.Members, func(m Member) bool { return m.User.ID == v.UserID }); i >= 0 {
-			u = g.Members[i].User
+		// A step not decoded yet shows the standing frame.
+		st := img.Failed
+		if a.sprite, st = d.worldSprite(v.UserID, frame); st != img.Ready {
+			a.sprite, _ = d.worldSprite(v.UserID, face*3)
 		}
 
-		c.NextPos(theme.Snap(x0), theme.Snap(y0))
-		d.begin("who "+v.UserID, box{axis: ui.AxisY, w: ui.Px(colW), gap: 2, cross: ui.CrossCenter, floating: true})
+		actors = append(actors, a)
+	}
 
-		// Speaking rings green; mine is marked, so I find myself in a crowd.
-		ring := uint32(0)
+	// Whoever stands lower is in front.
+	slices.SortStableFunc(actors, func(a, b actor) int { return cmp.Compare(a.y, b.y) })
+
+	for _, a := range actors {
+		if k.ImageState(a.sprite) != img.Ready {
+			continue
+		}
+
+		theme.At(c, theme.Snap(a.x-spriteW/2*cz), theme.Snap(a.y-(spriteH-spriteFeet)*cz), theme.Snap(spriteW*cz), theme.Snap(spriteH*cz))
+		c.NextFlags(base.Floating)
+		k.Image(img.HashString(a.v.UserID), a.sprite, ui.FitFill, 0, "")
+	}
+
+	// The names go over every character, as Gather's: a dark pill with how they are in the call.
+	for _, a := range actors {
+		c.NextPos(theme.Snap(a.x-colW/2), theme.Snap(a.y-(spriteH-spriteFeet)*cz)-d.px(pillH))
+		d.begin("who "+a.v.UserID, box{axis: ui.AxisX, w: ui.Px(colW), justify: ui.JustifyCenter, floating: true})
+		d.begin("name", box{axis: ui.AxisX, h: ui.Px(d.px(pillH)), l: 7, r: 8, gap: 5, radius: pillH / 2, bg: pillBG, cross: ui.CrossCenter})
+
 		switch {
-		case mine && d.voiceSpeaking(v.UserID):
-			ring = mediaSpeaking
-		case own:
-			ring = blurpleSoft
-		}
+		case a.v.Deafened:
+			d.icon("headphone-off", 12, mediaMuted)
 
-		outline(c, ring, d.px(3))
-		d.begin("ring", box{radius: size/2 + 4, l: 4, r: 4, t: 4, b: 4})
-		d.avatar(u, name, size, rexui.PresenceNone, surfaceContent)
-		c.Pop()
-
-		d.begin("name", box{axis: ui.AxisX, l: 6, r: 6, t: 2, b: 2, gap: 4, radius: 6, bg: 0x000000a6, cross: ui.CrossCenter})
-		if v.Muted {
+		case a.v.Muted:
 			d.icon("mic-off", 12, mediaMuted)
+
+		case mine && d.voiceSpeaking(a.v.UserID):
+			outline(c, white, d.px(2))
+			d.begin("dot", box{w: ui.Px(d.px(10)), h: ui.Px(d.px(10)), radius: 5, bg: mediaSpeaking})
+			c.Pop()
+
+		default:
+			d.begin("dot", box{w: ui.Px(d.px(8)), h: ui.Px(d.px(8)), radius: 4, bg: mediaSpeaking})
+			c.Pop()
 		}
 
-		d.text(name, d.ui.s12s, white)
+		d.text(d.voiceName(g, a.v.UserID), d.ui.s12s, white)
 		c.Pop()
 		c.Pop()
 	}
@@ -468,7 +505,7 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 	c.Pop()
 }
 
-// worldWalk moves me for dt seconds: the held keys, else toward the clicked point until there or stopped by a wall.
+// worldWalk moves me for dt seconds: the held keys, else toward the clicked point until there or stuck.
 func (d *Discordo) worldWalk(m *WorldMap, dt float32) {
 	c := d.k.Context()
 
@@ -516,8 +553,14 @@ func (d *Discordo) worldWalk(m *WorldMap, dt float32) {
 		dist := float32(math.Hypot(float64(to.X), float64(to.Y)))
 		next := step(wd.pos, to, min(dt, dist/worldSpeed), m.Walls, bounds)
 
-		if next == wd.pos || dist <= worldSpeed*dt {
-			wd.target = nil // there, or a wall is in the way
+		now := time.Now()
+		if next != wd.pos {
+			wd.moved = now
+		}
+
+		// Furniture and walls are slid along; getting nowhere for a while is giving up.
+		if dist <= worldSpeed*dt || now.Sub(wd.moved) > 300*time.Millisecond {
+			wd.target = nil
 		}
 
 		wd.pos = next

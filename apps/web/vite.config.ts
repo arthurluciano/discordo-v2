@@ -43,7 +43,7 @@ export default defineConfig({
     // The API lives at the root, so only its real prefixes are forwarded; a new prefix must be added here.
     // The Host header is kept (no changeOrigin): the server's CSRF check compares it with Origin.
     proxy: Object.fromEntries([
-      ...['/auth', '/users', '/guilds', '/channels', '/invites', '/attachments', '/images', '/relationships', '/blocks', '/dms', '/healthz']
+      ...['/auth', '/users', '/guilds', '/channels', '/invites', '/attachments', '/images', '/relationships', '/blocks', '/dms', '/world', '/healthz']
         .map((prefix) => [prefix, API_ORIGIN]),
       ['/gateway', { target: API_ORIGIN, ws: true }],
     ]),

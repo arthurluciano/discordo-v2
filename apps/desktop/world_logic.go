@@ -2,14 +2,74 @@ package main
 
 // The world's rules, without the window: walking with collisions, who hears whom, which room a point is in.
 
-import "math"
+import (
+	"bytes"
+	"image"
+	"image/png"
+	"math"
+)
 
 const (
 	worldRadius = 20  // an avatar's, in map units
 	worldSpeed  = 260 // map units a second
 	worldNear   = 120 // in the plaza: full volume up to here
 	worldFar    = 400 // and silence from here
+
+	// A character's sheet (GET /world/sprites/{id}): 3 columns (standing, two steps) of 4 rows (facing down,
+	// left, right, up) of frames this size in map units, the feet this far above a frame's bottom edge.
+	spriteW, spriteH = 60, 78
+	spriteFeet       = 6
 )
+
+// cutSprite cuts a character's sheet into its 12 frames (row × 3 + column), each a PNG; nil when it is not one.
+func cutSprite(sheet []byte) [][]byte {
+	src, err := png.Decode(bytes.NewReader(sheet))
+	if err != nil || src.Bounds().Dx() < 3*spriteW || src.Bounds().Dy() < 4*spriteH {
+		return nil
+	}
+
+	sub, ok := src.(interface {
+		SubImage(image.Rectangle) image.Image
+	})
+	if !ok {
+		return nil
+	}
+
+	frames := make([][]byte, 12)
+	for i := range frames {
+		min := src.Bounds().Min.Add(image.Pt(i%3*spriteW, i/3*spriteH))
+
+		var b bytes.Buffer
+		if png.Encode(&b, sub.SubImage(image.Rectangle{Min: min, Max: min.Add(image.Pt(spriteW, spriteH))})) != nil {
+			return nil
+		}
+
+		frames[i] = b.Bytes()
+	}
+
+	return frames
+}
+
+// spriteFrame is the frame for a character that moved by (dx, dy): the row it faces (kept when it did not move)
+// and, while walking, the two steps in turn every 150 ms.
+func spriteFrame(face int, dx, dy float32, walking bool, ms int64) (frame, facing int) {
+	if walking {
+		switch {
+		case dx*dx > dy*dy && dx < 0:
+			face = 1
+		case dx*dx > dy*dy:
+			face = 2
+		case dy < 0:
+			face = 3
+		default:
+			face = 0
+		}
+
+		return face*3 + 1 + int(ms/150%2), face
+	}
+
+	return face * 3, face
+}
 
 // worldBlocked says whether an avatar centred on p overlaps a wall or leaves the map.
 func worldBlocked(p WorldPoint, walls []WorldRect, bounds WorldPoint) bool {

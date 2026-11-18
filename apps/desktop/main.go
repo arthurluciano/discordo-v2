@@ -434,10 +434,20 @@ func (d *Discordo) toggleReaction(m *Message, emoji string) {
 	}()
 }
 
-// image returns the picture at ref (downloading it the first time), decoded to fit w×h pixels.
+// image returns the picture at ref (downloading it the first time), decoded to fit w×h pixels (0, 0: its own size).
 func (d *Discordo) image(ref string, w, h int32, cover bool) (img.Handle, img.State) {
-	if ref == "" || d.imgs == nil {
+	p := d.fetched(ref)
+	if p == nil {
 		return 0, img.Failed
+	}
+
+	return d.request(p.hash, p.data, w, h, cover)
+}
+
+// fetched is the downloaded file at ref, asked for the first time; nil until it arrives, and when it failed.
+func (d *Discordo) fetched(ref string) *picture {
+	if ref == "" || d.imgs == nil {
+		return nil
 	}
 
 	p := d.pictures[ref]
@@ -456,10 +466,10 @@ func (d *Discordo) image(ref string, w, h int32, cover bool) (img.Handle, img.St
 	}
 
 	if p.pending || p.failed {
-		return 0, img.Failed
+		return nil
 	}
 
-	return d.request(p.hash, p.data, w, h, cover)
+	return p
 }
 
 func (d *Discordo) request(hash uint64, data []byte, w, h int32, cover bool) (img.Handle, img.State) {

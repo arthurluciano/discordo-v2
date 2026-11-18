@@ -194,6 +194,16 @@ func (a *API) Handler() http.Handler {
 	})
 
 	h("GET /world/map", func(*http.Request, user.User) (any, error) { return world.Default, nil })
+	// Public, as the avatars are: the same pictures for everyone, with nothing of anyone in them.
+	picture := func(w http.ResponseWriter, data []byte) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(data)
+	}
+	mux.HandleFunc("GET /world/map.png", func(w http.ResponseWriter, _ *http.Request) { picture(w, world.MapPNG()) })
+	mux.HandleFunc("GET /world/sprites/{seed}", func(w http.ResponseWriter, r *http.Request) {
+		picture(w, world.SpritePNG(r.PathValue("seed")))
+	})
 	h("POST /guilds/{guild}/channels", func(r *http.Request, u user.User) (any, error) {
 		var in guild.ChannelInput
 		if err := decode(r, &in); err != nil {
