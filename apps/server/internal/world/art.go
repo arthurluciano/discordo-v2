@@ -105,6 +105,17 @@ var solid = map[string]image.Rectangle{
 	"booth":    image.Rect(0, 2, 28, 14),
 	"post":     image.Rect(0, 4, 3, 12),
 	"planter":  image.Rect(0, 2, 30, 12),
+	"pine":     image.Rect(9, 24, 17, 32),
+	"blossom":  image.Rect(8, 22, 20, 32),
+	"bush":     image.Rect(1, 3, 15, 10),
+	"hedge":    image.Rect(0, 2, 32, 9),
+	"pond":     image.Rect(2, 4, 118, 60),
+	"sign":     image.Rect(2, 14, 6, 20),
+	"bin":      image.Rect(0, 2, 7, 10),
+	"cart":     image.Rect(0, 6, 32, 22),
+	"shelf":    image.Rect(0, 2, 26, 20),
+	"tv":       image.Rect(0, 4, 44, 14),
+	"cooler":   image.Rect(0, 4, 9, 20),
 }
 
 func art(v float32) int { return int(v) / Pixel }
@@ -171,35 +182,80 @@ func (m Map) furniture() []piece {
 		add("rug", x+116, y+68, accent)
 		add("sofa", x+132, y+72, accent)
 		add("table", x+144, y+96, accent)
+		add("beanbag", x+120, y+94, accent)
+		add("beanbag", x+170, y+94, accent)
+		add("tv", x+132, y+114, accent)
 		add("arcade", x+10, y+h-36, accent)
 		add("vending", x+28, y+h-38, accent)
+		add("shelf", x+50, y+h-38, accent)
+		add("cooler", x+80, y+h-36, accent)
 		add("plant", x+w-22, y+h-30, accent)
 		add("plant", x+w-22, y+70, accent)
 	}
 
-	// The plaza: a fountain above the spawn, benches and lamps along the boulevard, trees on the grass.
+	// The plaza: a fountain above the spawn ringed by benches, lamps and a signpost; hedges along the edges.
 	sx, sy := art(m.Spawn.X), art(m.Spawn.Y)
 	add("fountain", sx-20, sy-58, none)
+	add("sign", sx+28, sy-12, none)
 
 	for _, side := range []int{-1, 1} {
-		add("bench", sx+side*70-12, sy-48, none)
-		add("planter", sx+side*150-15, sy-52, none)
-		add("planter", sx+side*260-15, sy+60, none)
-		add("lamp", sx+side*110-3, sy-60, none)
+		add("bench", sx+side*58-12, sy-46, none)
+		add("bench", sx+side*58-12, sy-14, none)
+		add("lamp", sx+side*92-3, sy-60, none)
 		add("lamp", sx+side*330-3, sy-60, none)
 		add("lamp", sx+side*210-3, sy+52, none)
+		add("bin", sx+side*100-3, sy-20, none)
+		add("planter", sx+side*260-15, sy+60, none)
+	}
+
+	add("cart", sx+150, sy-6, none)
+
+	top, bottom := 0, 0
+	var doors []int
+	for _, z := range m.Zones {
+		doors = append(doors, art(z.X+z.W/2))
+		if z.Door == "top" {
+			bottom = art(z.Y)
+		} else {
+			top = art(z.Y + z.H)
+		}
 	}
 
 	W, H := art(m.Width), art(m.Height)
-	for _, t := range [][2]int{
-		{248, 30}, {272, 96}, {246, 150}, {520, 40}, {546, 110}, {516, 160}, // between the rooms
-		{6, 250}, {W - 34, 250}, // the ends of the boulevard
-		{40, 370}, {110, 400}, {180, 372}, {30, 470}, {150, 480}, {80, 540}, {196, 560}, {36, 596}, // left of the cinema
-		{W - 68, 370}, {W - 138, 400}, {W - 208, 372}, {W - 58, 470}, {W - 178, 480}, {W - 108, 540}, {W - 224, 560}, {W - 64, 596},
-	} {
-		if t[1] < H-32 {
-			add("tree", t[0], t[1], none)
+	for hx := 24; hx+32 <= W-24; hx += 32 {
+		free := true
+		for _, d := range doors {
+			if hx+32 > d-art(door)/2-12 && hx < d+art(door)/2+12 {
+				free = false
+			}
 		}
+
+		if free {
+			add("hedge", hx, top+12, none)
+			add("hedge", hx, bottom-20, none)
+		}
+	}
+
+	// The pond and its trees on the left, a small wood of pines and blossoms on the right.
+	add("pond", 40, 470, none)
+
+	for _, t := range []struct {
+		kind string
+		x, y int
+	}{
+		{"tree", 248, 30}, {"pine", 274, 92}, {"tree", 246, 150}, {"tree", 520, 40}, {"pine", 548, 104}, {"blossom", 516, 156},
+		{"tree", 6, 250}, {"tree", W - 34, 250},
+		{"blossom", 40, 380}, {"tree", 110, 404}, {"pine", 184, 372}, {"tree", 186, 480}, {"pine", 6, 440}, {"blossom", 178, 560}, {"tree", 10, 590},
+		{"pine", W - 68, 368}, {"tree", W - 138, 400}, {"blossom", W - 208, 372}, {"pine", W - 58, 470}, {"tree", W - 178, 480},
+		{"pine", W - 108, 540}, {"blossom", W - 224, 560}, {"tree", W - 64, 596},
+	} {
+		if t.y < H-32 {
+			add(t.kind, t.x, t.y, none)
+		}
+	}
+
+	for _, b := range [][2]int{{230, 20}, {300, 160}, {500, 10}, {580, 160}, {60, 352}, {216, 420}, {150, 600}, {W - 90, 352}, {W - 236, 430}, {W - 150, 610}, {W - 30, 520}} {
+		add("bush", b[0], b[1], none)
 	}
 
 	return out
@@ -233,8 +289,8 @@ func (m Map) paint() canvas {
 	c.grass(W, H)
 	c.paving(m, W)
 
-	for _, z := range m.Zones {
-		c.room(z)
+	for i, z := range m.Zones {
+		c.room(z, i)
 	}
 
 	pieces := m.furniture()
@@ -269,21 +325,54 @@ func (c canvas) grass(W, H int) {
 	base, dark, light := rgb(0x8ccf7e), rgb(0x76bd6c), rgb(0xa4dc8f)
 	c.rect(0, 0, W, H, base)
 
+	// Soft round patches of darker and lighter grass.
+	for gy := 0; gy < H; gy += 36 {
+		for gx := 0; gx < W; gx += 36 {
+			n := noise(gx, gy+101)
+			if n > 45 {
+				continue
+			}
+
+			col := mix(base, dark, 0.4)
+			if n%2 == 0 {
+				col = mix(base, light, 0.4)
+			}
+
+			c.disc(gx+n%20, gy+(n*7)%20, 8+n%10, 0.6, col)
+		}
+	}
+
 	for y := range H {
 		for x := range W {
 			switch n := noise(x/2, y/2); {
-			case n < 6:
+			case n < 5:
 				c.px(x, y, dark)
-			case n > 95:
+			case n > 96:
 				c.px(x, y, light)
 			}
 
-			// A flower now and then.
-			if noise(x, y+7919) == 0 && noise(x+31, y) < 12 {
-				petal := []color.RGBA{rgb(0xffffff), rgb(0xffd866), rgb(0xff9ac1)}[noise(x, y+3)%3]
+			// Tufts: a little V of blades.
+			if noise(x+17, y+3) < 1 {
+				c.px(x, y, dark)
+				c.px(x+2, y, dark)
+				c.px(x+1, y+1, dark)
+				c.px(x+1, y, light)
+			}
+
+			// A flower now and then, a pebble more rarely.
+			if noise(x, y+7919) == 0 && noise(x+31, y) < 14 {
+				petal := []color.RGBA{rgb(0xffffff), rgb(0xffd866), rgb(0xff9ac1), rgb(0xb59cff), rgb(0xff8a5c)}[noise(x, y+3)%5]
 				c.px(x, y, petal)
 				c.px(x+1, y, petal)
+				c.px(x, y-1, petal)
+				c.px(x+1, y-1, mix(petal, rgb(0xffe08a), 0.6))
 				c.px(x, y+1, rgb(0x5aa35a))
+			}
+
+			if noise(x+101, y+59) == 0 && noise(x, y+11) < 6 {
+				c.rect(x, y, 3, 2, rgb(0xb9bfce))
+				c.px(x, y, rgb(0xdfe4ee))
+				c.rect(x, y+2, 3, 1, mix(base, rgb(0x000000), 0.25))
 			}
 		}
 	}
@@ -317,7 +406,34 @@ func (c canvas) brick(x, y, w, h int) {
 	c.rect(x, y+h-1, w, 1, edge)
 }
 
-// paving is the boulevard between the rooms and the cinema, with a path to each door.
+// slabs paves a rectangle with large stone slabs in two tones, each row offset, edged by a curb.
+func (c canvas) slabs(x, y, w, h int) {
+	base, alt, grout := rgb(0xeadcc4), rgb(0xe0cfb2), rgb(0xcdb999)
+
+	for j := y; j < y+h; j++ {
+		row := (j - y) / 10
+		for i := x; i < x+w; i++ {
+			shifted := i + (row%2)*8
+			col := base
+			if noise(shifted/16, row)%3 == 0 {
+				col = alt
+			}
+
+			switch {
+			case (j-y)%10 == 9 || shifted%16 == 15:
+				col = grout
+			case (j-y)%10 == 0 || shifted%16 == 0:
+				col = mix(col, rgb(0xffffff), 0.25)
+			case noise(i, j) < 3:
+				col = mix(col, grout, 0.5)
+			}
+
+			c.px(i, j, col)
+		}
+	}
+}
+
+// paving is the boulevard between the rooms and the cinema, a round square at its centre, and a path to each door.
 func (c canvas) paving(m Map, W int) {
 	top, bottom := 0, 0
 	for _, z := range m.Zones {
@@ -328,19 +444,63 @@ func (c canvas) paving(m Map, W int) {
 		}
 	}
 
-	c.brick(16, top+10, W-32, bottom-top-20)
+	px, py, pw, ph := 16, top+10, W-32, bottom-top-20
+	c.slabs(px, py, pw, ph)
 
+	// A border of darker stone just inside a grey curb.
+	curb, band := rgb(0x9aa0b2), rgb(0xc9a77a)
+	c.rect(px, py, pw, 2, curb)
+	c.rect(px, py+ph-2, pw, 2, curb)
+	c.rect(px, py+2, pw, 1, mix(curb, rgb(0x000000), 0.2))
+	for _, by := range []int{py + 3, py + ph - 7} {
+		c.rect(px, by, pw, 4, band)
+		for i := px; i < px+pw; i += 6 {
+			c.px(i, by, mix(band, rgb(0xffffff), 0.3))
+			c.px(i+3, by+3, mix(band, rgb(0x000000), 0.2))
+		}
+	}
+
+	// The round square: rings of stone around the fountain, a terracotta band, rays to the edge.
+	sx, sy := art(m.Spawn.X), art(m.Spawn.Y)-38
+	for j := -56; j <= 56; j++ {
+		for i := -80; i <= 80; i++ {
+			d := float32(i*i)/1.0 + float32(j*j)*2.0
+			x, y := sx+i, sy+j
+			if y < py+8 || y >= py+ph-8 {
+				continue
+			}
+
+			switch {
+			case d > 76*76:
+			case d > 72*72:
+				c.px(x, y, rgb(0xa8673f))
+			case d > 68*68:
+				c.px(x, y, rgb(0xc98552))
+			case d > 66*66:
+				c.px(x, y, rgb(0xa8673f))
+			default:
+				col := rgb(0xf3e8d4)
+				if (i+j+800)%8 < 4 != ((i-j+800)%8 < 4) {
+					col = rgb(0xe9dcc3)
+				}
+
+				c.px(x, y, col)
+			}
+		}
+	}
+
+	// Paths of slabs to every door.
 	for _, z := range m.Zones {
 		x := art(z.X+z.W/2) - art(door)/2 - 4
 		if z.Door == "top" {
-			c.brick(x, bottom-11, art(door)+8, 12)
+			c.slabs(x, bottom-11, art(door)+8, 12)
 		} else {
-			c.brick(x, top-1, art(door)+8, 12)
+			c.slabs(x, top-1, art(door)+8, 12)
 		}
 	}
 }
 
-func (c canvas) room(z Zone) {
+func (c canvas) room(z Zone, n int) {
 	x, y, w, h := art(z.X), art(z.Y), art(z.W), art(z.H)
 	accent := rgb(z.Color)
 	side, top, gap := art(wall), art(topWall), art(door)
@@ -400,15 +560,41 @@ func (c canvas) room(z Zone) {
 		alt := mix(rgb(0x343948), accent, 0.08)
 		grout := rgb(0x21242e)
 
+		// Each room its own floor: tiles, wooden planks, or a carpet of diamonds.
 		for j := y; j < y+h; j++ {
 			for i := x; i < x+w; i++ {
 				col := base
-				if ((i-x)/16+(j-y)/16)%2 == 1 {
-					col = alt
-				}
+				switch n % 3 {
+				case 0:
+					if ((i-x)/16+(j-y)/16)%2 == 1 {
+						col = alt
+					}
 
-				if (i-x)%16 == 15 || (j-y)%16 == 15 {
-					col = grout
+					if (i-x)%16 == 15 || (j-y)%16 == 15 {
+						col = grout
+					} else if (i-x)%16 == 0 || (j-y)%16 == 0 {
+						col = mix(col, rgb(0xffffff), 0.06)
+					}
+
+				case 1:
+					wood := []color.RGBA{rgb(0x6b4a33), rgb(0x76523a), rgb(0x5f412d)}
+					row := (j - y) / 6
+					col = wood[noise((i-x+row*13)/28, row)%3]
+					switch {
+					case (j-y)%6 == 5, (i-x+row*13)%28 == 27:
+						col = rgb(0x4a3323)
+					case noise(i, j) < 4:
+						col = mix(col, rgb(0x4a3323), 0.5) // the grain
+					}
+
+				default:
+					col = mix(rgb(0x2b2d40), accent, 0.12)
+					u, v := (i-x+j-y)%12, (i-x-(j-y)+1200)%12
+					if u == 0 || v == 0 {
+						col = mix(col, accent, 0.25)
+					} else if (u < 6) == (v < 6) {
+						col = mix(col, rgb(0x000000), 0.12)
+					}
 				}
 
 				c.px(i, j, col)
@@ -460,6 +646,19 @@ func (c canvas) room(z Zone) {
 	c.rect(x+w-side, y, side, h, cap)
 	c.rect(x, y, 1, h, mix(cap, rgb(0xffffff), 0.2))
 	c.shade(x+side, y+top, 2, h-top-side, 0.18)
+
+	// Windows on the wall's face, either side of the sign: the sky, a frame, a glint.
+	if z.Kind != "cinema" {
+		for _, wx := range []int{x + 34, x + 64, x + w - 76, x + w - 46} {
+			c.rect(wx, y+5, 14, 8, rgb(0x3b3f4e))
+			c.rect(wx+1, y+6, 12, 6, rgb(0x9fd6f5))
+			c.rect(wx+1, y+9, 12, 3, rgb(0xc9ecff))
+			c.rect(wx+7, y+6, 1, 6, rgb(0x3b3f4e))
+			c.px(wx+2, y+7, rgb(0xffffff))
+			c.px(wx+3, y+6, rgb(0xffffff))
+			c.rect(wx-1, y+13, 16, 1, mix(face, rgb(0xffffff), 0.3))
+		}
+	}
 
 	// The sign: a dark plate with the name lit in the room's colour.
 	name := upper(z.Name)
@@ -626,46 +825,150 @@ func (c canvas) piece(p piece) {
 		c.px(x+4, y+6, rgb(0x8fe39f))
 
 	case "tree":
+		leaf, deep, lit := rgb(0x3d9a55), rgb(0x2f7d45), rgb(0x78d184)
 		c.disc(x+14, y+31, 11, 0.4, mix(rgb(0x8ccf7e), rgb(0x000000), 0.25))
-		c.rect(x+12, y+22, 5, 9, rgb(0x8a5a3a))
-		c.rect(x+12, y+22, 2, 9, rgb(0xa9744d))
-		c.disc(x+14, y+12, 12, 1, rgb(0x3d9a55))
-		c.disc(x+8, y+15, 8, 1, rgb(0x358a4c))
-		c.disc(x+20, y+15, 8, 1, rgb(0x358a4c))
-		c.disc(x+13, y+9, 9, 1, rgb(0x56b96a))
-		c.disc(x+10, y+6, 5, 1, rgb(0x78d184))
-		c.px(x+17, y+11, rgb(0x9be3a0))
-		c.px(x+7, y+13, rgb(0x78d184))
+		c.rect(x+12, y+21, 5, 10, rgb(0x8a5a3a))
+		c.rect(x+12, y+21, 2, 10, rgb(0xa9744d))
+		c.rect(x+11, y+29, 7, 2, rgb(0x6f4a2f)) // roots
+		c.disc(x+14, y+13, 12, 1, deep)
+		c.disc(x+8, y+16, 8, 1, deep)
+		c.disc(x+20, y+16, 8, 1, deep)
+		c.disc(x+14, y+11, 11, 1, leaf)
+		c.disc(x+9, y+13, 7, 1, leaf)
+		c.disc(x+19, y+13, 7, 1, leaf)
+		c.disc(x+12, y+7, 6, 1, mix(leaf, lit, 0.5))
+		c.disc(x+10, y+5, 3, 1, lit)
+		for _, p := range [][2]int{{17, 9}, {6, 13}, {21, 15}, {14, 17}, {9, 18}, {19, 5}} {
+			c.px(x+p[0], y+p[1], []color.RGBA{lit, deep}[(p[0]+p[1])%2])
+		}
+
+	case "pine":
+		c.disc(x+13, y+31, 9, 0.4, mix(rgb(0x8ccf7e), rgb(0x000000), 0.25))
+		c.rect(x+11, y+25, 4, 6, rgb(0x7a4a2a))
+		for i, w := range []int{4, 7, 10, 12} {
+			ty := y + 2 + i*6
+			for j := 0; j < 8; j++ {
+				half := w * (j + 1) / 8
+				c.rect(x+13-half, ty+j, 2*half, 1, rgb(0x2f7d55))
+				c.rect(x+13-half, ty+j, half, 1, rgb(0x3f9a68))
+			}
+			c.rect(x+13-w, ty+7, 2*w, 1, rgb(0x24624a))
+		}
+		c.px(x+12, y+1, rgb(0x78d1a0))
+		c.px(x+13, y, rgb(0x78d1a0))
+
+	case "blossom":
+		pink, deep, lit := rgb(0xf4a6c6), rgb(0xd77aa3), rgb(0xffd6e6)
+		c.disc(x+14, y+31, 11, 0.4, mix(rgb(0x8ccf7e), rgb(0x000000), 0.25))
+		c.rect(x+12, y+20, 4, 11, rgb(0x7a4a3a))
+		c.rect(x+12, y+20, 1, 11, rgb(0x9a6a55))
+		c.rect(x+15, y+18, 4, 1, rgb(0x7a4a3a))
+		c.disc(x+14, y+12, 11, 1, deep)
+		c.disc(x+8, y+15, 7, 1, deep)
+		c.disc(x+20, y+15, 7, 1, deep)
+		c.disc(x+13, y+10, 10, 1, pink)
+		c.disc(x+11, y+7, 5, 1, lit)
+		for _, p := range [][2]int{{18, 8}, {6, 12}, {21, 14}, {15, 16}, {9, 17}, {16, 4}, {4, 16}} {
+			c.px(x+p[0], y+p[1], rgb(0xffffff))
+		}
+		c.px(x+4, y+30, pink) // fallen petals
+		c.px(x+22, y+29, pink)
+		c.px(x+18, y+32, lit)
+
+	case "bush":
+		c.disc(x+8, y+10, 7, 0.4, mix(rgb(0x8ccf7e), rgb(0x000000), 0.25))
+		c.disc(x+5, y+6, 5, 1, rgb(0x358a4c))
+		c.disc(x+11, y+6, 5, 1, rgb(0x358a4c))
+		c.disc(x+8, y+4, 5, 1, rgb(0x3f9d57))
+		c.disc(x+6, y+3, 2, 1, rgb(0x78d184))
+		c.px(x+11, y+5, rgb(0xff6b6b)) // berries
+		c.px(x+4, y+7, rgb(0xff6b6b))
+		c.px(x+9, y+8, rgb(0xff6b6b))
+
+	case "hedge":
+		c.shade(x, y+9, 32, 2, 0.25)
+		c.rect(x, y+2, 32, 7, rgb(0x2f7d45))
+		c.rect(x, y+1, 32, 3, rgb(0x3f9d57))
+		c.rect(x, y+1, 32, 1, rgb(0x56b96a))
+		for i := 0; i < 32; i += 3 {
+			c.px(x+i, y+noise(x+i, y)%3+3, rgb(0x56b96a))
+			c.px(x+i+1, y+7, rgb(0x24624a))
+		}
+		c.px(x+7, y+2, rgb(0xffffff))
+		c.px(x+21, y+3, rgb(0xffd866))
+
+	case "pond":
+		// Water inside a ring of stones, with lily pads, reeds and a duck.
+		c.disc(x+60, y+33, 58, 0.5, rgb(0x9aa0b2))
+		c.disc(x+60, y+32, 56, 0.5, rgb(0x4aa3e6))
+		c.disc(x+60, y+34, 52, 0.45, rgb(0x3b8fd1))
+		c.disc(x+58, y+28, 34, 0.35, rgb(0x6fc0f5))
+		for i := 0; i < 120; i += 7 {
+			c.px(x+2+i, y+33+noise(i, y)%3-1, rgb(0xdfe4ee))
+		}
+		for _, p := range [][2]int{{30, 26}, {80, 38}, {50, 44}} {
+			c.disc(x+p[0], y+p[1], 4, 0.6, rgb(0x56b96a))
+			c.px(x+p[0], y+p[1]-1, rgb(0x3b8fd1))
+		}
+		c.px(x+31, y+24, rgb(0xff9ac1))
+		c.px(x+32, y+24, rgb(0xffd6e6))
+		for _, rx := range []int{8, 11, 104, 108, 111} {
+			c.rect(x+rx, y+10, 1, 10, rgb(0x3f9d57))
+			c.rect(x+rx, y+8, 1, 3, rgb(0x8a5a3a))
+		}
+		c.rect(x+70, y+20, 6, 4, rgb(0xffffff)) // the duck
+		c.rect(x+75, y+17, 3, 3, rgb(0x3f9d57))
+		c.px(x+78, y+18, rgb(0xf2a93b))
+		c.rect(x+68, y+24, 9, 1, rgb(0x6fc0f5))
 
 	case "fountain":
-		c.disc(x+20, y+19, 20, 0.7, mix(rgb(0xf0e2cb), rgb(0x000000), 0.2))
-		c.disc(x+20, y+17, 20, 0.7, rgb(0xb9bfce))
-		c.disc(x+20, y+17, 18, 0.7, rgb(0xdfe4ee))
-		c.disc(x+20, y+17, 15, 0.7, rgb(0x4aa3e6))
-		c.disc(x+20, y+16, 11, 0.7, rgb(0x6fc0f5))
-		c.disc(x+20, y+15, 4, 0.7, rgb(0xdfe4ee))
-		c.rect(x+19, y+6, 3, 9, rgb(0xb9bfce))
-		c.rect(x+18, y+4, 5, 2, rgb(0xdfe4ee))
-		c.px(x+17, y+7, rgb(0xffffff))
-		c.px(x+23, y+8, rgb(0xffffff))
-		c.px(x+12, y+18, rgb(0xffffff))
-		c.px(x+28, y+14, rgb(0xffffff))
-		c.px(x+24, y+21, rgb(0xc9ecff))
+		stone, lit, deep := rgb(0xb9bfce), rgb(0xdfe4ee), rgb(0x8a8fa3)
+		c.disc(x+20, y+20, 21, 0.7, mix(rgb(0xf0e2cb), rgb(0x000000), 0.22))
+		c.disc(x+20, y+18, 21, 0.7, deep)
+		c.disc(x+20, y+17, 20, 0.7, stone)
+		c.disc(x+20, y+16, 18, 0.7, lit)
+		c.disc(x+20, y+17, 16, 0.7, rgb(0x3b8fd1))
+		c.disc(x+20, y+16, 13, 0.7, rgb(0x4aa3e6))
+		c.disc(x+18, y+14, 7, 0.6, rgb(0x6fc0f5))
+		// The upper basin on its column, spilling into the lower one.
+		c.rect(x+18, y+8, 5, 9, deep)
+		c.rect(x+18, y+8, 2, 9, stone)
+		c.disc(x+20, y+8, 7, 0.5, stone)
+		c.disc(x+20, y+7, 6, 0.5, rgb(0x4aa3e6))
+		c.rect(x+19, y, 3, 7, rgb(0xc9ecff))
+		c.rect(x+20, y-2, 1, 3, rgb(0xffffff))
+		for _, p := range [][2]int{{14, 6}, {26, 6}, {12, 9}, {28, 9}} {
+			c.px(x+p[0], y+p[1], rgb(0xc9ecff))
+		}
+		for _, p := range [][2]int{{8, 18}, {31, 15}, {24, 22}, {13, 21}, {28, 20}} {
+			c.px(x+p[0], y+p[1], rgb(0xffffff))
+		}
 
 	case "bench":
+		wood, dark := rgb(0xc98d5a), rgb(0x9a6240)
 		c.shade(x+1, y+9, 23, 2, 0.25)
-		c.rect(x, y, 24, 3, rgb(0x9a6240))
-		c.rect(x, y+4, 24, 4, rgb(0xc98d5a))
+		c.rect(x, y, 24, 3, dark)
+		c.rect(x, y, 24, 1, mix(dark, rgb(0xffffff), 0.2))
+		c.rect(x, y+4, 24, 4, wood)
 		c.rect(x, y+4, 24, 1, rgb(0xe0a876))
-		c.rect(x+1, y+8, 2, 1, ink)
-		c.rect(x+21, y+8, 2, 1, ink)
+		c.rect(x, y+6, 24, 1, dark)
+		for _, lx := range []int{1, 21} {
+			c.rect(x+lx, y+3, 2, 6, rgb(0x3b3f4e))
+			c.px(x+lx, y+3, rgb(0x6b7391))
+		}
 
 	case "lamp":
-		c.disc(x+3, y+3, 7, 1, mix(rgb(0xf0e2cb), rgb(0xffe08a), 0.5))
-		c.rect(x+2, y+4, 2, 13, rgb(0x3b3f4e))
-		c.rect(x+1, y+16, 4, 2, rgb(0x2b2e3a))
-		c.rect(x, y, 6, 5, rgb(0x2b2e3a))
-		c.rect(x+1, y+1, 4, 3, rgb(0xfff3b0))
+		c.disc(x+3, y+3, 8, 1, mix(rgb(0xf0e2cb), rgb(0xffe08a), 0.45))
+		c.disc(x+3, y+3, 5, 1, mix(rgb(0xf0e2cb), rgb(0xfff3b0), 0.6))
+		c.shade(x+1, y+18, 5, 1, 0.3)
+		c.rect(x+2, y+5, 2, 12, rgb(0x2b2e3a))
+		c.px(x+2, y+6, rgb(0x50556a))
+		c.rect(x+1, y+15, 4, 3, rgb(0x2b2e3a))
+		c.rect(x, y+1, 6, 5, rgb(0x2b2e3a))
+		c.rect(x+1, y+2, 4, 3, rgb(0xfff3b0))
+		c.px(x+1, y+2, rgb(0xffffff))
+		c.rect(x+1, y, 4, 1, rgb(0x2b2e3a))
+		c.px(x+2, y-1, rgb(0x2b2e3a))
 
 	case "planter":
 		c.shade(x+1, y+12, 29, 2, 0.25)
@@ -677,6 +980,99 @@ func (c canvas) piece(p piece) {
 		c.px(x+6, y+1, rgb(0xff9ac1))
 		c.px(x+15, y+2, rgb(0xffd866))
 		c.px(x+23, y+1, rgb(0xffffff))
+
+	case "beanbag":
+		c.disc(x+7, y+9, 7, 0.5, mix(a, rgb(0x000000), 0.45))
+		c.disc(x+7, y+7, 7, 0.7, mix(a, rgb(0x000000), 0.15))
+		c.disc(x+6, y+6, 5, 0.7, a)
+		c.disc(x+5, y+4, 2, 0.7, mix(a, rgb(0xffffff), 0.35))
+
+	case "tv":
+		// A wide screen on a low cabinet, a console and its controller beside it.
+		c.shade(x+1, y+14, 44, 2, 0.3)
+		c.box(x+2, y+8, 40, 6, 3, rgb(0x4a3a5c))
+		c.rect(x+4, y, 36, 9, ink)
+		c.rect(x+5, y+1, 34, 6, mix(a, rgb(0x10131c), 0.5))
+		c.rect(x+5, y+1, 34, 1, mix(a, rgb(0xffffff), 0.2))
+		c.rect(x+8, y+3, 10, 3, mix(a, rgb(0xffffff), 0.4)) // a game on screen
+		c.rect(x+22, y+4, 4, 2, rgb(0xffe08a))
+		c.rect(x+30, y+2, 6, 4, mix(a, rgb(0x000000), 0.2))
+		c.rect(x+6, y+10, 8, 2, rgb(0xe9e4dc))
+		c.px(x+12, y+10, rgb(0x7dffb0))
+		c.rect(x+30, y+10, 6, 2, ink)
+		c.px(x+31, y+10, a)
+
+	case "shelf":
+		// A bookcase of games and a trophy.
+		c.shade(x+1, y+20, 26, 2, 0.3)
+		c.rect(x, y, 26, 20, rgb(0x6b4a2f))
+		c.rect(x+1, y+1, 24, 18, rgb(0x3a2a1c))
+		for _, sy := range []int{6, 12} {
+			c.rect(x+1, y+sy, 24, 1, rgb(0x8a5a3a))
+		}
+		for i := range 10 {
+			col := []color.RGBA{a, rgb(0x4aa3e6), rgb(0xffe08a), rgb(0x7dd87d), rgb(0xe9e4dc)}[(i*3)%5]
+			c.rect(x+2+i*2, y+2+(i%2), 2, 4-i%2, col)
+			c.rect(x+3+i*2, y+8, 1, 4, mix(col, rgb(0x000000), 0.2))
+		}
+		c.rect(x+16, y+15, 4, 3, rgb(0xe6b84a)) // the trophy
+		c.rect(x+17, y+13, 2, 2, rgb(0xffe08a))
+		c.rect(x+4, y+15, 8, 3, rgb(0x9aa0b2))
+
+	case "cooler":
+		c.shade(x, y+20, 9, 1, 0.3)
+		c.rect(x, y+9, 9, 11, rgb(0xe9e4dc))
+		c.rect(x, y+9, 1, 11, rgb(0xffffff))
+		c.rect(x+2, y+12, 2, 2, rgb(0x4aa3e6))
+		c.rect(x+5, y+12, 2, 2, rgb(0xd13a4f))
+		c.rect(x+1, y, 7, 9, rgb(0x6fc0f5))
+		c.rect(x+2, y+1, 2, 7, rgb(0xc9ecff))
+		c.rect(x+2, y-1, 5, 1, rgb(0x3b8fd1))
+
+	case "sign":
+		// A signpost with an arrow in each room's colour.
+		c.shade(x+2, y+19, 5, 1, 0.3)
+		c.rect(x+3, y+2, 2, 18, rgb(0x8a5a3a))
+		c.rect(x+3, y+2, 1, 18, rgb(0xa9744d))
+		for i, col := range []uint32{0xff5555, 0xc8a96e, 0xee9f3b, 0xa857f7} {
+			ay := y + 2 + i*3
+			if i%2 == 0 {
+				c.rect(x+5, ay, 8, 2, rgb(col))
+				c.px(x+13, ay, rgb(col))
+			} else {
+				c.rect(x-5, ay, 8, 2, rgb(col))
+				c.px(x-6, ay, rgb(col))
+			}
+		}
+
+	case "bin":
+		c.shade(x, y+10, 8, 1, 0.3)
+		c.rect(x, y+2, 7, 8, rgb(0x3b6f4e))
+		c.rect(x+1, y+3, 1, 6, rgb(0x56906a))
+		c.rect(x, y+1, 7, 2, rgb(0x2b2e3a))
+		c.rect(x+2, y+5, 3, 2, rgb(0xdfe4ee))
+
+	case "cart":
+		// A popcorn and juice cart under a striped awning.
+		c.shade(x+1, y+22, 32, 2, 0.3)
+		c.box(x, y+10, 32, 12, 4, rgb(0xe9e4dc))
+		c.rect(x+2, y+12, 12, 4, rgb(0xffe08a))
+		c.rect(x+17, y+12, 4, 4, rgb(0xff8a5c))
+		c.rect(x+22, y+12, 4, 4, rgb(0x7dd87d))
+		c.rect(x+27, y+12, 3, 4, rgb(0xb59cff))
+		for i := range 8 {
+			col := rgb(0xd13a4f)
+			if i%2 == 1 {
+				col = rgb(0xffffff)
+			}
+			c.rect(x+i*4, y, 4, 6, col)
+			c.px(x+i*4+1, y+6, col)
+			c.px(x+i*4+2, y+6, col)
+		}
+		c.rect(x+1, y+6, 1, 4, rgb(0x6b7391))
+		c.rect(x+30, y+6, 1, 4, rgb(0x6b7391))
+		c.disc(x+5, y+23, 2, 1, ink)
+		c.disc(x+27, y+23, 2, 1, ink)
 
 	case "seat":
 		// Seen from behind, facing the screen: the back on top, the cushion and the armrests under it.

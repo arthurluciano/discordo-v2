@@ -19,6 +19,7 @@ var (
 	hairs  = []uint32{0x2b1d14, 0x5a3825, 0x8a5a2b, 0xd9a441, 0xe8e1d0, 0xc2452d, 0x3d6fd9, 0xd957a8}
 	shirts = []uint32{0x5865f2, 0xed4245, 0x3ba55d, 0xfaa81a, 0xeb459e, 0x00b0f4, 0x9b59b6, 0xf2f3f5, 0x23272a, 0x1abc9c}
 	pants  = []uint32{0x2f3a5f, 0x3b3f4e, 0x6b4a2f, 0x23272a}
+	kits   = []uint32{0x2b2e3a, 0xe9e4dc, 0xd13a4f, 0x3d6fd9, 0xf2a93b, 0x3ba55d}
 )
 
 // SpritePNG is the sheet of the character for a seed: a skin's ID gives that skin, anything else (a user's ID)
@@ -39,7 +40,8 @@ func SpritePNG(seed string) []byte {
 		return rgb(v)
 	}
 
-	return look{skin: pick(tones), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), style: int(n>>9) % 7, top: int(n>>15) % 4}.sheet()
+	return look{skin: pick(tones), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), kit: pick(kits),
+		style: int(n>>9) % 7, top: int(n>>15) % 4, gear: int(n>>19) % 6}.sheet()
 }
 
 func (l look) sheet() []byte {
@@ -70,8 +72,10 @@ const (
 
 type look struct {
 	skin, hair, shirt, pants color.RGBA
-	style                    int // 0 short, 1 long, 2 spiky, 3 cap, 4 bun, 5 curls, 6 ponytail
-	top                      int // 0 a tee, 1 a hoodie, 2 an open jacket, 3 stripes
+	style                    int        // 0 short, 1 long, 2 spiky, 3 cap, 4 bun, 5 curls, 6 ponytail
+	top                      int        // 0 a tee, 1 a hoodie, 2 an open jacket, 3 stripes
+	gear                     int        // 0 nothing, 1 glasses, 2 headphones, 3 a beard, 4 freckles, 5 a backpack
+	kit                      color.RGBA // the gear's colour
 
 	// What a skin adds to a made-up person.
 	eyes  color.RGBA              // ink when unset
@@ -331,6 +335,8 @@ func (l look) frame(facing, step int) canvas {
 		}
 	}
 
+	l.wear(r, facing)
+
 	if l.extra != nil {
 		at := facing
 		if at == left {
@@ -367,9 +373,10 @@ func (l look) frame(facing, step int) canvas {
 				continue
 			}
 
-			for _, d := range []image.Point{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			// The outline takes a dark shade of what it borders: softer than black, and it reads as one shape.
+			for _, d := range []image.Point{{0, 1}, {1, 0}, {-1, 0}, {0, -1}} {
 				if p := image.Pt(x, y).Add(d); p.In(c.Rect) && c.RGBAAt(p.X, p.Y).A != 0 {
-					out.SetRGBA(x, y, ink)
+					out.SetRGBA(x, y, mix(c.RGBAAt(p.X, p.Y), ink, 0.78))
 					break
 				}
 			}
@@ -377,4 +384,99 @@ func (l look) frame(facing, step int) canvas {
 	}
 
 	return out
+}
+
+// wear draws the gear over the figure, facing right or down as frame does (left is mirrored after).
+func (l look) wear(r pen, facing int) {
+	if l.gear == 0 {
+		return
+	}
+
+	dark := mix(l.kit, rgb(0x000000), 0.3)
+	glass := rgb(0x2b2e3a)
+	beard := mix(l.hair, rgb(0x000000), 0.15)
+	side := facing == right || facing == left
+
+	switch l.gear {
+	case 1: // glasses
+		switch {
+		case side:
+			r(8, 5, 2, 1, glass)
+			r(11, 5, 1, 2, glass)
+			r(10, 7, 1, 1, glass)
+		case facing == down:
+			r(7, 5, 2, 1, glass)
+			r(3, 5, 1, 1, glass)
+			r(12, 5, 1, 1, glass)
+			r(5, 7, 2, 1, glass)
+			r(9, 7, 2, 1, glass)
+		}
+
+	case 2: // headphones: a band over the head, a cup on each ear
+		if side {
+			r(6, -1, 4, 1, dark)
+			r(6, 3, 3, 5, l.kit)
+			r(6, 3, 1, 5, dark)
+			return
+		}
+
+		r(4, -1, 8, 1, dark)
+		r(2, 0, 2, 2, dark)
+		r(12, 0, 2, 2, dark)
+		r(1, 3, 2, 5, l.kit)
+		r(13, 3, 2, 5, l.kit)
+		r(1, 3, 1, 5, dark)
+		r(14, 3, 1, 5, dark)
+
+	case 3: // a beard and a moustache
+		if l.plain {
+			return
+		}
+
+		switch {
+		case side:
+			r(8, 8, 4, 2, beard)
+			r(7, 7, 1, 2, beard)
+			r(11, 7, 2, 1, beard)
+		case facing == down:
+			r(4, 9, 8, 1, beard)
+			r(3, 7, 1, 2, beard)
+			r(12, 7, 1, 2, beard)
+			r(6, 8, 4, 1, beard)
+			r(5, 10, 6, 1, beard)
+		}
+
+	case 4: // freckles
+		if l.plain || facing == up {
+			return
+		}
+
+		spot := mix(l.skin, rgb(0x8a4a2a), 0.45)
+		if side {
+			r(9, 7, 1, 1, spot)
+			r(11, 6, 1, 1, spot)
+			return
+		}
+
+		for _, p := range [][2]int{{5, 7}, {6, 8}, {9, 8}, {10, 7}} {
+			r(p[0], p[1], 1, 1, spot)
+		}
+
+	case 5: // a backpack: its straps from the front, all of it from the back
+		switch {
+		case side:
+			r(2, 10, 3, 6, l.kit)
+			r(2, 10, 1, 6, dark)
+			r(3, 12, 2, 1, dark)
+		case facing == down:
+			r(5, 10, 1, 5, dark)
+			r(10, 10, 1, 5, dark)
+		default:
+			r(4, 10, 8, 6, l.kit)
+			r(4, 10, 8, 1, dark)
+			r(5, 12, 6, 3, mix(l.kit, rgb(0xffffff), 0.15))
+			r(5, 12, 6, 1, dark)
+			r(7, 13, 2, 1, rgb(0xc9a24a))
+		}
+	}
 }
