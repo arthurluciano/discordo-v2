@@ -15,14 +15,19 @@ const (
 )
 
 var (
-	skins  = []uint32{0xffdcb8, 0xf1c27d, 0xd9a066, 0xa8703f, 0x6f4a2a}
+	tones  = []uint32{0xffdcb8, 0xf1c27d, 0xd9a066, 0xa8703f, 0x6f4a2a}
 	hairs  = []uint32{0x2b1d14, 0x5a3825, 0x8a5a2b, 0xd9a441, 0xe8e1d0, 0xc2452d, 0x3d6fd9, 0xd957a8}
 	shirts = []uint32{0x5865f2, 0xed4245, 0x3ba55d, 0xfaa81a, 0xeb459e, 0x00b0f4, 0x9b59b6, 0xf2f3f5, 0x23272a, 0x1abc9c}
 	pants  = []uint32{0x2f3a5f, 0x3b3f4e, 0x6b4a2f, 0x23272a}
 )
 
-// SpritePNG is the sheet of the character for a seed.
+// SpritePNG is the sheet of the character for a seed: a skin's ID gives that skin, anything else (a user's ID)
+// a person made up from it.
 func SpritePNG(seed string) []byte {
+	if s, ok := skins[seed]; ok {
+		return s.look.sheet()
+	}
+
 	h := fnv.New32a()
 	h.Write([]byte(seed))
 	n := h.Sum32()
@@ -34,12 +39,15 @@ func SpritePNG(seed string) []byte {
 		return rgb(v)
 	}
 
-	look := look{skin: pick(skins), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), style: int(n>>9) % 4}
+	return look{skin: pick(tones), hair: pick(hairs), shirt: pick(shirts), pants: pick(pants), style: int(n>>9) % 4}.sheet()
+}
+
+func (l look) sheet() []byte {
 	sheet := newCanvas(20*3, 26*4)
 
 	for row, facing := range []int{down, left, right, up} {
 		for step := range 3 {
-			f := look.frame(facing, step)
+			f := l.frame(facing, step)
 			for y := range 26 {
 				for x := range 20 {
 					if col := f.RGBAAt(x, y); col.A != 0 {
@@ -63,7 +71,15 @@ const (
 type look struct {
 	skin, hair, shirt, pants color.RGBA
 	style                    int // 0 short, 1 long, 2 spiky, 3 cap
+
+	// What a skin adds to a made-up person.
+	eyes  color.RGBA              // ink when unset
+	plain bool                    // no blush: masks and hoods
+	extra func(r pen, facing int) // drawn over the figure; left is drawn as right and mirrored
 }
+
+// pen draws a rectangle in the figure's own coordinates: the head starts at 3,2 and the feet end at row 20.
+type pen func(x, y, w, h int, col color.RGBA)
 
 // frame draws one pose. Everything is placed for facing right or down; left is right mirrored.
 func (l look) frame(facing, step int) canvas {
@@ -73,6 +89,10 @@ func (l look) frame(facing, step int) canvas {
 
 	dark := func(col color.RGBA) color.RGBA { return mix(col, rgb(0x000000), 0.25) }
 	shoe := rgb(0x2b2e3a)
+	eye := l.eyes
+	if eye.A == 0 {
+		eye = ink
+	}
 	hat := mix(l.shirt, rgb(0xffffff), 0.15)
 
 	// Steps: one leg lifts, and the body rises a pixel with it.
@@ -110,7 +130,7 @@ func (l look) frame(facing, step int) canvas {
 		r(4, 2, 9, 8, l.skin)
 		r(4, 0, 9, 4, l.hair)
 		r(4, 4, 3, 5, l.hair)
-		r(10, 5, 1, 2, ink) // the eye
+		r(10, 5, 1, 2, eye)
 		r(11, 8, 1, 1, dark(l.skin))
 
 		switch l.style {
@@ -143,10 +163,12 @@ func (l look) frame(facing, step int) canvas {
 			r(3, 0, 10, 4, l.hair)
 			r(3, 4, 1, 3, l.hair)
 			r(12, 4, 1, 3, l.hair)
-			r(6, 5, 1, 2, ink)
-			r(9, 5, 1, 2, ink)
-			r(4, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
-			r(11, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
+			r(6, 5, 1, 2, eye)
+			r(9, 5, 1, 2, eye)
+			if !l.plain {
+				r(4, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
+				r(11, 7, 1, 1, mix(l.skin, rgb(0xff7a7a), 0.4))
+			}
 			r(7, 11+bob, 2, 1, dark(l.shirt)) // a collar
 		} else {
 			r(3, 0, 10, 9, l.hair)
@@ -170,6 +192,15 @@ func (l look) frame(facing, step int) canvas {
 				r(2, 3, 12, 1, dark(hat))
 			}
 		}
+	}
+
+	if l.extra != nil {
+		at := facing
+		if at == left {
+			at = right
+		}
+
+		l.extra(r, at)
 	}
 
 	if facing == left {

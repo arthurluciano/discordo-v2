@@ -104,14 +104,39 @@ func TestArt(t *testing.T) {
 		t.Fatal("a sprite must decode and be the same for the same seed", err)
 	}
 
+	if !HasSkin("jett") || HasSkin("u1") || bytes.Equal(SpritePNG("jett"), SpritePNG("omen")) {
+		t.Fatal("skins")
+	}
+
 	if s := sheet.Bounds(); s.Dx() != SpriteW*3 || s.Dy() != SpriteH*4 {
 		t.Fatalf("sheet is %v", s)
 	}
 
 	if dir := os.Getenv("WORLD_ART"); dir != "" {
 		os.WriteFile(filepath.Join(dir, "map.png"), MapPNG(), 0o644)
-		for _, seed := range []string{"u1", "u2", "u3", "ana", "beto", "caio", "x", "y"} {
+		seeds := []string{"u1", "u2", "u3", "ana", "beto", "caio", "x", "y"}
+		for _, s := range Skins {
+			seeds = append(seeds, s.ID)
+		}
+
+		for _, seed := range seeds {
 			os.WriteFile(filepath.Join(dir, "sprite-"+seed+".png"), SpritePNG(seed), 0o644)
 		}
+
+		// Every skin from the front, side by side.
+		all := newCanvas(20*len(Skins), 26)
+		all.rect(0, 0, 20*len(Skins), 26, rgb(0xf0e2cb))
+		for i, s := range Skins {
+			f := s.look.frame(down, 0)
+			for y := range 26 {
+				for x := range 20 {
+					if col := f.RGBAAt(x, y); col.A == 255 {
+						all.SetRGBA(i*20+x, y, col)
+					}
+				}
+			}
+		}
+
+		os.WriteFile(filepath.Join(dir, "skins.png"), encode(all), 0o644)
 	}
 }
