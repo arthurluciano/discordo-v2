@@ -90,6 +90,8 @@ export type VoiceState = {
   x?: number
   y?: number
   zone?: string
+  /** A `WorldSkin` id worn instead of the character made up from `user_id`. */
+  skin?: string
 }
 
 export type Point = { x: number; y: number }
@@ -113,6 +115,9 @@ export type Zone = Rect & {
 
 /** GET /world/map: the same for every guild. */
 export type WorldMap = { width: number; height: number; spawn: Point; zones: Zone[]; walls: Rect[] }
+
+/** GET /world/skins: characters anyone can wear; `zone` is the room they belong to, to group them. */
+export type WorldSkin = { id: string; name: string; zone: string }
 
 export type TrackName = 'mic' | 'screen-audio' | 'camera' | 'screen'
 

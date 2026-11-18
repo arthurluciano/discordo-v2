@@ -2,11 +2,20 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { MotionValue } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Globe, MapPin, Maximize2 } from 'lucide-react'
+import { ArrowLeft, Globe, MapPin, Maximize2, Shirt } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { displayName, useMe } from '@/features/identity/users'
 import { callPermissions } from '@/features/voice/call'
 import { useAudioLevel } from '@/features/voice/use-audio-level'
@@ -19,7 +28,7 @@ import { getState, setState, useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { Point, VoiceState } from '@/lib/wire'
 import { facingOf, step, walkStep, zoneAt, type Walk } from './logic'
-import { useWorldMap } from './use-world-map'
+import { useWorldMap, useWorldSkins } from './use-world-map'
 
 type WorldViewProps = {
   channelId: string
@@ -59,6 +68,26 @@ const KEYS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
   arrowleft: 'left',
   d: 'right',
   arrowright: 'right',
+}
+
+/** The skin we wear in every world, '' for our own character. */
+const SKIN_KEY = 'discordo-world-skin'
+
+const storedSkin = () => {
+  try {
+    return localStorage.getItem(SKIN_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+const wearSkin = (skin: string) => {
+  try {
+    localStorage.setItem(SKIN_KEY, skin)
+  } catch {
+    // Without storage the skin still holds until we leave.
+  }
+  sendOp('world_skin', { skin })
 }
 
 const images = new Map<string, HTMLImageElement>()
@@ -203,6 +232,19 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
         .map((o) => o.user_id),
     ),
   )
+  const skins = useWorldSkins()
+  const mySkin = useStore((s) => {
+    const mine = s.voice[meId]
+
+    return (mine?.channel_id === channelId && mine.skin) || ''
+  })
+
+  // The server forgets the skin with the call: put the stored one back on every join.
+  useEffect(() => {
+    const skin = storedSkin()
+    if (connected && skin) sendOp('world_skin', { skin })
+  }, [connected])
+
   const myZone = useStore((s) => {
     const mine = s.voice[meId]
 
@@ -419,7 +461,7 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
 
       const stepFrame = 1 + (Math.floor(now / STEP_MS) % 2)
       for (const { state, p, walking } of characters) {
-        const sheet = imageOf(`/world/sprites/${encodeURIComponent(state.user_id)}`)
+        const sheet = imageOf(`/world/sprites/${encodeURIComponent(state.skin || state.user_id)}`)
         if (!sheet) continue
 
         ctx.drawImage(
@@ -480,6 +522,34 @@ export const WorldView = ({ channelId, guildId, onBack }: WorldViewProps) => {
             {peopleCount(ids.length)}
           </p>
         </div>
+        {inCall && skins?.length ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Shirt aria-hidden />
+                Skin
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-80 w-56 overflow-y-auto">
+              <DropdownMenuRadioGroup value={mySkin} onValueChange={wearSkin}>
+                <DropdownMenuRadioItem value="">Meu personagem</DropdownMenuRadioItem>
+                {[...new Set(skins.map((s) => s.zone))].map((zone) => (
+                  <div key={zone}>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>{map?.zones.find((z) => z.id === zone)?.name ?? zone}</DropdownMenuLabel>
+                    {skins
+                      .filter((s) => s.zone === zone)
+                      .map((s) => (
+                        <DropdownMenuRadioItem key={s.id} value={s.id}>
+                          {s.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                  </div>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {inCall && map ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

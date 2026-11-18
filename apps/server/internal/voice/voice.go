@@ -30,6 +30,7 @@ type State struct {
 	X    float32 `json:"x,omitempty"`
 	Y    float32 `json:"y,omitempty"`
 	Zone string  `json:"zone,omitempty"`
+	Skin string  `json:"skin,omitempty"` // a world.Skins ID worn instead of the character made up from user_id
 }
 
 // Access is what a user may do in a channel that can host a call.
@@ -96,6 +97,11 @@ func (s *Service) Handle(ctx context.Context, userID, sessionID, op string, data
 		var in struct{ X, Y float32 }
 		if err = json.Unmarshal(data, &in); err == nil {
 			err = s.move(userID, sessionID, in.X, in.Y)
+		}
+	case "world_skin":
+		var in struct{ Skin string }
+		if err = json.Unmarshal(data, &in); err == nil {
+			err = s.setSkin(userID, sessionID, in.Skin)
 		}
 	case "rtc_offer", "rtc_answer", "rtc_subscribe":
 		s.mu.Lock()
@@ -213,6 +219,25 @@ func (s *Service) setFlags(userID, sessionID string, muted, deafened bool) error
 		return errs.Invalid("not in a call")
 	}
 	c.Muted, c.Deafened = muted || deafened, deafened // deafened implies muted
+	st := c.State
+	s.mu.Unlock()
+	s.publish(c, st)
+	return nil
+}
+
+// setSkin dresses the user in a skin, or back in their own character with "".
+func (s *Service) setSkin(userID, sessionID, skin string) error {
+	if skin != "" && !world.HasSkin(skin) {
+		return errs.Invalid("unknown skin")
+	}
+
+	s.mu.Lock()
+	c := s.calls[userID]
+	if c == nil || c.sessionID != sessionID || !c.world {
+		s.mu.Unlock()
+		return errs.Invalid("not in a world")
+	}
+	c.Skin = skin
 	st := c.State
 	s.mu.Unlock()
 	s.publish(c, st)

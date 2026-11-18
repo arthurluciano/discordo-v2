@@ -67,6 +67,7 @@ func (d *Discordo) Build(c *ui.Context) {
 	d.socialDialogs()
 	d.identityDialogs()
 	d.voiceDialogs()
+	d.worldSkinDialog()
 	k.End()
 }
 

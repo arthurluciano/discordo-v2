@@ -194,6 +194,7 @@ func (a *API) Handler() http.Handler {
 	})
 
 	h("GET /world/map", func(*http.Request, user.User) (any, error) { return world.Default, nil })
+	h("GET /world/skins", func(*http.Request, user.User) (any, error) { return world.Skins, nil })
 	// Public, as the avatars are: the same pictures for everyone, with nothing of anyone in them.
 	picture := func(w http.ResponseWriter, data []byte) {
 		w.Header().Set("Content-Type", "image/png")

@@ -111,6 +111,8 @@ var skins = []skin{
 type themePrefs struct {
 	Skin   string
 	Static bool // "Tema estático": the animated skins hold still
+
+	WorldSkin string // the character worn in every world, "" for my own
 }
 
 var (

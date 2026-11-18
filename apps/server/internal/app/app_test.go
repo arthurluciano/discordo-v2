@@ -953,4 +953,22 @@ func TestWorldFlow(t *testing.T) {
 	if watcher.next("VOICE_STATE_UPDATE", &st); st.UserID != bobID || st.Zone != "valorant" || st.X != 400 {
 		t.Fatalf("entering a room: %+v", st)
 	}
+
+	// Skins: listed, worn by ID, and only real ones.
+	var skins []struct{ ID, Name, Zone string }
+	if e.must(bob, "GET", "/world/skins", nil, &skins); len(skins) == 0 || skins[0].ID != "jett" || skins[0].Zone != "valorant" {
+		t.Fatalf("skins: %+v", skins)
+	}
+	bobWS.send("world_skin", map[string]string{"skin": "nope"})
+	if bobWS.next("VOICE_ERROR", &failure); failure.Op != "world_skin" {
+		t.Fatalf("unknown skin: %+v", failure)
+	}
+	var worn struct {
+		UserID string `json:"user_id"`
+		Skin   string
+	}
+	bobWS.send("world_skin", map[string]string{"skin": "jett"})
+	if watcher.next("VOICE_STATE_UPDATE", &worn); worn.UserID != bobID || worn.Skin != "jett" {
+		t.Fatalf("wearing a skin: %+v", worn)
+	}
 }

@@ -7,7 +7,9 @@ package main
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"math"
+	"net/url"
 	"slices"
 	"time"
 
@@ -36,6 +38,10 @@ var wd struct {
 	sentAt time.Time
 	cinema bool // I was in the cinema at the last frame
 
+	skins       []WorldSkin // nil until asked for, with the dialog
+	skinOpen    bool        // the skin dialog
+	skinPending bool        // the saved skin still has to be put on in this call: the server forgets it
+
 	last    time.Time             // the view's previous frame
 	shown   map[string]worldShown // how everyone was drawn in the last frame
 	sprites map[string][][]byte   // sheet → its 12 frames, cut once (nil: not a sheet)
@@ -49,8 +55,13 @@ type worldShown struct {
 }
 
 // worldSprite is a frame (row × 3 + column) of someone's sheet; not Ready until the sheet arrived.
-func (d *Discordo) worldSprite(userID string, frame int) (img.Handle, img.State) {
-	ref := "/world/sprites/" + userID
+func (d *Discordo) worldSprite(v VoiceState, frame int) (img.Handle, img.State) {
+	seed := v.Skin
+	if seed == "" {
+		seed = v.UserID
+	}
+
+	ref := "/world/sprites/" + url.PathEscape(seed)
 	p := d.fetched(ref)
 	if p == nil {
 		return 0, img.Failed
@@ -195,12 +206,18 @@ func (d *Discordo) worldSync() {
 
 	me, ok := d.st.Voice[d.st.Me.ID]
 	if !ok || me.ChannelID != vc.channel || d.worldCall() == nil {
-		wd.in, wd.cinema, wd.target, wd.held = false, false, nil, [4]bool{}
+		wd.in, wd.cinema, wd.target, wd.held, wd.skinOpen = false, false, nil, [4]bool{}, false
 		return
 	}
 
 	if !wd.in {
 		wd.in, wd.pos, wd.sent = true, WorldPoint{me.X, me.Y}, WorldPoint{me.X, me.Y}
+		wd.skinPending = savedWorldSkin() != ""
+	}
+
+	if wd.skinPending && vc.s != nil {
+		wd.skinPending = false
+		vc.s.WearSkin(savedWorldSkin())
 	}
 
 	if !drawn {
@@ -269,6 +286,10 @@ func (d *Discordo) worldView(g *Guild, ch *Channel) {
 	d.text(ch.Name, d.ui.s16b, snow)
 	d.text(plural(len(callers), "pessoa", "pessoas"), d.ui.s12, greyple)
 	c.Pop()
+
+	if mine && d.secondaryText("Skin") {
+		wd.skinOpen = true
+	}
 
 	if mine && m != nil {
 		d.text("Ir para", d.ui.s12, greyple)
@@ -454,8 +475,8 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 
 		// A step not decoded yet shows the standing frame.
 		st := img.Failed
-		if a.sprite, st = d.worldSprite(v.UserID, frame); st != img.Ready {
-			a.sprite, _ = d.worldSprite(v.UserID, face*3)
+		if a.sprite, st = d.worldSprite(v, frame); st != img.Ready {
+			a.sprite, _ = d.worldSprite(v, face*3)
 		}
 
 		actors = append(actors, a)
@@ -566,4 +587,56 @@ func (d *Discordo) worldWalk(m *WorldMap, dt float32) {
 		wd.pos = next
 		c.RequestFrame()
 	}
+}
+
+func savedWorldSkin() string {
+	if themeStore == nil {
+		return ""
+	}
+
+	return themeStore.Get().WorldSkin
+}
+
+// worldSkinDialog picks the character I wear, saved for every world: my own, or one of the server's skins.
+func (d *Discordo) worldSkinDialog() {
+	if wd.skinOpen && wd.skins == nil {
+		wd.skins = []WorldSkin{} // asked once
+		call(d, "GET", "/world/skins", nil, func(_ *Discordo, s []WorldSkin) { wd.skins = s })
+	}
+
+	k := d.k
+	dlg := k.BeginDialog("world-skin", "Skin", &wd.skinOpen)
+
+	if dlg.Visible {
+		c := k.Context()
+		pick := (*string)(nil)
+		none := ""
+
+		if d.secondaryText("Meu personagem") {
+			pick = &none
+		}
+
+		for i := 0; i < len(wd.skins); i += 4 {
+			d.begin(fmt.Sprint("row", i), box{axis: ui.AxisX, gap: 6})
+			for j := i; j < min(i+4, len(wd.skins)); j++ {
+				if d.secondaryText(wd.skins[j].Name) {
+					pick = &wd.skins[j].ID
+				}
+			}
+			c.Pop()
+		}
+
+		if pick != nil {
+			wd.skinOpen = false
+			if themeStore != nil {
+				themeStore.Update(func(v *themePrefs) { v.WorldSkin = *pick })
+			}
+
+			if vc.s != nil {
+				vc.s.WearSkin(*pick)
+			}
+		}
+	}
+
+	k.EndDialog(&dlg)
 }

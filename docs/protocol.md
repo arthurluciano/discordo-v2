@@ -64,7 +64,7 @@ Message      {id, channel_id, author: User, content, created_at, edited_at, ment
 Attachment   {id, filename, content_type, size}
 DM           {id, type, name, recipients: [User]}   // type 2 conversa, 3 grupo
 Relationship {user, status, online}   // 1 amigo, 2 pedido recebido, 3 pedido enviado, 4 bloqueado
-VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome], x?, y?, zone?}   // x, y, zone: só no mundo
+VoiceState   {user_id, channel_id, guild_id?, muted, deafened, tracks: [nome], x?, y?, zone?, skin?}   // x, y, zone, skin: só no mundo
 Invite       {code, guild_id, creator_id, max_uses, uses, expires_at}   // max_uses 0 = sem limite; expires_at null = nunca
 ```
 
@@ -155,6 +155,11 @@ com o ID dele) em que cada um tem uma posição no mapa, igual para todos os ser
 `GET /world/map.png` é o mapa inteiro (`width`×`height`, um pixel de arte = 3 unidades; mostre sem suavizar) e
 `GET /world/sprites/{user_id}` é a folha do personagem daquele usuário: 3 colunas (parado, passo, passo) × 4 linhas
 (de frente, esquerda, direita, de costas), cada quadro com 60×78, os pés no centro da base. As duas rotas são públicas.
+
+Skins: `GET /world/skins` lista `[{id, name, zone}]` (`zone` agrupa na escolha). No mundo, `world_skin {skin}` veste uma
+(`""` volta ao personagem do usuário) e sai como `skin` no `VoiceState`; o cliente desenha `GET /world/sprites/{skin}`
+no lugar de `/world/sprites/{user_id}`. O servidor esquece a skin ao sair da chamada: o cliente guarda a escolha e a manda
+de novo ao entrar.
 
 Quem entra começa em `spawn`. O cliente anda (colidindo com `walls`) e manda `world_move`; o servidor só confere que o ponto
 está no mapa e calcula `zone`. O áudio chega de todos: é o cliente que aplica o volume. Com um dos dois em uma sala, ouve-se

@@ -135,6 +135,13 @@ type WorldZone struct {
 	Screen *WorldRect `json:"screen"` // the cinema's
 }
 
+// WorldSkin is a character anyone can wear in a world (GET /world/skins); Zone groups them.
+type WorldSkin struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Zone string `json:"zone"`
+}
+
 type WorldMap struct {
 	Width  float32     `json:"width"`
 	Height float32     `json:"height"`

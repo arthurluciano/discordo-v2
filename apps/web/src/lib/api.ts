@@ -12,6 +12,7 @@ import type {
   User,
   UserProfile,
   WorldMap,
+  WorldSkin,
 } from './wire'
 
 export type ProfileInput = Partial<
@@ -106,6 +107,7 @@ export const api = {
   revokeInvite: (code: string) => request<void>('DELETE', `/invites/${enc(code)}`),
 
   worldMap: () => request<WorldMap>('GET', '/world/map'),
+  worldSkins: () => request<WorldSkin[]>('GET', '/world/skins'),
 
   createChannel: (
     guildId: string,

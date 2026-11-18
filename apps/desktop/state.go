@@ -136,6 +136,7 @@ type VoiceState struct {
 	X    float32 `json:"x,omitempty"`
 	Y    float32 `json:"y,omitempty"`
 	Zone string  `json:"zone,omitempty"`
+	Skin string  `json:"skin,omitempty"` // a WorldSkin worn instead of the character made up from UserID
 }
 
 type Attachment struct {

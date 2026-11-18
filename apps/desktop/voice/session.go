@@ -154,6 +154,9 @@ func (s *Session) SetVolume(userID string, v float32) { s.mixer.SetVolume(userID
 // Move tells the others where I stand in a world (world_move; the server takes at most 25 a second).
 func (s *Session) Move(x, y float32) { s.send("world_move", map[string]float32{"x": x, "y": y}) }
 
+// WearSkin dresses me in a world skin, or in my own character with "" (world_skin).
+func (s *Session) WearSkin(id string) { s.send("world_skin", map[string]string{"skin": id}) }
+
 // SetMuted applies my mute and deafen choices and tells the others (voice_state; deafened implies muted).
 func (s *Session) SetMuted(muted, deafened bool) {
 	s.mu.Lock()
