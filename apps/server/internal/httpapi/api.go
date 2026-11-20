@@ -2,7 +2,10 @@
 package httpapi
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -196,14 +199,18 @@ func (a *API) Handler() http.Handler {
 	h("GET /world/map", func(*http.Request, user.User) (any, error) { return world.Default, nil })
 	h("GET /world/skins", func(*http.Request, user.User) (any, error) { return world.Skins, nil })
 	// Public, as the avatars are: the same pictures for everyone, with nothing of anyone in them.
-	picture := func(w http.ResponseWriter, data []byte) {
+	picture := func(w http.ResponseWriter, r *http.Request, data []byte) {
+		sum := sha1.Sum(data)
+
 		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		w.Write(data)
+		// The art changes with a deploy at the same address: kept, but asked about every time (a 304 when it is the same).
+		w.Header().Set("Cache-Control", "public, no-cache")
+		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
+		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
 	}
-	mux.HandleFunc("GET /world/map.png", func(w http.ResponseWriter, _ *http.Request) { picture(w, world.MapPNG()) })
+	mux.HandleFunc("GET /world/map.png", func(w http.ResponseWriter, r *http.Request) { picture(w, r, world.MapPNG()) })
 	mux.HandleFunc("GET /world/sprites/{seed}", func(w http.ResponseWriter, r *http.Request) {
-		picture(w, world.SpritePNG(r.PathValue("seed")))
+		picture(w, r, world.SpritePNG(r.PathValue("seed")))
 	})
 	h("POST /guilds/{guild}/channels", func(r *http.Request, u user.User) (any, error) {
 		var in guild.ChannelInput

@@ -896,6 +896,19 @@ func TestWorldFlow(t *testing.T) {
 		t.Fatalf("map: %+v", m)
 	}
 
+	// A picture is asked about every time, and only sent again when the art changed.
+	first, err := http.Get(e.url + "/world/sprites/jett")
+	if err != nil || first.StatusCode != http.StatusOK || first.Header.Get("ETag") == "" {
+		t.Fatalf("sprite: %v %v", first, err)
+	}
+	first.Body.Close()
+
+	again, _ := http.NewRequest("GET", e.url+"/world/sprites/jett", nil)
+	again.Header.Set("If-None-Match", first.Header.Get("ETag"))
+	if resp, err := http.DefaultClient.Do(again); err != nil || resp.StatusCode != http.StatusNotModified {
+		t.Fatalf("the same sprite again: %v %v", resp, err)
+	}
+
 	aliceWS, bobWS := e.connect(alice), e.connect(bob)
 	aliceWS.next("READY", nil)
 	bobWS.next("READY", nil)
