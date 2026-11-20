@@ -116,6 +116,10 @@ func (d *Discordo) chat(title, topic string, guild bool, perms int64, w, H float
 	c.Pop()
 	d.rule(line5, false)
 
+	if dm := d.st.DM(d.channel); !guild && dm != nil {
+		d.dmCall(dm, w, H)
+	}
+
 	k.NextSize(ui.Pct(1), ui.Grow(1))
 	v := k.BeginScroll("transcript", &d.logScroll, base.ScrollVertical)
 	d.transcript(v, title, guild, perms)
@@ -644,8 +648,13 @@ func (d *Discordo) attachment(a *Attachment) {
 			w, ht = float32(info.W), float32(info.H)
 		}
 
+		// A click opens it large (the web's link to the full picture).
+		d.press(ui.HashString(c.ParentKey(), "open "+a.ID), box{radius: 8}, 0, "Abrir "+a.Filename)
 		c.NextSize(ui.Px(w), ui.Px(ht))
 		d.k.Image(img.HashString(a.ID), h, ui.FitContain, d.px(8), a.Filename)
+		if d.pop() {
+			chatViewing, chatViewOpen = *a, true
+		}
 
 		return
 	}
@@ -661,6 +670,38 @@ func (d *Discordo) attachment(a *Attachment) {
 	if d.pop() {
 		d.chatDownload(*a)
 	}
+}
+
+// The picture opened large, in a dialog with its download.
+var (
+	chatViewing  Attachment
+	chatViewOpen bool
+)
+
+func (d *Discordo) imageDialog() {
+	k := d.k
+	a := chatViewing
+	dlg := k.BeginDialog("image", a.Filename, &chatViewOpen)
+	if dlg.Visible {
+		ww, wh := k.Context().Size()
+		maxW, maxH := float32(ww)*0.8, float32(wh)*0.7
+		h, st := d.image("/attachments/"+a.ID, int32(maxW), int32(maxH), false)
+
+		w, ht := d.px(320), d.px(180)
+		if info, ok := d.imgs.Info(h); ok && st == img.Ready {
+			w, ht = float32(info.W), float32(info.H)
+		}
+
+		k.Context().NextSize(ui.Px(w), ui.Px(ht))
+		k.Image(img.HashString("large "+a.ID), h, ui.FitContain, d.px(8), a.Filename)
+
+		if d.voiceButton("download", "Baixar", surfaceRaised, surfaceHover, snow, false) {
+			chatViewOpen = false
+			d.chatDownload(a)
+		}
+	}
+
+	k.EndDialog(&dlg)
 }
 
 // chatDownload asks where to save an attachment (the web's <a download>); chatDialogs fetches it once answered.
@@ -1261,6 +1302,7 @@ func (d *Discordo) deleteDialog() {
 // chatDialogs draws the chat's dialogs (deleting a message) and takes the answers of its panels and pastes.
 func (d *Discordo) chatDialogs() {
 	d.deleteDialog()
+	d.imageDialog()
 
 	if d.a == nil {
 		return

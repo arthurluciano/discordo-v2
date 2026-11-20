@@ -37,6 +37,7 @@ type voiceScreens struct {
 	err             string
 
 	watching map[string]bool // by user: their screen is asked for
+	cams     map[string]bool // by user: their camera is asked for
 	pinned   string          // the focused screen, by user
 	full     bool            // the stage covers the window
 }
@@ -238,6 +239,14 @@ func (d *Discordo) voiceName(g *Guild, userID string) string {
 		for _, m := range g.Members {
 			if m.User.ID == userID {
 				return m.Name()
+			}
+		}
+	}
+
+	if dm := d.st.DM(vc.channel); dm != nil {
+		for _, u := range dm.Recipients {
+			if u.ID == userID {
+				return u.Name()
 			}
 		}
 	}
@@ -524,6 +533,8 @@ func (d *Discordo) voiceFullStage() {
 	var ch *Channel
 	if g != nil {
 		ch = g.Channel(d.channel)
+	} else if dm := d.st.DM(d.channel); dm != nil {
+		ch = d.dmChannel(dm)
 	}
 
 	if ch == nil || ch.Type != ChannelVoice || ch.ID != vc.channel || d.phase != phaseOnline {

@@ -402,9 +402,52 @@ func (d *Discordo) socialDialogs() {
 	d.confirmDialog()
 }
 
+// dmChannel is a DM as the call stage sees a channel: its name, and every permission.
+func (d *Discordo) dmChannel(dm *DM) *Channel {
+	return &Channel{ID: dm.ID, Name: d.st.DMName(*dm), Type: ChannelVoice, Permissions: permAdmin}
+}
+
+// dmCall is DMView's call: the stage in the top half while I am in it, else a bar while others are.
+func (d *Discordo) dmCall(dm *DM, w, H float32) {
+	c := d.k.Context()
+	if vc.channel == dm.ID {
+		if vc.scr.full {
+			return // drawn over the window (voiceFullStage)
+		}
+
+		d.begin("call", box{axis: ui.AxisY, w: ui.Pct(1), h: ui.Px(H / 2)})
+		d.voiceStage(nil, d.dmChannel(dm), w-d.px(32))
+		c.Pop()
+		d.rule(line5, false)
+
+		return
+	}
+
+	n := len(d.st.Callers(dm.ID))
+	if n == 0 {
+		return
+	}
+
+	people := itoa(n) + " pessoas na chamada"
+	if n == 1 {
+		people = "1 pessoa na chamada"
+	}
+
+	d.begin("call bar", box{axis: ui.AxisX, w: ui.Pct(1), bg: alpha(green, 0.1), l: 16, r: 16, t: 8, b: 8, gap: 12, cross: ui.CrossCenter})
+	d.icon("phone", 16, green)
+	d.begin("people", box{w: ui.Grow(1)})
+	d.text(people, d.ui.s14, fog)
+	c.Pop()
+	if d.voiceButton("", "Entrar na chamada", blurple, blurpleSoft, white, false) {
+		d.voiceJoin(dm.ID, -1)
+	}
+	c.Pop()
+	d.rule(line5, false)
+}
+
 // dmHeaderActions are the buttons at the right of a DM's or group's header (home-content.tsx's DMView).
 func (d *Discordo) dmHeaderActions(dm *DM) {
-	// The call: start it or leave it (the stage of a DM call is not drawn yet; the dock shows it).
+	// The call: start it or leave it (its stage is above the messages, dmCall).
 	if vc.channel == dm.ID {
 		if d.ghost("phone-off", "Sair da chamada", 16) {
 			d.voiceLeave()

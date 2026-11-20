@@ -40,6 +40,7 @@ var wd struct {
 
 	skins       []WorldSkin // nil until asked for, with the dialog
 	skinOpen    bool        // the skin dialog
+	expanded    bool        // the cinema's screen, enlarged in a dialog
 	skinPending bool        // the saved skin still has to be put on in this call: the server forgets it
 
 	last    time.Time             // the view's previous frame
@@ -451,17 +452,40 @@ func (d *Discordo) worldStage(g *Guild, m *WorldMap, callers []VoiceState, mine 
 			d.begin("screen "+zn.ID, box{axis: ui.AxisY, floating: true, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter, gap: 4})
 
 			who := d.worldScreening()
+			inside := mine && d.st.Voice[d.st.Me.ID].Zone == zn.ID
+			note := func(title, line string) {
+				d.text(title, d.ui.s14m, alpha(greyple, 0.8))
+				d.text(line, d.ui.s12, alpha(greyple, 0.6))
+			}
+
 			switch {
 			case mine && who == d.st.Me.ID:
 				// Not my own screen on the screen: sharing all of it, that would be a mirror in a mirror.
-				d.text("Você está transmitindo", d.ui.s14m, alpha(greyple, 0.8))
-				d.text(watching(audience), d.ui.s12, alpha(greyple, 0.6))
+				note("Você está transmitindo", watching(audience))
+
+			case mine && who != "" && wd.expanded:
+				note("Assistindo em tela cheia", "Feche a tela cheia para voltar a ver aqui.")
 
 			case mine && who != "":
 				d.voiceScreenTile(g, voiceStageItem{st: d.st.Voice[who], screen: true, live: true, watched: true, inCall: true}, ui.Pct(1), ui.Pct(1), false, true)
+				c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
+				d.begin("expand", box{})
+				if d.voiceStageButton("maximize-2", "Ampliar o telão") {
+					wd.expanded = true
+				}
+				c.Pop()
+
+			case showing != "" && inside:
+				note("Transmissão em andamento", "Carregando…")
+
+			case showing != "":
+				note("Transmissão em andamento", "Entre no cinema para assistir.")
+
+			case inside:
+				note("Ninguém transmitindo", "Use o botão de compartilhar tela para transmitir aqui.")
 
 			default:
-				d.text("Ninguém transmitindo", d.ui.s14m, alpha(greyple, 0.7))
+				note("Ninguém transmitindo", "Entre no cinema para compartilhar sua tela.")
 			}
 
 			c.Pop()
@@ -696,6 +720,25 @@ func (d *Discordo) worldSkinDialog() {
 				vc.s.WearSkin(*pick)
 			}
 		}
+	}
+
+	k.EndDialog(&dlg)
+}
+
+// worldCinemaDialog is the enlarged cinema screen ("Ampliar o telão"); it closes when the film ends.
+func (d *Discordo) worldCinemaDialog() {
+	who := d.worldScreening()
+	if who == "" || who == d.st.Me.ID {
+		wd.expanded = false
+	}
+
+	k := d.k
+	dlg := k.BeginDialog("world-cinema", "Telão do cinema", &wd.expanded)
+	if dlg.Visible && who != "" {
+		ww, _ := k.Context().Size()
+		w := min(d.px(960), float32(ww)*0.8)
+		d.voiceScreenTile(d.st.Guild(d.guild), voiceStageItem{st: d.st.Voice[who], screen: true, live: true, watched: true, inCall: true},
+			ui.Px(w), ui.Px(w*9/16), false, true)
 	}
 
 	k.EndDialog(&dlg)

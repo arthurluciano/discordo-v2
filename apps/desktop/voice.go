@@ -6,6 +6,7 @@ package main
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -521,15 +522,31 @@ var voiceVolumes = [...]int{0, 25, 50, 75, 100, 150, 200}
 // voiceTile is voice-stage.tsx's Tile for a person: the avatar with the speaking ring, the name with mute and deafen.
 func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	c := d.k.Context()
-	name, u := "Alguém", User{ID: st.UserID}
-	for _, m := range g.Members {
-		if m.User.ID == st.UserID {
-			u, name = m.User, m.Name()
+	name, u := d.voiceName(g, st.UserID), User{ID: st.UserID}
+	if g != nil {
+		for _, m := range g.Members {
+			if m.User.ID == st.UserID {
+				u = m.User
+			}
+		}
+	} else if dm := d.st.DM(vc.channel); dm != nil {
+		for _, r := range dm.Recipients {
+			if r.ID == st.UserID {
+				u = r
+			}
 		}
 	}
 
 	if st.UserID == d.st.Me.ID {
-		u, name = d.st.Me, d.st.Me.Name()
+		u = d.st.Me
+	}
+
+	// Someone's camera: asked for on a click (as the web's tiles), then drawn over the tile.
+	own := st.UserID == d.st.Me.ID
+	camera := inCall && !own && vc.s != nil && slices.Contains(st.Tracks, voice.TrackCamera)
+	watched := camera && vc.scr.cams[st.UserID]
+	if !camera && vc.scr.cams[st.UserID] {
+		delete(vc.scr.cams, st.UserID) // they turned it off: seeing it again is a new choice
 	}
 
 	// Hoverable, so a right click reaches it.
@@ -545,10 +562,34 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	}
 
 	size := min(float32(80), w/d.ui.scale/4)
-	outline(c, ring, d.px(3))
-	d.begin("ring", box{radius: size/2 + 6, l: 6, r: 6, t: 6, b: 6})
-	d.avatar(u, name, size, rexui.PresenceNone, surfaceRaised)
-	c.Pop()
+	if tex, pw, ph := d.voiceTexture(voiceFrame(st.UserID, voice.TrackCamera)); watched && tex != 0 {
+		d.k.NextSize(ui.Pct(1), ui.Pct(1))
+		d.k.ExternalImage(2, tex, pw, ph, ui.FitFill, d.px(12), "Câmera de "+name)
+	} else {
+		outline(c, ring, d.px(3))
+		d.begin("ring", box{radius: size/2 + 6, l: 6, r: 6, t: 6, b: 6})
+		d.avatar(u, name, size, rexui.PresenceNone, surfaceRaised)
+		c.Pop()
+	}
+
+	if camera {
+		label, glyph := "Ver câmera de "+name, "video"
+		if watched {
+			label, glyph = "Parar de ver a câmera", "video-off"
+		}
+
+		c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
+		d.begin("camera", box{})
+		if d.voiceStageButton(glyph, label) {
+			if vc.scr.cams == nil {
+				vc.scr.cams = map[string]bool{}
+			}
+
+			vc.scr.cams[st.UserID] = !watched
+			vc.s.Watch(st.UserID, voice.TrackCamera, !watched)
+		}
+		c.Pop()
+	}
 
 	c.NextAnchor(ui.AnchorBottomLeft, d.px(8), d.px(8))
 	d.begin("name", box{axis: ui.AxisX, l: 8, r: 8, t: 4, b: 4, gap: 6, radius: 6, bg: 0x000000a6, cross: ui.CrossCenter})
