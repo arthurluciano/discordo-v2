@@ -112,7 +112,7 @@ func (d *Discordo) channelSettingsDialog() {
 		return
 	}
 
-	dlg := rexui.BeginDialog(k.Kit, "channel settings", &s.open, rexui.DialogOpts{Title: "Configurações de " + ch.Name, Width: 672})
+	dlg := d.dialog("channel settings", &s.open, rexui.DialogOpts{Title: "Configurações de " + ch.Name, Width: 672})
 	if dlg.Visible {
 		d.para("Nome, tópico e quem pode fazer o quê neste canal.", d.ui.s14, fog)
 

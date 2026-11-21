@@ -586,8 +586,16 @@ func (s *Session) Sharing() bool {
 // ScreenOptions bound what a capture sends: the largest size (fitting the source, never above it) and the rate.
 type ScreenOptions struct {
 	MaxWidth, MaxHeight, FPS int
-	Window                   bool // the picker offers windows, else displays
-	Sound                    bool // with its sound: a window's app, or everything a display plays (not this app)
+	Window                   bool   // the picker offers windows, else displays
+	Sound                    bool   // with its sound: a window's app, or everything a display plays (not this app)
+	Display                  string // a display of Displays to capture without the picker ("": the picker, or the main one)
+}
+
+// Display is a monitor that can be shared (Displays: Windows; macOS chooses in its own picker).
+type Display struct {
+	ID, Name string
+	W, H     int
+	Main     bool
 }
 
 // ErrPickerCancelled: the user closed the picker without choosing.

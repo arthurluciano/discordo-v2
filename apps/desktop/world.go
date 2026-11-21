@@ -689,7 +689,7 @@ func (d *Discordo) worldSkinDialog() {
 	}
 
 	k := d.k
-	dlg := k.BeginDialog("world-skin", "Skin", &wd.skinOpen)
+	dlg := d.dialog("world-skin", &wd.skinOpen, rexui.DialogOpts{Title: "Skin"})
 
 	if dlg.Visible {
 		c := k.Context()
@@ -722,7 +722,7 @@ func (d *Discordo) worldSkinDialog() {
 		}
 	}
 
-	k.EndDialog(&dlg)
+	rexui.EndDialog(k.Kit, &dlg)
 }
 
 // worldCinemaDialog is the enlarged cinema screen ("Ampliar o telão"); it closes when the film ends.
@@ -733,7 +733,7 @@ func (d *Discordo) worldCinemaDialog() {
 	}
 
 	k := d.k
-	dlg := k.BeginDialog("world-cinema", "Telão do cinema", &wd.expanded)
+	dlg := d.dialog("world-cinema", &wd.expanded, rexui.DialogOpts{Title: "Telão do cinema"})
 	if dlg.Visible && who != "" {
 		ww, _ := k.Context().Size()
 		w := min(d.px(960), float32(ww)*0.8)
@@ -741,7 +741,7 @@ func (d *Discordo) worldCinemaDialog() {
 			ui.Px(w), ui.Px(w*9/16), false, true)
 	}
 
-	k.EndDialog(&dlg)
+	rexui.EndDialog(k.Kit, &dlg)
 }
 
 func watching(n int) string {

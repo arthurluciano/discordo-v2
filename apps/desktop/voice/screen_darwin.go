@@ -533,3 +533,6 @@ func (c *ScreenCapture) end(err error) {
 		c.onEnd(err)
 	}
 }
+
+// Displays: none here; the system's picker asks which display.
+func Displays() []Display { return nil }

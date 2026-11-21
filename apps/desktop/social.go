@@ -516,7 +516,7 @@ func (d *Discordo) friendPicker() {
 		exclude = group.Recipients
 	}
 
-	dlg := rexui.BeginDialog(k.Kit, "friend picker", &soc.picker, rexui.DialogOpts{Title: title, Width: 448, DimCancels: true})
+	dlg := d.dialog("friend picker", &soc.picker, rexui.DialogOpts{Title: title, Width: 448})
 	if !dlg.Visible {
 		rexui.EndDialog(k.Kit, &dlg)
 		return
@@ -640,7 +640,7 @@ func (d *Discordo) confirm(title, desc, label, method, path string) {
 // confirmDialog is ConfirmDialog: it stays open, showing the error, when the call fails.
 func (d *Discordo) confirmDialog() {
 	k := d.k
-	dlg := rexui.BeginDialog(k.Kit, "confirm", &soc.asking, rexui.DialogOpts{Title: soc.title, Width: 384, DimCancels: true})
+	dlg := d.dialog("confirm", &soc.asking, rexui.DialogOpts{Title: soc.title, Width: 384})
 
 	if dlg.Visible {
 		d.para(soc.desc, d.ui.s14, fog)

@@ -677,7 +677,7 @@ func (d *Discordo) voiceOptionsDialog() {
 	}
 
 	k := d.k
-	dlg := k.BeginDialog("tile options", "Opções de "+o.name, &o.open)
+	dlg := d.dialog("tile options", &o.open, rexui.DialogOpts{Title: "Opções de " + o.name})
 	if dlg.Visible {
 		c := k.Context()
 		if o.volume {
@@ -735,7 +735,7 @@ func (d *Discordo) voiceOptionsDialog() {
 		}
 	}
 
-	k.EndDialog(&dlg)
+	rexui.EndDialog(k.Kit, &dlg)
 }
 
 // voiceDialogs draws the call's dialogs (devices) and follows the session between frames.
@@ -759,7 +759,7 @@ func (d *Discordo) voiceDialogs() {
 		vc.settings = false
 	}
 
-	dlg := rexui.BeginDialog(d.k.Kit, "voice settings", &vc.settings, rexui.DialogOpts{Title: "Voz e vídeo", Width: 480, DimCancels: true})
+	dlg := d.dialog("voice settings", &vc.settings, rexui.DialogOpts{Title: "Voz e vídeo", Width: 480})
 	if dlg.Visible {
 		d.para("Dispositivos do microfone e da saída. Tudo vale na hora, inclusive na chamada.", d.ui.s14, fog)
 		d.begin("gap", box{t: 12})

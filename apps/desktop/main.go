@@ -381,6 +381,7 @@ func (d *Discordo) open(guildID, channelID string) {
 	}
 
 	d.guild, d.channel, d.status, d.pin = guildID, channelID, "", 2
+	d.ui.openedAt = time.Now()
 
 	world := false
 	if g := d.st.Guild(guildID); g != nil {

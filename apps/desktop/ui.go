@@ -84,11 +84,13 @@ func (d *Discordo) workspace(W, H float32) {
 
 	theme.At(c, rw, 0, sw, H)
 	d.begin("sidebar", box{axis: ui.AxisY, bg: surfaceSidebar, floating: true, clip: true})
+	c.PushOpacity(d.fadeIn("sidebar " + d.guild)) // another server's channels fade in
 	if g := d.st.Guild(d.guild); g != nil {
 		d.guildSidebar(g, H)
 	} else {
 		d.homeSidebar(H)
 	}
+	c.PopOpacity()
 	c.Pop()
 
 	// border-r border-white/10
@@ -111,6 +113,7 @@ func (d *Discordo) workspace(W, H float32) {
 
 	theme.At(c, mainX, 0, mainW, H)
 	d.begin("main", box{axis: ui.AxisY, bg: surfaceContent, floating: true, clip: true})
+	c.PushOpacity(d.fadeIn("main " + d.guild + "/" + d.channel)) // the channel crossfade
 
 	switch {
 	case g != nil && ch == nil:
@@ -129,6 +132,7 @@ func (d *Discordo) workspace(W, H float32) {
 		}
 	}
 
+	c.PopOpacity()
 	c.Pop()
 
 	if showMembers {

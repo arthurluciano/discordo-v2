@@ -21,3 +21,5 @@ func CaptureMainDisplay(ScreenOptions, func(Picture), func([]int16), func(error)
 func (*ScreenCapture) Update(ScreenOptions) {}
 
 func (*ScreenCapture) Stop() {}
+
+func Displays() []Display { return nil }

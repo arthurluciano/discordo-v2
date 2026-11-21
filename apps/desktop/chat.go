@@ -21,7 +21,6 @@ import (
 	"gonativeui/rexui"
 	"gonativeui/theme"
 	"gonativeui/ui"
-	"gonativeui/widget"
 	"gonativeui/widget/base"
 )
 
@@ -240,7 +239,14 @@ func (d *Discordo) transcript(v base.ScrollView, title string, guild bool, perms
 				d.daySeparator(m)
 			}
 
-			d.messageItem(m, prev, colors, perms)
+			// A message that arrives while the channel is open fades in; the history is simply there.
+			if m.CreatedAt.After(d.ui.openedAt) {
+				c.PushOpacity(d.fadeIn("message " + m.ID))
+				d.messageItem(m, prev, colors, perms)
+				c.PopOpacity()
+			} else {
+				d.messageItem(m, prev, colors, perms)
+			}
 		}
 	}
 
@@ -313,7 +319,12 @@ func (d *Discordo) messageItem(m *Message, prev *Message, colors map[string]int,
 	editing := cx.editID == m.ID
 
 	key := ui.HashString(c.ParentKey(), m.ID)
-	hot := k.VisualOf(key, base.HoverOn).Hot > 0.5 || d.ui.picker == m.ID
+	hotT := k.VisualOf(key, base.HoverOn).Hot
+	if d.ui.picker == m.ID {
+		hotT = 1
+	}
+
+	hot := hotT > 0.5
 
 	b := box{axis: ui.AxisX, w: ui.Pct(1), l: 16, r: 16, t: 2, b: 2, gap: 16}
 	if !group {
@@ -327,8 +338,8 @@ func (d *Discordo) messageItem(m *Message, prev *Message, colors map[string]int,
 		b.bg = alpha(ember, 0.15)
 	case highlighted:
 		b.bg = alpha(ember, 0.10)
-	case hot:
-		b.bg = 0x0000001a // hover:bg-black/10
+	case hotT > 0:
+		b.bg = alpha(0, 0.1*hotT) // hover:bg-black/10, easing in
 	}
 
 	// Clickable for the right-click of the context menu (the web's long-press sheet).
@@ -807,7 +818,7 @@ var (
 func (d *Discordo) imageDialog() {
 	k := d.k
 	a := chatViewing
-	dlg := k.BeginDialog("image", a.Filename, &chatViewOpen)
+	dlg := d.dialog("image", &chatViewOpen, rexui.DialogOpts{Title: a.Filename})
 	if dlg.Visible {
 		ww, wh := k.Context().Size()
 		maxW, maxH := float32(ww)*0.8, float32(wh)*0.7
@@ -827,7 +838,7 @@ func (d *Discordo) imageDialog() {
 		}
 	}
 
-	k.EndDialog(&dlg)
+	rexui.EndDialog(k.Kit, &dlg)
 }
 
 // chatDownload asks where to save an attachment (the web's <a download>); chatDialogs fetches it once answered.
@@ -1407,14 +1418,14 @@ func (d *Discordo) memberList(g *Guild, H float32) {
 // deleteDialog is the ConfirmDialog of a message's delete.
 func (d *Discordo) deleteDialog() {
 	k := d.k
-	dlg := k.BeginDialog("delete", "Excluir mensagem", &d.ui.confirm)
+	dlg := d.dialog("delete", &d.ui.confirm, rexui.DialogOpts{Title: "Excluir mensagem"})
 
 	if dlg.Visible {
 		k.Paragraph("Tem certeza de que quer excluir esta mensagem? Não dá para desfazer.")
 		dlg.BeginActions()
-		dlg.Action("Cancelar", widget.ButtonDefault)
+		dlg.Action("Cancelar", rexui.ButtonDefault)
 
-		if dlg.Action("Excluir", widget.ButtonPrimary) && d.ui.deleting != nil {
+		if dlg.Action("Excluir", rexui.ButtonPrimary) && d.ui.deleting != nil {
 			m := d.ui.deleting
 			call(d, "DELETE", "/channels/"+m.ChannelID+"/messages/"+m.ID, nil, func(*Discordo, struct{}) {})
 		}
@@ -1422,7 +1433,7 @@ func (d *Discordo) deleteDialog() {
 		dlg.EndActions()
 	}
 
-	k.EndDialog(&dlg)
+	rexui.EndDialog(k.Kit, &dlg)
 }
 
 // chatDialogs draws the chat's dialogs (deleting a message) and takes the answers of its panels and pastes.

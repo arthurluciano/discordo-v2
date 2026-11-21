@@ -73,7 +73,10 @@ var idn struct {
 // userDock is features/shell/user-dock.tsx with features/identity/user-panel.tsx.
 func (d *Discordo) userDock() {
 	c := d.k.Context()
-	d.voicePanel() // the call I am in, above the dock (voice-dock.tsx)
+	c0 := d.k.Context()
+	c0.PushOpacity(d.fadeIn("call panel " + vc.channel)) // it fades in as the call starts
+	d.voicePanel()                                       // the call I am in, above the dock (voice-dock.tsx)
+	c0.PopOpacity()
 	d.rule(line10, false)
 	d.begin("dock", box{axis: ui.AxisX, w: ui.Pct(1), h: ui.Px(d.px(56)), l: 8, r: 8, gap: 8, bg: surfaceRail, cross: ui.CrossCenter})
 
@@ -157,7 +160,7 @@ func (d *Discordo) idDialog(label string, open *bool, width float32, fill uint32
 	l.PadX, l.PadTop, l.PadBottom = 0, 0, 0
 	l.Fill, l.Blur.Tint, l.Blur.Mix = rexui.OfRGBA(fill), rexui.OfRGBA(fill), [2]float32{1, 1}
 
-	dlg := rexui.BeginDialog(d.k.Kit, label, open, rexui.DialogOpts{Width: width, DimCancels: true})
+	dlg := d.dialog(label, open, rexui.DialogOpts{Width: width})
 	rexui.DialogLook = saved
 
 	return dlg

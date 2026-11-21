@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"strings"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 
@@ -51,6 +52,34 @@ func rgbaF(c uint32) [4]float32 {
 }
 
 // alpha replaces a colour's opacity (0 to 1): Tailwind's "bg-blurple/20".
+// mixRGBA is a colour t of the way from a to b (0xRRGGBBAA; a transparent a takes b's colour, fading in).
+func mixRGBA(a, b uint32, t float32) uint32 {
+	if a&0xff == 0 {
+		a = b &^ 0xff
+	}
+
+	var out uint32
+	for shift := 24; shift >= 0; shift -= 8 {
+		x, y := float32(a>>shift&0xff), float32(b>>shift&0xff)
+		out |= uint32(x+(y-x)*min(max(t, 0), 1)+0.5) << shift
+	}
+
+	return out
+}
+
+// motion is how fast the app's fades run (1/s): about 150 ms, the web's duration-150.
+const motion = 18
+
+// fadeIn is the opacity of something that appeared under key: 0 on its first frame, easing to 1.
+func (d *Discordo) fadeIn(key string) float32 {
+	c := d.k.Context()
+	if d.k.Theme().Settings.ReduceMotion {
+		return 1
+	}
+
+	return c.AnimateValueFrom(ui.HashString(0, key), 0, 1, motion)
+}
+
 func alpha(c uint32, a float32) uint32 { return c&^0xff | uint32(a*255+0.5) }
 
 // avatarColors are design/avatar.tsx's, picked by the user ID as it does.
@@ -82,8 +111,9 @@ type font struct {
 
 // uiCache holds what follows the window's scale: the fonts, the rich text styles and the icons.
 type uiCache struct {
-	scale float32
-	n     uint64 // the frame's text counter (texts have no state: an order is identity enough)
+	openedAt time.Time // when the open channel was opened: messages after it fade in
+	scale    float32
+	n        uint64 // the frame's text counter (texts have no state: an order is identity enough)
 
 	caption, s11, s12, s12s, s14, s14m, s14s, s15, s16, s16b, s18, time, date, s18b, s24b, s30b, s20b, display font
 
@@ -259,8 +289,9 @@ func (d *Discordo) press(key ui.Key, b box, hoverBG uint32, name string) (hot bo
 	v := k.VisualOf(key, base.HoverOn)
 	hot = v.Hot > 0.5
 
-	if hot && hoverBG != 0 {
-		b.bg = hoverBG
+	// The hover colour eases in and out with the pointer (the web's transition-colors).
+	if hoverBG != 0 && v.Hot > 0 {
+		b.bg = mixRGBA(b.bg, hoverBG, v.Hot)
 	}
 
 	flags := d.style(b) | k.InteractFlags(base.HoverOn)
@@ -439,6 +470,23 @@ func (d *Discordo) ghost(iconName, label string, pt float32) bool {
 	rexui.Tooltip(d.k.Kit, id, label)
 
 	return clicked
+}
+
+// dialog begins a dialog the web's way: it closes on a click outside it, on Escape, and on its X at the top right.
+func (d *Discordo) dialog(label string, open *bool, o rexui.DialogOpts) rexui.Dialog {
+	o.DimCancels = true
+	dlg := rexui.BeginDialog(d.k.Kit, label, open, o)
+	if dlg.Visible {
+		c := d.k.Context()
+		c.NextAnchor(ui.AnchorTopRight, d.px(10), d.px(10))
+		d.begin("close", box{})
+		if d.ghost("x", "Fechar", 16) {
+			*open = false
+		}
+		c.Pop()
+	}
+
+	return dlg
 }
 
 // openWeb opens a page of the web app for what the native app does not do yet (settings, new servers).

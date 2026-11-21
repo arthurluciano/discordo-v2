@@ -100,7 +100,7 @@ func (d *Discordo) serverSettingsDialog() {
 
 	sections := settingsSections(g, d.st.Me.ID)
 
-	dlg := rexui.BeginDialog(k.Kit, "server settings", &s.open, rexui.DialogOpts{Title: "Configurações do servidor", Width: 768})
+	dlg := d.dialog("server settings", &s.open, rexui.DialogOpts{Title: "Configurações do servidor", Width: 768})
 	if dlg.Visible {
 		d.para(g.Name, d.ui.s14, fog)
 

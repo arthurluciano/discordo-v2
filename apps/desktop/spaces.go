@@ -577,7 +577,7 @@ func (d *Discordo) addServerDialog() {
 	k, c := d.k, d.k.Context()
 	s := d.spaces()
 
-	dlg := rexui.BeginDialog(k.Kit, "add server", &s.adding, rexui.DialogOpts{Title: "Adicionar um servidor", Width: 448})
+	dlg := d.dialog("add server", &s.adding, rexui.DialogOpts{Title: "Adicionar um servidor", Width: 448})
 	if dlg.Visible {
 		d.para("Crie o seu próprio espaço ou entre em um com um convite.", d.ui.s14, fog)
 
@@ -630,7 +630,7 @@ func (d *Discordo) inviteDialog(g *Guild) {
 		s.inviting = false
 	}
 
-	dlg := rexui.BeginDialog(k.Kit, "invite", &s.inviting, rexui.DialogOpts{Title: "Convidar para " + g.Name, Width: 448})
+	dlg := d.dialog("invite", &s.inviting, rexui.DialogOpts{Title: "Convidar para " + g.Name, Width: 448})
 	if dlg.Visible {
 		d.para("Gere um link e envie para quem você quer chamar.", d.ui.s14, fog)
 
@@ -688,7 +688,7 @@ func (d *Discordo) createChannelDialog(g *Guild) {
 	k, c := d.k, d.k.Context()
 	s := d.spaces()
 
-	dlg := rexui.BeginDialog(k.Kit, "create channel", &s.creating, rexui.DialogOpts{Title: "Criar canal", Width: 448})
+	dlg := d.dialog("create channel", &s.creating, rexui.DialogOpts{Title: "Criar canal", Width: 448})
 	if dlg.Visible {
 		d.para("Canais de texto para conversar, de voz para chamadas.", d.ui.s14, fog)
 
@@ -744,7 +744,7 @@ func (d *Discordo) leaveDialog(g *Guild) {
 	k := d.k
 	s := d.spaces()
 
-	dlg := rexui.BeginDialog(k.Kit, "leave", &s.leaving, rexui.DialogOpts{Title: "Sair de " + g.Name + "?"})
+	dlg := d.dialog("leave", &s.leaving, rexui.DialogOpts{Title: "Sair de " + g.Name + "?"})
 	if dlg.Visible {
 		d.para("Você só volta com um novo convite.", d.ui.s14, fog)
 		dlg.BeginActions()

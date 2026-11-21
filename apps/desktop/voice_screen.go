@@ -317,14 +317,14 @@ func (d *Discordo) voiceButton(iconName, label string, bg, hover, fg uint32, dis
 }
 
 // voicePick opens the system's picker on screens or windows; the pick shows in the dialog's preview.
-func (d *Discordo) voicePick(window bool) {
+func (d *Discordo) voicePick(window bool, display string) {
 	s := vc.s
 	if s == nil {
 		return
 	}
 
 	opt, _ := voicePreset()
-	opt.Window = window
+	opt.Window, opt.Display = window, display
 	vc.scr.err = ""
 
 	err := s.PickScreen(opt, func(err error) {
@@ -391,7 +391,7 @@ func (d *Discordo) voiceShareDialog() {
 		title, desc = "Transmitindo a tela", "Troque a fonte ou ajuste a qualidade: quem assiste vê a mudança na hora."
 	}
 
-	dlg := rexui.BeginDialog(k.Kit, "share screen", &vc.scr.dialog, rexui.DialogOpts{Title: title, Width: 720, DimCancels: true})
+	dlg := d.dialog("share screen", &vc.scr.dialog, rexui.DialogOpts{Title: title, Width: 720})
 	if !dlg.Visible {
 		rexui.EndDialog(k.Kit, &dlg)
 		return
@@ -429,10 +429,27 @@ func (d *Discordo) voiceShareDialog() {
 		c.Pop()
 
 		if d.pop() {
-			d.voicePick(src.label == "Janela")
+			d.voicePick(src.label == "Janela", "")
 		}
 	}
 	c.Pop()
+
+	// Several monitors where the system has no picker (Windows): which one.
+	if displays := voice.Displays(); len(displays) > 1 {
+		d.begin("displays", box{axis: ui.AxisX, w: ui.Pct(1), gap: 8, cross: ui.CrossCenter})
+		d.text("Qual tela:", d.ui.s14m, fog)
+		for _, disp := range displays {
+			label := disp.Name + " · " + itoa(disp.W) + "×" + itoa(disp.H)
+			if disp.Main {
+				label = disp.Name + " (principal) · " + itoa(disp.W) + "×" + itoa(disp.H)
+			}
+
+			if d.voiceButton("monitor", label, surfaceRaised, surfaceHover, snow, false) {
+				d.voicePick(false, disp.ID)
+			}
+		}
+		c.Pop()
+	}
 
 	// The preview: what goes out (or would), before anyone sees it.
 	pic := voiceFrame(d.st.Me.ID, voice.TrackScreen)
