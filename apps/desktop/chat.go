@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	"gonativeui/app"
 	"gonativeui/img"
+	"gonativeui/media"
 	"gonativeui/platform"
 	"gonativeui/rexui"
 	"gonativeui/theme"
@@ -120,12 +123,22 @@ func (d *Discordo) chat(title, topic string, guild bool, perms int64, w, H float
 		d.dmCall(dm, w, H)
 	}
 
-	k.NextSize(ui.Pct(1), ui.Grow(1))
-	v := k.BeginScroll("transcript", &d.logScroll, base.ScrollVertical)
-	d.transcript(v, title, guild, perms)
-	k.CloseScrollContent(&v)
-	rexui.ScrollBars(k.Kit, &v)
-	k.CloseScroll(&v)
+	if why, failed := d.failed[d.channel]; failed && d.st.Logs[d.channel] == nil {
+		d.begin("failed", box{axis: ui.AxisY, w: ui.Pct(1), h: ui.Grow(1), cross: ui.CrossCenter, justify: ui.JustifyCenter, gap: 12, l: 32, r: 32})
+		d.para("Não foi possível carregar as mensagens: "+why, d.ui.s14, fog)
+		if d.voiceButton("", "Tentar de novo", surfaceRaised, surfaceHover, snow, d.loading[d.channel]) {
+			delete(d.failed, d.channel)
+			d.loadPage(d.channel)
+		}
+		c.Pop()
+	} else {
+		k.NextSize(ui.Pct(1), ui.Grow(1))
+		v := k.BeginScroll("transcript", &d.logScroll, base.ScrollVertical)
+		d.transcript(v, title, guild, perms)
+		k.CloseScrollContent(&v)
+		rexui.ScrollBars(k.Kit, &v)
+		k.CloseScroll(&v)
+	}
 
 	d.typingIndicator()
 	d.composerBar(title, guild, perms)
@@ -606,7 +619,8 @@ func (d *Discordo) messageText(m *Message) {
 	spans := d.ui.spans[:0]
 
 	for i, s := range m.Spans {
-		// A mention is a chip that opens the profile (MentionChip); its tag is its place among the mentions.
+		// A mention is a chip that opens the profile (MentionChip), an invite link joins its server; the tag is
+		// the span's place.
 		span := ui.Span{Off: uint32(s.Off), Len: uint32(s.Len), Style: 1, Flags: ui.SpanMention, Tag: uint32(i + 1)}
 		if s.Edited {
 			span = ui.Span{Off: uint32(s.Off), Len: uint32(s.Len), Style: 2}
@@ -621,15 +635,17 @@ func (d *Discordo) messageText(m *Message) {
 	c.NextSize(ui.Pct(1), ui.TextSize(0))
 	sig := c.RichText(ui.HashString(c.ParentKey(), "text"), m.Body, spans, &d.ui.rich, ui.RichOpts{LineHeight: d.px(24)})
 
-	if sig.Clicked == 0 {
+	n := int(sig.Clicked) - 1
+	if n < 0 || n >= len(m.Spans) {
 		return
 	}
 
-	// The spans follow the mentions of the content in order (State.render).
-	all := mention.FindAllStringSubmatch(m.Content, -1)
-	if n := int(sig.Clicked) - 1; n < len(all) {
-		if _, known := d.st.User(all[n][1]); known {
-			d.openProfile(all[n][1])
+	switch s := m.Spans[n]; {
+	case s.Invite != "":
+		d.joinInvite(s.Invite)
+	case s.User != "":
+		if _, known := d.st.User(s.User); known {
+			d.openProfile(s.User)
 		}
 	}
 }
@@ -659,7 +675,11 @@ func (d *Discordo) attachment(a *Attachment) {
 		return
 	}
 
-	// Any other file (a video too: there is no inline player) is a card that downloads it.
+	if strings.HasPrefix(a.ContentType, "video/") && d.videoAttachment(a) {
+		return
+	}
+
+	// Any other file (a video too, where the system plays none) is a card that downloads it.
 	d.press(ui.HashString(c.ParentKey(), a.ID), box{axis: ui.AxisX, bg: surfaceRaised, radius: 8, l: 12, r: 12, t: 12, b: 12, gap: 12, cross: ui.CrossCenter}, surfaceHover, a.Filename)
 	d.icon("file-text", 32, blurpleSoft)
 	d.begin("file", box{axis: ui.AxisY})
@@ -670,6 +690,112 @@ func (d *Discordo) attachment(a *Attachment) {
 	if d.pop() {
 		d.chatDownload(*a)
 	}
+}
+
+// chatVideo is a video attachment's player: its file, downloaded once, and the video (nil where none plays).
+type chatVideo struct {
+	v    *media.Video
+	path string
+}
+
+var chatVideos = map[string]*chatVideo{} // by attachment
+
+// videoAttachment is message-item.tsx's <video controls>: a player 400 pt wide; false where videos do not play
+// (Windows, Linux) or this one cannot, and the file card shows instead.
+func (d *Discordo) videoAttachment(a *Attachment) bool {
+	if runtime.GOOS != "darwin" {
+		return false // shortcut: gonativeui/media plays video on macOS only; elsewhere the card downloads it
+	}
+
+	cv := chatVideos[a.ID]
+	if cv == nil {
+		p := d.fetched("/attachments/" + a.ID)
+		if p == nil {
+			return false // the card until the file is here
+		}
+
+		cv = &chatVideo{}
+		chatVideos[a.ID] = cv
+		f, err := os.CreateTemp("", "discordo-*"+filepath.Ext(a.Filename))
+		if err == nil {
+			_, err = f.Write(p.data)
+			f.Close()
+			cv.path = f.Name()
+		}
+
+		if err == nil {
+			cv.v, _ = media.OpenVideo(cv.path, media.VideoOptions{Wake: platform.Wake})
+		}
+
+		if cv.v == nil && cv.path != "" {
+			os.Remove(cv.path)
+		}
+	}
+
+	v := cv.v
+	if v == nil || v.State() == media.VideoFailed {
+		return false
+	}
+
+	k, c := d.k, d.k.Context()
+	w := d.px(400)
+	h := w * 9 / 16
+	if vw, vh := v.Size(); vw > 0 && vh > 0 {
+		h = min(d.px(320), w*float32(vh)/float32(vw))
+	}
+
+	d.press(ui.HashString(c.ParentKey(), "video "+a.ID), box{axis: ui.AxisY, w: ui.Px(w), h: ui.Px(h), radius: 8, bg: 0x000000ff, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter}, 0, a.Filename)
+	if k.ImageShown(4) {
+		tex, tw, th, next := v.Frame(d.a.R, platform.Now())
+		if tex != 0 {
+			k.NextSize(ui.Pct(1), ui.Pct(1))
+			k.ExternalImage(4, tex, tw, th, ui.FitContain, d.px(8), a.Filename)
+		}
+
+		if next > 0 {
+			c.WakeIn(next)
+		}
+	}
+
+	// The controls: play or pause in the middle while paused, the time at the bottom.
+	if !v.Playing() {
+		c.NextAnchor(ui.AnchorCenter, 0, 0)
+		d.begin("play", box{w: ui.Px(d.px(48)), h: ui.Px(d.px(48)), radius: 24, bg: 0x000000a6, cross: ui.CrossCenter, justify: ui.JustifyCenter})
+		d.icon("play", 24, white)
+		c.Pop()
+	}
+
+	c.NextAnchor(ui.AnchorBottomLeft, d.px(8), d.px(8))
+	d.begin("time", box{l: 8, r: 8, t: 2, b: 2, radius: 6, bg: 0x000000a6})
+	d.text(clock(v.Position())+" / "+clock(v.Duration()), d.ui.s12s, white)
+	c.Pop()
+
+	c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
+	d.begin("download", box{})
+	if d.voiceStageButton("download", "Baixar "+a.Filename) {
+		d.chatDownload(*a)
+	}
+	c.Pop()
+
+	if d.pop() {
+		switch {
+		case v.Playing():
+			v.Pause()
+		case v.Ended():
+			v.Seek(0)
+			v.Play()
+		default:
+			v.Play()
+		}
+	}
+
+	return true
+}
+
+// clock is a video's time as m:ss.
+func clock(t time.Duration) string {
+	s := int(t.Seconds())
+	return itoa(s/60) + ":" + fmt.Sprintf("%02d", s%60)
 }
 
 // The picture opened large, in a dialog with its download.

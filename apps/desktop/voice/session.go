@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -53,6 +54,7 @@ type Options struct {
 	ListenOnlyReason         string // shown as the call's error when ListenOnly
 	Input, Output            string
 	Muted, Deafened          bool
+	NoiseGate                bool // start with the noise gate on (SetNoiseGate changes it)
 	Headless                 bool // no devices: the caller drives Capture and Mix (tests)
 	// OnChange is called (from any goroutine, never blocking) when Status, Error or who speaks changes.
 	OnChange func()
@@ -64,6 +66,9 @@ type Options struct {
 type Session struct {
 	opt   Options
 	mixer *Mixer
+
+	gate   gate        // the microphone's noise gate: Capture's alone
+	gateOn atomic.Bool // whether it runs
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -110,6 +115,9 @@ func Join(opt Options) *Session {
 		s.err = opt.ListenOnlyReason
 	}
 
+	s.gate = newGate()
+	s.gateOn.Store(opt.NoiseGate)
+
 	s.mixer.SetDeafened(opt.Deafened)
 	go s.run()
 
@@ -123,6 +131,9 @@ func (s *Session) Status() (Status, string) {
 
 	return s.status, s.err
 }
+
+// SetNoiseGate turns the noise gate on or off (on by default, as the web's).
+func (s *Session) SetNoiseGate(on bool) { s.gateOn.Store(on) }
 
 // Speaking says whether a user (me included) is speaking now.
 func (s *Session) Speaking(userID string) bool {
@@ -201,6 +212,10 @@ func (s *Session) Capture(pcm []int16) {
 
 	if !send {
 		return // muted: nothing goes out, as a disabled browser track (the others' buffers play silence)
+	}
+
+	if s.gateOn.Load() {
+		s.gate.apply(pcm, level) // Capture runs on the input's one thread
 	}
 
 	n, err := enc.Encode(pcm, Frame, s.encoded)

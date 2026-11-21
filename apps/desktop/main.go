@@ -23,6 +23,7 @@ import (
 	"gonativeui/rexui"
 	"gonativeui/theme"
 	"gonativeui/theme/rex"
+	"gonativeui/ui"
 	"gonativeui/widget"
 	"gonativeui/widget/base"
 )
@@ -69,7 +70,8 @@ type Discordo struct {
 	last           map[string]string // guild → its last channel
 	friendsTab     int
 
-	loading map[string]bool // channel → a page is on its way
+	loading map[string]bool   // channel → a page is on its way
+	failed  map[string]string // channel → why its first page did not load (the chat offers "Tentar de novo")
 
 	composer *rexui.ComposerState
 	sending  bool
@@ -80,6 +82,7 @@ type Discordo struct {
 	atEnd bool // the log was at its end in the last frame
 
 	pictures map[string]*picture // by URL or path
+	invite   string              // an invite the app was opened with, used at the next READY
 
 	ui uiCache
 }
@@ -96,7 +99,14 @@ func main() {
 	server := flag.String("server", envOr("DISCORDO_URL", "https://discordo.arluck.com.br"), "the Discordo server's URL")
 	flag.Parse()
 
-	if err := app.Run(config(), newDiscordo(*server)); err != nil {
+	d := newDiscordo(*server)
+	for _, arg := range flag.Args() { // an invite link (or discordo://invite/CODE) to use once signed in
+		if code := parseInviteCode(arg); code != "" && strings.Contains(arg, "invite") {
+			d.invite = code
+		}
+	}
+
+	if err := app.Run(config(), d); err != nil {
 		fmt.Fprintln(os.Stderr, "discordo:", err)
 		os.Exit(1)
 	}
@@ -109,6 +119,7 @@ func newDiscordo(server string) *Discordo {
 		inbox:    make(chan func(*Discordo), 256),
 		last:     map[string]string{},
 		loading:  map[string]bool{},
+		failed:   map[string]string{},
 		pictures: map[string]*picture{},
 	}
 }
@@ -155,6 +166,10 @@ func (d *Discordo) Init(a *app.App) error {
 		return err
 	}
 
+	// The multi-line fields (the web's textareas): a channel's topic and the profile's bio.
+	topicArea, _ = rexui.NewTextArea(a.Win, rexui.TextAreaSetup{Placeholder: "Do que se fala aqui?", MaxLen: 4096, MinLines: 3, MaxLines: 6})
+	bioArea, _ = rexui.NewTextArea(a.Win, rexui.TextAreaSetup{Placeholder: "Conte um pouco sobre você.", MaxLen: 4 * maxBio, MinLines: 3, MaxLines: 5})
+
 	a.UI.Reserve(8192)
 
 	if d.phase != phaseLoading {
@@ -175,6 +190,46 @@ func (d *Discordo) Init(a *app.App) error {
 	}()
 
 	return nil
+}
+
+var topicArea, bioArea *rexui.TextAreaState
+
+// areaField draws a text area that edits buf (buf stays the form's value: set it with setArea).
+func (d *Discordo) areaField(label string, a *rexui.TextAreaState, buf *ui.TextBuffer) {
+	if a == nil { // an offscreen render made without Init
+		d.k.TextField(label, buf, "")
+		return
+	}
+
+	rexui.TextArea(d.k.Kit, label, a, rexui.TextAreaOpts{})
+	if t := string(a.Text()); t != buf.String() {
+		buf.SetString(t)
+	}
+}
+
+// setArea puts v in a form's value and its text area.
+func setArea(a *rexui.TextAreaState, buf *ui.TextBuffer, v string) {
+	buf.SetString(v)
+	if a != nil && string(a.Text()) != v {
+		a.SetText([]byte(v))
+	}
+}
+
+// Event takes invite links opened with the app (its discordo:// scheme, where it is installed with one).
+func (d *Discordo) Event(a *app.App, e *app.Event) {
+	if e.Kind == app.EvOpenURLs {
+		for _, u := range e.Strings() {
+			if code := parseInviteCode(u); code != "" && strings.Contains(u, "invite") {
+				if d.ready {
+					d.joinInvite(code)
+				} else {
+					d.invite = code
+				}
+			}
+		}
+	}
+
+	a.DefaultEvent(e)
 }
 
 // post hands a result to the UI thread and wakes it.
@@ -232,7 +287,7 @@ func (d *Discordo) apply(e Event) {
 
 	switch e.T {
 	case "READY":
-		d.ready, d.loading = true, map[string]bool{}
+		d.ready, d.loading, d.failed = true, map[string]bool{}, map[string]string{}
 
 		// Somewhere that still exists: the guild may be gone after a reconnect.
 		if d.guild != "" && d.st.Guild(d.guild) == nil {
@@ -240,6 +295,11 @@ func (d *Discordo) apply(e Event) {
 		}
 
 		d.open(d.guild, d.channel)
+
+		if d.invite != "" {
+			d.joinInvite(d.invite)
+			d.invite = ""
+		}
 
 	case "GUILD_DELETE":
 		if d.guild != "" && d.st.Guild(d.guild) == nil {
@@ -363,9 +423,16 @@ func (d *Discordo) loadPage(channelID string) {
 			d.loading[channelID] = false
 
 			if err != nil {
-				d.status = "Não foi possível carregar as mensagens: " + err.Error()
+				if before == "" {
+					d.failed[channelID] = err.Error() // nothing to show: the chat says so, with a retry
+				} else {
+					d.status = "Não foi possível carregar as mensagens: " + err.Error()
+				}
+
 				return
 			}
+
+			delete(d.failed, channelID)
 
 			d.st.AddMessages(channelID, len(msgs) < pageSize, msgs...)
 			if before == "" && channelID == d.channel {

@@ -100,6 +100,28 @@ func parseInviteCode(input string) string {
 	return ""
 }
 
+// joinInvite uses an invite (a link in a message, or one the app was opened with) and opens its server.
+func (d *Discordo) joinInvite(code string) {
+	client, gen := d.client, d.gen
+	go func() {
+		var g Guild
+		err := client.do(context.Background(), "POST", "/invites/"+code, nil, &g)
+
+		d.post(func(d *Discordo) {
+			if d.gen != gen {
+				return
+			}
+
+			if err != nil {
+				d.status = "Não foi possível usar o convite: " + err.Error()
+				return
+			}
+
+			d.spaces().pending = g.ID // opened as soon as the gateway has it
+		})
+	}()
+}
+
 func (d *Discordo) inviteLink(code string) string { return d.client.Server + "/invite/" + code }
 
 // guildCopy is lib/use-copy.ts: copies text; "Copiado" shows for two seconds.

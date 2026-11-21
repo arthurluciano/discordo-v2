@@ -109,6 +109,16 @@ func (d *Discordo) voiceStageItems(callers []VoiceState, inCall bool) []voiceSta
 	return items
 }
 
+// voiceSubscribe starts or stops receiving a track, at the quality chosen for it (Opções: auto by default).
+func voiceSubscribe(userID, track string, on bool) {
+	if q := vc.qualities[userID+"/"+track]; on && q != "" {
+		vc.s.WatchQuality(userID, track, q)
+		return
+	}
+
+	vc.s.Watch(userID, track, on)
+}
+
 // voiceWatch starts or stops receiving someone's screen, focusing it as the web does.
 func voiceWatch(userID string, on bool) {
 	if vc.s == nil {
@@ -120,7 +130,7 @@ func voiceWatch(userID string, on bool) {
 	}
 
 	vc.scr.watching[userID] = on
-	vc.s.Watch(userID, voice.TrackScreen, on)
+	voiceSubscribe(userID, voice.TrackScreen, on)
 	vc.scr.pinned = ""
 	if on {
 		vc.scr.pinned = userID
@@ -185,6 +195,16 @@ func (d *Discordo) voiceScreenTile(g *Guild, it voiceStageItem, w, h ui.Size, st
 			d.para(note, d.ui.s12, fog)
 			c.Pop()
 		}
+	}
+
+	// A screen I receive: the quality of it (the web's tile menu).
+	if it.watched && !it.own {
+		c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
+		d.begin("options", box{})
+		if d.voiceStageButton("ellipsis", "Opções da tela de "+name) {
+			d.voiceOpenOptions(it.st.UserID, name, false, voice.TrackScreen)
+		}
+		c.Pop()
 	}
 
 	// The badge: blurple while the picture is there.

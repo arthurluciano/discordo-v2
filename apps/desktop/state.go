@@ -170,10 +170,12 @@ type Message struct {
 	When, Time string
 }
 
-// Span is a mention (or the "(editada)" mark) in a message's Body.
+// Span is a mention (of User), an invite link (its Invite code) or the "(editada)" mark in a message's Body.
 type Span struct {
 	Off, Len int
 	Edited   bool
+	User     string
+	Invite   string
 }
 
 // Permissions (lib/permissions.ts).
@@ -597,6 +599,9 @@ func (s *State) AddMessages(channelID string, complete bool, msgs ...Message) {
 
 var mention = regexp.MustCompile(`<@([^<>\s]+)>`)
 
+// inviteInText is an invite link in a message: http(s)://host/invite/CODE.
+var inviteInText = regexp.MustCompile(`https?://[^\s/]+/invite/([\w-]+)`)
+
 var months = [...]string{"jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."}
 
 // render makes what a frame draws: mentions as "@name" spans, "(editada)", the times as the web writes them.
@@ -614,12 +619,19 @@ func (s *State) render(m *Message) {
 			name = u.Name()
 		}
 
-		spans = append(spans, Span{Off: len(body), Len: len(name) + 1})
+		spans = append(spans, Span{Off: len(body), Len: len(name) + 1, User: m.Content[at[2]:at[3]]})
 		body = append(append(body, '@'), name...)
 		rest = rest[end:]
 	}
 
 	body = append(body, rest...)
+
+	// Invite links open in the app (spaces.go joinInvite), in the text's order among the mentions.
+	for _, at := range inviteInText.FindAllSubmatchIndex(body, -1) {
+		spans = append(spans, Span{Off: at[0], Len: at[1] - at[0], Invite: string(body[at[2]:at[3]])})
+	}
+
+	slices.SortFunc(spans, func(a, b Span) int { return a.Off - b.Off })
 
 	if m.EditedAt != nil && len(body) > 0 {
 		body = append(body, ' ')

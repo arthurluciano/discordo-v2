@@ -120,6 +120,11 @@ func (s *Session) Watch(userID, track string, on bool) {
 	s.mu.Unlock()
 }
 
+// WatchQuality asks for someone's track at a quality: auto, high, medium or low (the server's simulcast layer).
+func (s *Session) WatchQuality(userID, track, quality string) {
+	s.send("rtc_subscribe", map[string]any{"user_id": userID, "track": track, "on": true, "quality": quality})
+}
+
 // Frame is the latest picture of a user's track, retained for the caller (release it), or 0. My own screen's key
 // is my user ID: the preview of what I share.
 func (s *Session) Frame(userID, track string) Picture {

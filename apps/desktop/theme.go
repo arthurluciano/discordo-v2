@@ -4,11 +4,18 @@ package main
 // animated Neon and Dragão (theme_scene.go), chosen in "Aparência" and kept across launches.
 
 import (
+	"bytes"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"math"
 	"path/filepath"
 	"testing"
 
 	"gonativeui/app/paths"
 	"gonativeui/app/prefs"
+	"gonativeui/img"
 	"gonativeui/rexui"
 	"gonativeui/theme"
 	"gonativeui/theme/rex"
@@ -51,13 +58,16 @@ func over(f func(p *palette)) palette {
 type skin struct {
 	id, label, desc string
 	light           bool // Papel: the kit's widgets follow in their light mode
+	glass           bool // Liquid Glass: light or dark (themePrefs.Mode), over a wallpaper
 	animated        bool // a scene (theme_scene.go) behind translucent panes
 	p               palette
 }
 
-// skins are SKINS of theme-provider.tsx, but Liquid Glass (it needs blurred panes).
+// skins are SKINS of theme-provider.tsx.
 var skins = []skin{
 	{id: "default", label: "Discordo", desc: "O visual clássico, escuro.", p: basePalette},
+
+	{id: "glass", label: "Liquid Glass", desc: "Vidro translúcido sobre um fundo colorido.", glass: true, p: glassDark},
 
 	{id: "midnight", label: "Meia-noite", desc: "Preto puro, bom para telas OLED.", p: over(func(p *palette) {
 		p.cosmic, p.rail, p.sidebar, p.content = 0x000000ff, 0x000000ff, 0x0a0a0cff, 0x111114ff
@@ -107,10 +117,55 @@ var skins = []skin{
 	})},
 }
 
+// Liquid Glass (design/tokens.css [data-skin='glass']): translucent panes over the wallpaper (glassWallpaper), in
+// both modes, and solid with "Reduzir transparência". shortcut: the panes are not blurred; over the smooth
+// wallpaper a blur shows little. ui.Context.NextBackdrop (macOS only) would add it.
+var (
+	glassDark = over(func(p *palette) {
+		p.snow, p.fog, p.greyple = 0xf7f8fcff, 0xd3d6e0ff, 0xa9afbdff
+		p.cosmic, p.rail, p.sidebar, p.content = 0, 0, 0xffffff0d, 0x0a0b1633
+		p.raised, p.hover, p.active, p.canvas = 0xffffff17, 0xffffff12, 0x5865f24d, 0x0b0c1aff
+		p.line10, p.line5 = 0xffffff1a, 0xffffff14
+	})
+
+	glassLight = over(func(p *palette) {
+		p.blurpleSoft, p.green, p.cerulean, p.red = 0x4752c4ff, 0x188a48ff, 0x0071bcff, 0xd92b2eff
+		p.snow, p.fog, p.greyple = 0x16171dff, 0x383a44ff, 0x5c5f6dff
+		p.cosmic, p.rail, p.sidebar, p.content = 0, 0, 0xffffff4d, 0xffffff3d
+		p.raised, p.hover, p.active, p.canvas = 0xffffff99, 0x0000000d, 0x5865f229, 0xeef0f8ff
+		p.line10, p.line5 = 0x00000017, 0x00000012
+	})
+)
+
+// glassPalette is Liquid Glass in a mode, solid when reduced.
+func glassPalette(light, reduced bool) palette {
+	p := glassDark
+	if light {
+		p = glassLight
+	}
+
+	if reduced {
+		if light {
+			p.cosmic, p.rail, p.sidebar, p.content, p.raised = 0xeef0f8ff, 0xeef0f8ff, 0xf2f3f9ff, 0xfafafdff, 0xffffffff
+		} else {
+			p.cosmic, p.rail, p.sidebar, p.content, p.raised = 0x0b0c1aff, 0x0b0c1aff, 0x191b2bff, 0x141523ff, 0x232538ff
+		}
+	}
+
+	return p
+}
+
+// Liquid Glass's state: what the last frame showed.
+var glassNow struct {
+	light, reduced bool
+}
+
 // themePrefs is what theme.json keeps.
 type themePrefs struct {
 	Skin   string
-	Static bool // "Tema estático": the animated skins hold still
+	Static bool   // "Tema estático": the animated skins hold still
+	Mode   string // Liquid Glass's colour mode: "light", "dark" or "" (the system's)
+	Reduce bool   // "Reduzir transparência": Liquid Glass's panes solid
 
 	WorldSkin string // the character worn in every world, "" for my own
 }
@@ -185,6 +240,22 @@ func (d *Discordo) syncKit() {
 		d.k.SetTheme(th)
 	}
 
+	// Liquid Glass follows its mode (the system's, by default) and the transparency settings.
+	if sk := &skins[skinNow]; sk.glass {
+		v := themePrefs{}
+		if themeStore != nil {
+			v = themeStore.Get()
+		}
+
+		light := v.Mode == "light" || v.Mode == "" && !d.k.Context().SystemAppearance().Dark && d.k.Context().SystemAppearance().Known
+		reduced := v.Reduce || d.k.Theme().Settings.ReduceTransparency
+		if light != glassNow.light || reduced != glassNow.reduced || sk.light != light {
+			glassNow.light, glassNow.reduced, sk.light = light, reduced, light
+			sk.p = glassPalette(light, reduced)
+			sk.p.apply()
+		}
+	}
+
 	want := theme.ForceDark
 	if skins[skinNow].light {
 		want = theme.ForceLight
@@ -196,8 +267,8 @@ func (d *Discordo) syncKit() {
 }
 
 // appearanceSection is the user settings' "Aparência" (components/appearance-settings.tsx): the skins, each
-// with a tiny workspace in its colours, and "Tema estático". Its colour mode and transparency switches are
-// Liquid Glass's only, so they are not here.
+// with a tiny workspace in its colours, "Tema estático", and Liquid Glass's colour mode and transparency (the only
+// skin with both modes: they show when it is chosen).
 func (d *Discordo) appearanceSection() {
 	d.syncKit()
 	c := d.k.Context()
@@ -239,6 +310,42 @@ func (d *Discordo) appearanceSection() {
 	}
 
 	c.Pop()
+
+	if skins[skinNow].glass {
+		d.glassSettings()
+	}
+
+	c.Pop()
+}
+
+// glassSettings are appearance-settings.tsx's colour mode and "Reduzir transparência", for Liquid Glass.
+func (d *Discordo) glassSettings() {
+	c := d.k.Context()
+	v := themePrefs{}
+	if themeStore != nil {
+		v = themeStore.Get()
+	}
+
+	modes := []string{"Claro", "Escuro", "Sistema"}
+	sel := map[string]int{"light": 0, "dark": 1, "": 2}[v.Mode]
+
+	d.begin("mode", box{axis: ui.AxisY, w: ui.Pct(1), gap: 8})
+	d.text("MODO DE COR", d.ui.caption, greyple)
+	if rexui.SegmentedControl(d.k.Kit, "##Modo de cor", &sel, modes, rexui.SegmentedOpts{}).Changed && themeStore != nil {
+		themeStore.Update(func(v *themePrefs) { v.Mode = [...]string{"light", "dark", ""}[sel] })
+	}
+	c.Pop()
+
+	d.begin("transparency", box{axis: ui.AxisX, w: ui.Pct(1), gap: 16, cross: ui.CrossCenter})
+	d.begin("label", box{axis: ui.AxisY, w: ui.Grow(1), gap: 2})
+	d.text("Reduzir transparência", d.ui.s14s, snow)
+	d.para("Painéis sólidos no lugar do vidro. Também segue o ajuste do sistema.", d.ui.s12, greyple)
+	c.Pop()
+
+	reduce := v.Reduce
+	if rexui.Switch(d.k.Kit, "##Reduzir transparência", &reduce, rexui.SwitchOpts{}).Changed && themeStore != nil {
+		themeStore.Update(func(v *themePrefs) { v.Reduce = reduce })
+	}
 	c.Pop()
 }
 
@@ -336,9 +443,82 @@ func (d *Discordo) themeBackdrop(W, H float32) {
 	d.syncKit()
 
 	switch skins[skinNow].id {
+	case "glass":
+		if !glassNow.reduced {
+			d.glassWallpaper(W, H)
+		}
 	case "neon":
 		d.neonScene(W, H)
 	case "dragon":
 		d.dragonScene(W, H)
 	}
+}
+
+// glassWallpapers are Liquid Glass's wallpapers (tokens.css --wallpaper), dark and light, made once: small, as
+// the gradients are smooth and the image is scaled over the window.
+var glassWallpapers [2][]byte
+
+// glassWallpaper draws the wallpaper under the whole workspace.
+func (d *Discordo) glassWallpaper(W, H float32) {
+	i := 0
+	if glassNow.light {
+		i = 1
+	}
+
+	if glassWallpapers[i] == nil {
+		glassWallpapers[i] = wallpaperPNG(glassNow.light)
+	}
+
+	h, _ := d.request(img.HashString(fmt.Sprint("glass wallpaper ", i)), glassWallpapers[i], 0, 0, false)
+	c := d.k.Context()
+	theme.At(c, 0, 0, W, H)
+	c.NextFlags(base.Floating)
+	d.k.Image(img.HashString("glass wallpaper"), h, ui.FitFill, 0, "")
+}
+
+// wallpaperPNG paints four radial glows (at their place in the window, as fractions) over the canvas colour.
+func wallpaperPNG(light bool) []byte {
+	type glow struct {
+		x, y, reach float64
+		rgb         uint32
+		a           float64
+	}
+
+	canvas, glows := uint32(0x0b0c1a), []glow{{0.08, 0.06, 0.45, 0x5865f2, 0.6}, {0.92, 0.14, 0.42, 0xeb459e, 0.38},
+		{0.74, 0.96, 0.48, 0x00a8fc, 0.36}, {0.18, 0.92, 0.40, 0x23a55a, 0.22}}
+	if light {
+		canvas, glows = 0xeef0f8, []glow{{0.08, 0.06, 0.45, 0x5865f2, 0.42}, {0.92, 0.14, 0.42, 0xeb459e, 0.3},
+			{0.74, 0.96, 0.48, 0x00a8fc, 0.32}, {0.18, 0.92, 0.40, 0xf0b232, 0.26}}
+	}
+
+	const w, h = 256, 160
+	pic := image.NewRGBA(image.Rect(0, 0, w, h))
+	ch := func(v uint32, shift uint) float64 { return float64(v >> shift & 0xff) }
+
+	for y := range h {
+		for x := range w {
+			r, g, b := ch(canvas, 16), ch(canvas, 8), ch(canvas, 0)
+			// CSS paints the first gradient on top: lay them from the last up.
+			for i := len(glows) - 1; i >= 0; i-- {
+				gl := glows[i]
+				// "circle at x y, ... transparent reach": the distance to the farthest corner sets the scale.
+				dx, dy := (float64(x)/w-gl.x)*w, (float64(y)/h-gl.y)*h
+				far := math.Hypot(max(gl.x, 1-gl.x)*w, max(gl.y, 1-gl.y)*h)
+				t := math.Hypot(dx, dy) / (far * gl.reach)
+				if t >= 1 {
+					continue
+				}
+
+				a := gl.a * (1 - t)
+				r, g, b = r+(ch(gl.rgb, 16)-r)*a, g+(ch(gl.rgb, 8)-g)*a, b+(ch(gl.rgb, 0)-b)*a
+			}
+
+			pic.SetRGBA(x, y, color.RGBA{uint8(r), uint8(g), uint8(b), 255})
+		}
+	}
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, pic)
+
+	return buf.Bytes()
 }

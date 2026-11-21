@@ -177,19 +177,25 @@ func TestRender(t *testing.T) {
 		guild, channel string
 		phase          phase
 		call           string // the call I am in
+		skin           string
 	}{
-		{"channel", 1440, 860, "g1", "c1", phaseOnline, ""},
-		{"dm", 1280, 800, "", "d1", phaseOnline, ""},
-		{"friends", 1280, 800, "", "", phaseOnline, ""},
-		{"login", 1440, 860, "", "", phaseSignedOut, ""},
-		{"world", 1440, 860, "g1", "w1", phaseOnline, "w1"},
-		{"world-visit", 1280, 800, "g1", "w1", phaseOnline, ""},
+		{"channel", 1440, 860, "g1", "c1", phaseOnline, "", ""},
+		{"dm", 1280, 800, "", "d1", phaseOnline, "", ""},
+		{"friends", 1280, 800, "", "", phaseOnline, "", ""},
+		{"login", 1440, 860, "", "", phaseSignedOut, "", ""},
+		{"world", 1440, 860, "g1", "w1", phaseOnline, "w1", ""},
+		{"world-visit", 1280, 800, "g1", "w1", phaseOnline, "", ""},
+		{"glass", 1440, 860, "g1", "c1", phaseOnline, "", "glass"},
 	}
 
 	for _, s := range shots {
 		t.Run(s.name, func(t *testing.T) {
 			d := newDiscordo("http://localhost:0")
 			d.st, d.phase, d.ready = ready(t), s.phase, true
+			if s.skin != "" {
+				resetTheme(t)
+				setSkin(skinIndex(s.skin))
+			}
 
 			first := msg("0001", beto, "Bom dia, pessoal! O deploy de ontem passou.", 0)
 			first.Reactions = []Reaction{{Emoji: "🔥", Users: []string{"u1", "u2"}}, {Emoji: "👍", Users: []string{"u2"}}}
@@ -269,5 +275,20 @@ func TestReactions(t *testing.T) {
 	s.React("c", "🎉", now.Add(reactionFor+time.Second))
 	if len(s.Reactions) != 1 || s.Reactions[0].UserID != "c" {
 		t.Fatalf("an old reaction stays: %+v", s.Reactions)
+	}
+}
+
+// An invite link in a message is a span with its code, in order with the mentions.
+func TestRenderInvite(t *testing.T) {
+	s := NewState()
+	m := Message{Content: "<@u1> entra: https://discordo.arluck.com.br/invite/AbC-12 valeu"}
+	s.render(&m)
+
+	if len(m.Spans) != 2 || m.Spans[0].User != "u1" || m.Spans[1].Invite != "AbC-12" {
+		t.Fatalf("spans: %+v", m.Spans)
+	}
+
+	if got := string(m.Body[m.Spans[1].Off : m.Spans[1].Off+m.Spans[1].Len]); got != "https://discordo.arluck.com.br/invite/AbC-12" {
+		t.Fatalf("invite span covers %q", got)
 	}
 }

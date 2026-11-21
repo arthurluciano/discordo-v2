@@ -537,7 +537,7 @@ func resetProfileForm(v profileValues) {
 	idn.base, idn.avatar = v, v.avatar
 	idn.name.SetString(v.name)
 	idn.pronouns.SetString(v.pronouns)
-	idn.bio.SetString(v.bio)
+	setArea(bioArea, &idn.bio, v.bio)
 	idn.banner = 0
 	if v.banner != 0 {
 		idn.banner = uint32(v.banner)<<8 | 0xff
@@ -606,9 +606,10 @@ func (d *Discordo) profileSection(wide bool) {
 	})
 
 	d.idField("Sobre mim", func() {
-		// shortcut: a one-line field; a hosted rexui.TextArea needs NewTextArea in Init (main.go, frozen).
-		k.TextField("##profile-bio", &idn.bio, "Conte um pouco sobre você.")
-		clampRunes(&idn.bio, maxBio)
+		d.areaField("##profile-bio", bioArea, &idn.bio)
+		if clampRunes(&idn.bio, maxBio); bioArea != nil && string(bioArea.Text()) != idn.bio.String() {
+			bioArea.SetText([]byte(idn.bio.String()))
+		}
 		d.begin("count", box{axis: ui.AxisX, w: ui.Pct(1)})
 		d.spacer()
 		d.text(itoa(utf8.RuneCountInString(idn.bio.String()))+"/"+itoa(maxBio), d.ui.s12, greyple)

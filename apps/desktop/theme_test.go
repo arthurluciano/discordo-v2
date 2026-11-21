@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/png"
 	"os"
@@ -49,7 +50,7 @@ func TestThemePrefs(t *testing.T) {
 		t.Fatalf("not kept: skin %q, still %v", skins[skinNow].id, themeStill)
 	}
 
-	if skinIndex("glass") != 0 || skinIndex("") != 0 {
+	if skinIndex("nope") != 0 || skinIndex("") != 0 {
 		t.Fatal("an unknown skin must fall back to Discordo")
 	}
 }
@@ -126,6 +127,17 @@ func save(t *testing.T, name string, m *image.RGBA) {
 	defer f.Close()
 
 	if err := png.Encode(f, m); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Liquid Glass: solid panes when reduced, and its wallpaper is a picture.
+func TestGlass(t *testing.T) {
+	if p := glassPalette(false, true); p.sidebar&0xff != 0xff || glassPalette(true, false).sidebar&0xff == 0xff {
+		t.Fatal("reduced panes must be solid, and the glass ones translucent")
+	}
+
+	if _, err := png.Decode(bytes.NewReader(wallpaperPNG(true))); err != nil {
 		t.Fatal(err)
 	}
 }

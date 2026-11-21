@@ -67,7 +67,7 @@ func (d *Discordo) openChannelSettings(g *Guild, ch *Channel) {
 	s := &d.spaces().channel
 	*s = channelSettings{open: true, guildID: g.ID, id: ch.ID, target: Overwrite{TargetID: g.ID}}
 	s.name.SetString(ch.Name)
-	s.topic.SetString(ch.Topic)
+	setArea(topicArea, &s.topic, ch.Topic)
 	d.spaces().err = ""
 }
 
@@ -144,11 +144,10 @@ func (d *Discordo) channelOverview(ch *Channel) {
 	k.TextField("##channel settings name", &s.name, "")
 	c.Pop()
 
-	// shortcut: the web's topic is a textarea; a one-line field until the native text area is set up here.
 	if ch.Type == ChannelText {
 		d.begin("topic", box{axis: ui.AxisY, w: ui.Pct(1), gap: 8})
 		d.guildLabel("TÓPICO")
-		k.TextField("##channel settings topic", &s.topic, "Do que se fala aqui?")
+		d.areaField("##channel settings topic", topicArea, &s.topic)
 		c.Pop()
 	}
 
@@ -161,7 +160,7 @@ func (d *Discordo) channelOverview(ch *Channel) {
 	if guildButton(d, "Salvar", rexui.ButtonPrimary, !dirty || name == "") {
 		guildCall(d, "PATCH", "/channels/"+ch.ID, map[string]string{"name": name, "topic": topic}, func(d *Discordo, _ Channel) {
 			s.name.SetString(name)
-			s.topic.SetString(topic)
+			setArea(topicArea, &s.topic, topic)
 		})
 	}
 

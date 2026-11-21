@@ -33,6 +33,10 @@ var vc struct {
 	starting bool   // asking for the microphone, before the session exists
 
 	muted, deafened bool // my choices, kept across calls as the web keeps them
+	noGate          bool // the noise gate turned off (it starts on, as the web's)
+
+	qualities map[string]string // user/track → the quality asked for its video ("" is auto)
+	opts      voiceOptions      // the tile's options dialog
 
 	ended, endedIn string // what ended the last call by itself, and where (shown on that stage)
 
@@ -69,7 +73,7 @@ func (d *Discordo) voiceJoin(channelID string, perms int64) {
 	d.voiceLeave()
 	vc.channel, vc.gen, vc.starting, vc.ended = channelID, d.gen, true, ""
 
-	opt := voice.Options{Server: d.client.Server, Token: d.client.Token, ChannelID: channelID, Input: vc.input, Output: vc.output,
+	opt := voice.Options{Server: d.client.Server, Token: d.client.Token, ChannelID: channelID, Input: vc.input, Output: vc.output, NoiseGate: !vc.noGate,
 		Muted: vc.muted, Deafened: vc.deafened, OnChange: platform.Wake}
 	speak, gen := has(perms, permSpeak), d.gen
 
@@ -516,9 +520,6 @@ func (d *Discordo) voiceGrid(g *Guild, items []voiceStageItem, stageW float32, i
 	k.CloseScroll(&v)
 }
 
-// voiceVolumes are the tile menu's choices, in percent.
-var voiceVolumes = [...]int{0, 25, 50, 75, 100, 150, 200}
-
 // voiceTile is voice-stage.tsx's Tile for a person: the avatar with the speaking ring, the name with mute and deafen.
 func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	c := d.k.Context()
@@ -572,13 +573,21 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 		c.Pop()
 	}
 
+	// Top right: the options (the web's ellipsis), and someone's camera.
+	if inCall && !own && vc.s != nil {
+		c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
+		d.begin("tile buttons", box{axis: ui.AxisX, gap: 6})
+		if d.voiceStageButton("ellipsis", "Opções de "+name) {
+			d.voiceOpenOptions(st.UserID, name, true, voice.TrackCamera)
+		}
+	}
+
 	if camera {
 		label, glyph := "Ver câmera de "+name, "video"
 		if watched {
 			label, glyph = "Parar de ver a câmera", "video-off"
 		}
 
-		c.NextAnchor(ui.AnchorTopRight, d.px(8), d.px(8))
 		d.begin("camera", box{})
 		if d.voiceStageButton(glyph, label) {
 			if vc.scr.cams == nil {
@@ -586,8 +595,12 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 			}
 
 			vc.scr.cams[st.UserID] = !watched
-			vc.s.Watch(st.UserID, voice.TrackCamera, !watched)
+			voiceSubscribe(st.UserID, voice.TrackCamera, !watched)
 		}
+		c.Pop()
+	}
+
+	if inCall && !own && vc.s != nil {
 		c.Pop()
 	}
 
@@ -605,36 +618,98 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	c.Pop()
 	c.Pop()
 
-	// The volume of someone else, on a right click (the web's tile menu).
-	if !inCall || vc.s == nil || st.UserID == d.st.Me.ID {
+	// Someone else's options (the web's tile menu): on a right click.
+	if !inCall || vc.s == nil || own {
 		return
 	}
 
-	cur := 100
-	if v, ok := vc.volumes[st.UserID]; ok {
-		cur = int(v*100 + 0.5)
+	if _, ok := rexui.ContextMenu(d.k.Kit, id, func(items *[]ui.MenuItem) {
+		*items = append(*items, ui.MenuItem{ID: 1, Title: "Opções de " + name + "…"})
+	}); ok {
+		d.voiceOpenOptions(st.UserID, name, true, voice.TrackCamera)
+	}
+}
+
+// voiceOptions is the tile menu as a dialog: someone's volume (a person's tile), and the quality of their video.
+type voiceOptions struct {
+	open       bool
+	user, name string
+	volume     bool
+	track      string // the video whose quality is chosen, while watched
+}
+
+func (d *Discordo) voiceOpenOptions(userID, name string, volume bool, track string) {
+	vc.opts = voiceOptions{open: true, user: userID, name: name, volume: volume, track: track}
+}
+
+var voiceQualities = [...]struct{ id, label string }{{"auto", "Auto"}, {"high", "Alta"}, {"medium", "Média"}, {"low", "Baixa"}}
+
+func (d *Discordo) voiceOptionsDialog() {
+	o := &vc.opts
+	if vc.s == nil {
+		o.open = false
 	}
 
-	item, ok := rexui.ContextMenu(d.k.Kit, id, func(items *[]ui.MenuItem) {
-		*items = append(*items, ui.MenuItem{Title: "Volume de " + name, Header: true})
-		for _, p := range voiceVolumes {
-			mark := ui.MarkNone
-			if p == cur {
-				mark = ui.MarkOn
+	k := d.k
+	dlg := k.BeginDialog("tile options", "Opções de "+o.name, &o.open)
+	if dlg.Visible {
+		c := k.Context()
+		if o.volume {
+			pct := float32(100)
+			if v, ok := vc.volumes[o.user]; ok {
+				pct = v * 100
 			}
 
-			*items = append(*items, ui.MenuItem{ID: p, Title: itoa(p) + "%", Mark: mark})
-		}
-	})
+			d.begin("volume", box{axis: ui.AxisX, w: ui.Pct(1)})
+			d.text("Volume", d.ui.s14m, snow)
+			d.spacer()
+			d.text(itoa(int(pct+0.5))+"%", d.ui.s14, fog)
+			c.Pop()
 
-	if ok {
-		if vc.volumes == nil {
-			vc.volumes = map[string]float32{}
+			if rexui.Slider(k.Kit, "##Volume de "+o.name, &pct, 0, 200, 5, rexui.SliderOpts{}).Changed {
+				if vc.volumes == nil {
+					vc.volumes = map[string]float32{}
+				}
+
+				vc.volumes[o.user] = pct / 100
+				d.voiceApplyVolume(o.user)
+			}
 		}
 
-		vc.volumes[st.UserID] = float32(item) / 100
-		d.voiceApplyVolume(st.UserID)
+		key := o.user + "/" + o.track
+		watched := vc.scr.cams[o.user]
+		if o.track == voice.TrackScreen {
+			watched = vc.scr.watching[o.user]
+		}
+
+		if watched {
+			sel := 0
+			for i, q := range voiceQualities {
+				if q.id == vc.qualities[key] {
+					sel = i
+				}
+			}
+
+			labels := make([]string, len(voiceQualities))
+			for i, q := range voiceQualities {
+				labels[i] = q.label
+			}
+
+			d.text("Qualidade do vídeo", d.ui.s14m, snow)
+			if rexui.SegmentedControl(k.Kit, "##Qualidade do vídeo", &sel, labels, rexui.SegmentedOpts{}).Changed {
+				if vc.qualities == nil {
+					vc.qualities = map[string]string{}
+				}
+
+				vc.qualities[key] = voiceQualities[sel].id
+				vc.s.WatchQuality(o.user, o.track, voiceQualities[sel].id)
+			}
+		} else if !o.volume {
+			d.para("Assista ao vídeo para escolher a qualidade.", d.ui.s14, greyple)
+		}
 	}
+
+	k.EndDialog(&dlg)
 }
 
 // voiceDialogs draws the call's dialogs (devices) and follows the session between frames.
@@ -669,6 +744,7 @@ func (d *Discordo) voiceDialogs() {
 	rexui.EndDialog(d.k.Kit, &dlg)
 	d.voiceShareDialog()
 	d.voiceFullStage()
+	d.voiceOptionsDialog()
 
 	// The device list is read again each time a settings page opens (devices come and go).
 	if !vc.devs.drawn {
@@ -733,6 +809,21 @@ func (d *Discordo) voiceSettingsSection() {
 	}
 
 	d.text(hint, d.ui.s12, greyple)
+	c.Pop()
+
+	// The noise gate (device-settings-dialog.tsx's Porta de ruído): on unless turned off.
+	d.begin("gate", box{axis: ui.AxisX, w: ui.Pct(1), gap: 12, cross: ui.CrossCenter})
+	d.begin("gate text", box{axis: ui.AxisY, w: ui.Grow(1), gap: 2})
+	d.text("Porta de ruído", d.ui.s14m, snow)
+	d.para("Fecha o microfone entre as frases, quando só o barulho da sala chega.", d.ui.s12, greyple)
+	c.Pop()
+	gateOn := !vc.noGate
+	if rexui.Switch(d.k.Kit, "##Porta de ruído", &gateOn, rexui.SwitchOpts{}).Changed {
+		vc.noGate = !gateOn
+		if vc.s != nil {
+			vc.s.SetNoiseGate(gateOn)
+		}
+	}
 	c.Pop()
 
 	if d.voiceDeviceSelect("Saída de áudio", vc.devs.outputs, &vc.output) {
