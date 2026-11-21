@@ -87,7 +87,15 @@ describe('pion transport', () => {
     expect(onRemoteTracks).toHaveBeenCalledWith([{ userId: 'user-a', name: 'mic', track: 'remote-mic' }])
   })
 
+  const gpu = (powerEfficient: boolean) => {
+    vi.stubGlobal('RTCRtpSender', { getCapabilities: () => ({ codecs: [{ mimeType: 'video/H264' }] }) })
+    vi.stubGlobal('navigator', {
+      mediaCapabilities: { encodingInfo: async () => ({ supported: true, powerEfficient }) },
+    })
+  }
+
   it('publishes video simulcast, falling back to one encoding when the browser refuses', async () => {
+    gpu(true)
     const calls: unknown[] = []
     vi.stubGlobal(
       'RTCPeerConnection',
@@ -108,6 +116,29 @@ describe('pion transport', () => {
     await flush()
     expect((calls[0] as { rid: string }[]).map((e) => e.rid)).toEqual(['l', 'm', 'h'])
     expect(calls[1]).toEqual([{ maxBitrate: 6_000_000, maxFramerate: 30 }])
+    t.close()
+  })
+
+  it('publishes one encoding when the video would be encoded on the CPU', async () => {
+    gpu(false)
+    const calls: unknown[] = []
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      class extends FakePeer {
+        override addTransceiver(track: unknown, init?: { sendEncodings?: unknown[] }) {
+          calls.push(init?.sendEncodings)
+          return super.addTransceiver(track)
+        }
+      },
+    )
+    const t = createPionTransport(
+      vi.fn(() => true),
+      { onRemoteTracks: vi.fn(), onState: vi.fn(), onError: vi.fn() },
+    )
+    const screen = { kind: 'video', getSettings: () => ({ height: 1080 }) } as unknown as MediaStreamTrack
+    void t.publish('screen', screen, { maxBitrate: 6_000_000, maxFramerate: 30 })
+    await flush()
+    expect(calls).toEqual([[{ maxBitrate: 6_000_000, maxFramerate: 30 }]])
     t.close()
   })
 

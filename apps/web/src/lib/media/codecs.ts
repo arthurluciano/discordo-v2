@@ -135,6 +135,10 @@ export const probeFor = (track: MediaStreamTrack, maxBitrate: number | undefined
 const capabilities = () => globalThis.RTCRtpSender?.getCapabilities?.('video')?.codecs ?? []
 
 /** The codecs this browser can send, best first. */
+/** Whether the codec sent first (codecs[0] of videoCodecs) is encoded on the GPU at this size. */
+export const firstOnGpu = async (codecs: readonly Codec[], probe: Probe) =>
+  codecs[0] !== undefined && (await hardwareCodecs(probe)).has(codecs[0].mimeType.toLowerCase())
+
 export const videoCodecs = async (probe: Probe, choice: CodecChoice = 'auto') =>
   orderCodecs(capabilities(), await hardwareCodecs(probe), choice)
 

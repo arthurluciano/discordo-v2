@@ -15,6 +15,8 @@ export type EncoderStats = {
   bitrate: number | null
   bytesSent: number
   timestamp: number
+  /** `qualityLimitationReason` of the largest layer: "cpu" or "bandwidth" when the browser is cutting quality. */
+  limit: string | null
 }
 
 type Outbound = {
@@ -27,6 +29,7 @@ type Outbound = {
   encoderImplementation?: string
   codecId?: string
   powerEfficientEncoder?: boolean
+  qualityLimitationReason?: string
 }
 
 /** Sums the outbound-rtp entries of one sender (one per simulcast layer). */
@@ -41,6 +44,7 @@ export const encoderStats = (report: RTCStatsReport, previous: EncoderStats | nu
     bitrate: null,
     bytesSent: 0,
     timestamp: 0,
+    limit: null,
   }
   report.forEach((o: Outbound) => {
     if (o.type !== 'outbound-rtp') return
@@ -55,6 +59,7 @@ export const encoderStats = (report: RTCStatsReport, previous: EncoderStats | nu
       s.width = o.frameWidth
       s.height = o.frameHeight ?? null
       s.fps = o.framesPerSecond ?? null
+      s.limit = o.qualityLimitationReason && o.qualityLimitationReason !== 'none' ? o.qualityLimitationReason : null
     }
   })
   const elapsed = previous ? (s.timestamp - previous.timestamp) / 1000 : 0
@@ -70,11 +75,14 @@ export const encoderLabel = ({ hardware, encoder, codec }: EncoderStats) => {
   return `Codificação: ${what}${detail ? ` (${detail})` : ''}`
 }
 
-export const encoderDetails = ({ width, height, fps, bitrate }: EncoderStats) =>
+const LIMITS: Record<string, string> = { cpu: 'limitada pela CPU', bandwidth: 'limitada pela rede' }
+
+export const encoderDetails = ({ width, height, fps, bitrate, limit }: EncoderStats) =>
   [
     width && height ? `${width}×${height}` : null,
     fps ? `${Math.round(fps)} fps` : null,
     bitrate !== null ? `${(bitrate / 1_000_000).toFixed(1).replace('.', ',')} Mbps` : null,
+    limit ? (LIMITS[limit] ?? `limitada (${limit})`) : null,
   ]
     .filter(Boolean)
     .join(' · ') || 'Sem dados ainda'

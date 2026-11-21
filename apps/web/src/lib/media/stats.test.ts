@@ -62,3 +62,17 @@ describe('encoder stats', () => {
     expect(encoderDetails(unknown)).toBe('Sem dados ainda')
   })
 })
+
+describe('limit', () => {
+  it('says what the browser cuts quality for', () => {
+    const report = new Map([
+      [
+        'a',
+        { type: 'outbound-rtp', timestamp: 1, frameWidth: 1920, frameHeight: 1080, qualityLimitationReason: 'cpu' },
+      ],
+    ]) as unknown as RTCStatsReport
+    const s = encoderStats(report, null)
+    expect(s.limit).toBe('cpu')
+    expect(encoderDetails(s)).toContain('limitada pela CPU')
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { hardwareCodecs, orderCodecs, rememberEncoder } from './codecs'
+import { firstOnGpu, hardwareCodecs, orderCodecs, rememberEncoder } from './codecs'
 
 const codecs = [
   { mimeType: 'video/VP8' },
@@ -23,6 +23,19 @@ describe('hardwareCodecs', () => {
     rememberEncoder('AV1', probe, true)
     expect(await hardwareCodecs(probe)).toEqual(new Set(['video/av1']))
     expect(await hardwareCodecs({ ...probe, framerate: 60 })).toEqual(new Set()) // another size: still the guess
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+
+  it('says whether the codec sent first is on the GPU', async () => {
+    vi.stubGlobal('navigator', {
+      mediaCapabilities: { encodingInfo: async () => ({ supported: true, powerEfficient: false }) },
+    })
+    const probe = { width: 1920, height: 1080, framerate: 30, bitrate: 6e6 }
+    rememberEncoder('AV1', probe, true)
+    expect(await firstOnGpu([{ mimeType: 'video/AV1' }, { mimeType: 'video/VP8' }], probe)).toBe(true)
+    expect(await firstOnGpu([{ mimeType: 'video/VP8' }, { mimeType: 'video/AV1' }], probe)).toBe(false)
+    expect(await firstOnGpu([], probe)).toBe(false)
     vi.unstubAllGlobals()
     localStorage.clear()
   })

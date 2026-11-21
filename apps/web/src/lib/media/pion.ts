@@ -2,7 +2,7 @@
 // Two connections, so offers never collide: we offer on `pub` whenever what we send changes,
 // the server offers on `sub` whenever what we receive changes. No trickle ICE: SDPs go out complete.
 import type { TrackName } from '@/lib/wire'
-import { probeFor, videoCodecs } from './codecs'
+import { firstOnGpu, probeFor, videoCodecs } from './codecs'
 import { sendEncodings, updateEncodings, type Encoding } from './presets'
 import { nameTracks, parseOfferTracks } from './sdp'
 import type { RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
@@ -125,10 +125,10 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
       // simulcast layers were sized for the old resolution, and viewers get a fresh stream right away.
       const recodec = track?.kind === 'video' && published.has(name) && publishedWith.get(name) !== key
       // Probed before anything else so the rest stays synchronous (no offer can slip in between).
-      const codecs =
-        track?.kind === 'video' && (!published.has(name) || recodec)
-          ? await videoCodecs(probeFor(track, encoding?.maxBitrate), encoding?.codec)
-          : null
+      const probe = track?.kind === 'video' ? probeFor(track, encoding?.maxBitrate) : null
+      const codecs = probe && (!published.has(name) || recodec) ? await videoCodecs(probe, encoding?.codec) : null
+      // Simulcast is one encode per layer: on the CPU three of them make the whole share stutter, so it sends one.
+      const simulcast = codecs !== null && probe !== null && (await firstOnGpu(codecs, probe))
       if (closed) return
       let current = published.get(name)
       if (!track || recodec) {
@@ -148,7 +148,7 @@ export const createPionTransport = (send: SendOp, events: TransportEvents): Voic
       }
       // Video is simulcast (rids h/m/l, see presets) so the SFU can give each viewer the layer it can take.
       const encodings = encoding
-        ? sendEncodings(encoding, track.kind === 'video' ? track.getSettings?.().height : undefined)
+        ? sendEncodings(encoding, simulcast ? track.getSettings?.().height : undefined)
         : undefined
       let transceiver: RTCRtpTransceiver
       try {
