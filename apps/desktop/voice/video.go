@@ -35,6 +35,7 @@ type videoState struct {
 	screen   *screenOut
 	screenOn bool           // StartScreen ran and StopScreen did not
 	capture  *ScreenCapture // what PickScreen chose: my preview, then what StartScreen sends
+	camera   *cameraOut     // my camera, on
 }
 
 // screenOut is my screen going out: its track, the encoder made for the pictures' size, and its transceiver.

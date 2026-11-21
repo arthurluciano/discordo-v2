@@ -24,6 +24,8 @@ import (
 type voiceDevices struct {
 	loaded, loading, drawn bool
 	inputs, outputs        []voice.Device
+	cameras                []voice.Camera
+	cameraErr              string
 }
 
 var vc struct {
@@ -48,6 +50,8 @@ var vc struct {
 
 	// shortcut: devices and volumes last until the app quits; save them in the config dir if asked.
 	input, output string
+	camera        string             // the chosen camera ("": the system's default)
+	cameraBusy    bool               // turning it on or off
 	volumes       map[string]float32 // by user, 0 to 2
 }
 
@@ -154,39 +158,59 @@ func voiceSetDeafened(deafened bool) {
 	}
 }
 
+// privacyText is what privacyRefusal says about one device.
+type privacyText struct{ noDescription, askFailed, askFailedEnd, denied string }
+
 // microphoneRefusal asks for the microphone where the system protects it (macOS) and says why it cannot be used
 // ("" when it can). It blocks until the user answers.
 func microphoneRefusal() string {
-	st, err := perm.Status(perm.Microphone)
+	return privacyRefusal(perm.Microphone, privacyText{
+		"Este app não tem a descrição de uso do microfone (NSMicrophoneUsageDescription). Você está só ouvindo.",
+		"Não foi possível pedir o microfone: ", ". Você está só ouvindo.",
+		"O acesso ao microfone foi negado. Libere o Discordo em Ajustes do Sistema › Privacidade › Microfone. Você está só ouvindo.",
+	})
+}
+
+// cameraRefusal is microphoneRefusal for the camera.
+func cameraRefusal() string {
+	return privacyRefusal(perm.Camera, privacyText{
+		"Este app não tem a descrição de uso da câmera (NSCameraUsageDescription).",
+		"Não foi possível pedir a câmera: ", ".",
+		"O acesso à câmera foi negado. Libere o Discordo em Ajustes do Sistema › Privacidade › Câmera.",
+	})
+}
+
+func privacyRefusal(k perm.Kind, t privacyText) string {
+	st, err := perm.Status(k)
 	if err != nil {
 		return "" // Windows and Linux: nothing to ask here
 	}
 
 	if st == perm.NotDetermined {
-		_, err := perm.Request(perm.Microphone)
+		_, err := perm.Request(k)
 		if errors.Is(err, perm.ErrNoUsageDescription) {
 			exe, _ := os.Executable()
 			if !strings.Contains(exe, ".app/Contents/MacOS/") {
 				return "" // a development run (go run): the system asks on behalf of the terminal
 			}
 
-			return "Este app não tem a descrição de uso do microfone (NSMicrophoneUsageDescription). Você está só ouvindo."
+			return t.noDescription
 		}
 
 		if err != nil {
-			return "Não foi possível pedir o microfone: " + err.Error() + ". Você está só ouvindo."
+			return t.askFailed + err.Error() + t.askFailedEnd
 		}
 
 		for range 600 { // up to 2 minutes for the user to answer
 			time.Sleep(200 * time.Millisecond)
-			if st, _ = perm.Status(perm.Microphone); st != perm.NotDetermined {
+			if st, _ = perm.Status(k); st != perm.NotDetermined {
 				break
 			}
 		}
 	}
 
 	if st != perm.Authorized {
-		return "O acesso ao microfone foi negado. Libere o Discordo em Ajustes do Sistema › Privacidade › Microfone. Você está só ouvindo."
+		return t.denied
 	}
 
 	return ""
@@ -460,6 +484,7 @@ func (d *Discordo) voiceFooter(ch *Channel, join string, share bool) {
 	case inCall:
 		d.voiceMuteButtons(40)
 		if share && has(ch.Permissions, permStream) {
+			d.voiceCameraButton(40)
 			d.voiceShareButton(40)
 		}
 
@@ -546,6 +571,7 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	own := st.UserID == d.st.Me.ID
 	camera := inCall && !own && vc.s != nil && slices.Contains(st.Tracks, voice.TrackCamera)
 	watched := camera && vc.scr.cams[st.UserID]
+	mine := own && inCall && vc.s != nil && vc.s.CameraOn()
 	if !camera && vc.scr.cams[st.UserID] {
 		delete(vc.scr.cams, st.UserID) // they turned it off: seeing it again is a new choice
 	}
@@ -563,7 +589,7 @@ func (d *Discordo) voiceTile(g *Guild, st VoiceState, w float32, inCall bool) {
 	}
 
 	size := min(float32(80), w/d.ui.scale/4)
-	if tex, pw, ph := d.voiceTexture(voiceFrame(st.UserID, voice.TrackCamera)); watched && tex != 0 {
+	if tex, pw, ph := d.voiceTexture(voiceFrame(st.UserID, voice.TrackCamera)); (watched || mine) && tex != 0 {
 		d.k.NextSize(ui.Pct(1), ui.Pct(1))
 		d.k.ExternalImage(2, tex, pw, ph, ui.FitFill, d.px(12), "Câmera de "+name)
 	} else {
@@ -764,8 +790,13 @@ func (d *Discordo) voiceSettingsSection() {
 		go func() {
 			ins, errIn := voice.Inputs()
 			outs, errOut := voice.Outputs()
+			cams, errCam := voice.Cameras()
 			d.post(func(*Discordo) {
-				vc.devs = voiceDevices{loaded: true, inputs: ins, outputs: outs, drawn: true}
+				vc.devs = voiceDevices{loaded: true, inputs: ins, outputs: outs, cameras: cams, drawn: true}
+				if errCam != nil {
+					vc.devs.cameraErr = errCam.Error()
+				}
+
 				vc.devErr = ""
 				if err := errors.Join(errIn, errOut); err != nil {
 					vc.devErr = "Não foi possível listar os dispositivos: " + err.Error()
@@ -838,7 +869,84 @@ func (d *Discordo) voiceSettingsSection() {
 
 	d.begin("gap", box{t: 12})
 	c.Pop()
-	d.para("A câmera ainda não está no app nativo: use o Discordo na web para ligar a sua.", d.ui.s12, greyple)
+
+	// device-settings-dialog.tsx's Vídeo: the camera and its preview.
+	outline(c, line10, 1)
+	d.begin("video", box{axis: ui.AxisY, w: ui.Pct(1), bg: surfaceRaised, radius: 12, l: 16, r: 16, t: 16, b: 16, gap: 20})
+
+	d.begin("title", box{axis: ui.AxisX, gap: 8, cross: ui.CrossCenter})
+	d.icon("video", 16, blurpleSoft)
+	d.text("Vídeo", d.ui.s16b, snow)
+	c.Pop()
+
+	if d.voiceDeviceSelect("Câmera", vc.devs.cameras, &vc.camera) && vc.s != nil && vc.s.CameraOn() {
+		d.voiceSetCamera(true, true) // the new one, in its place
+	}
+
+	if vc.devs.cameraErr != "" {
+		d.para(vc.devs.cameraErr, d.ui.s12, red)
+	}
+
+	outline(c, line10, 1)
+	d.begin("preview", box{axis: ui.AxisY, w: ui.Pct(1), h: ui.Px(d.px(270)), radius: 8, bg: 0x000000ff, clip: true, cross: ui.CrossCenter, justify: ui.JustifyCenter, gap: 8})
+	if tex, pw, ph := d.voiceTexture(voiceFrame(d.st.Me.ID, voice.TrackCamera)); tex != 0 {
+		d.k.NextSize(ui.Pct(1), ui.Pct(1))
+		d.k.ExternalImage(3, tex, pw, ph, ui.FitContain, 0, "Prévia da câmera")
+	} else {
+		d.icon("video", 32, greyple)
+		d.text("Ligue a câmera na chamada para ver a prévia aqui.", d.ui.s14, greyple)
+	}
+	c.Pop()
+
+	c.Pop()
+}
+
+// voiceCameraButton is the controls' "Ligar câmera": pressed while it is on.
+func (d *Discordo) voiceCameraButton(size float32) {
+	on := vc.s != nil && vc.s.CameraOn()
+	glyph, label := "video-off", "Ligar câmera"
+	if on {
+		glyph, label = "video", "Desligar câmera"
+	}
+
+	if d.voiceControl(glyph, label, size, on, vc.cameraBusy || vc.s == nil, false) {
+		d.voiceSetCamera(on, !on)
+	}
+}
+
+// voiceSetCamera turns my camera off (stop) and then on (start), off the UI thread: asking for it and negotiating
+// block.
+func (d *Discordo) voiceSetCamera(stop, start bool) {
+	s, id := vc.s, vc.camera
+	if s == nil || vc.cameraBusy {
+		return
+	}
+
+	vc.cameraBusy, vc.scr.err = true, ""
+	go func() {
+		var err error
+		if stop {
+			err = s.StopCamera()
+		}
+
+		msg := ""
+		if err == nil && start {
+			if msg = cameraRefusal(); msg == "" {
+				err = s.StartCamera(id)
+			}
+		}
+
+		if err != nil {
+			msg = "Não foi possível usar a câmera: " + err.Error()
+		}
+
+		d.post(func(*Discordo) {
+			vc.cameraBusy = false
+			if msg != "" && vc.s == s {
+				vc.scr.err = msg
+			}
+		})
+	}()
 }
 
 // voiceDeviceSelect is DeviceSelect: "Padrão do sistema" and the devices; it reports a change of *id.

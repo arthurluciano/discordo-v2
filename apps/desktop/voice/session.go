@@ -894,8 +894,8 @@ func (s *Session) closePeers() {
 	s.mu.Lock()
 	pcs, enc := []*webrtc.PeerConnection{s.pub, s.sub}, s.enc
 	s.mic, s.enc = nil, nil
-	screen, capture := s.vid.screen, s.vid.capture
-	s.vid.screen, s.vid.screenOn, s.vid.capture = nil, false, nil
+	screen, capture, camera := s.vid.screen, s.vid.capture, s.vid.camera
+	s.vid.screen, s.vid.screenOn, s.vid.capture, s.vid.camera = nil, false, nil, nil
 	if screen != nil {
 		screen.lastPic.Release()
 		screen.lastPic = 0
@@ -917,6 +917,14 @@ func (s *Session) closePeers() {
 
 	if capture != nil {
 		capture.Stop()
+	}
+
+	if camera != nil && camera.capture != nil {
+		camera.capture.Stop()
+	}
+
+	if camera != nil && camera.enc != nil {
+		camera.enc.Close()
 	}
 
 	for _, pc := range pcs {
