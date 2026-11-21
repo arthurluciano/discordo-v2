@@ -1,0 +1,144 @@
+/* Animated backdrops for the Neon and Dragão skins (design/theme-scene.tsx).
+   Only transform and opacity animate, on HTML layers: the GPU moves them without repainting the page.
+   "Tema estático" (or the OS asking for less motion) sets data-motion="reduced" and freezes them. */
+
+.scene {
+  contain: strict;
+  pointer-events: none;
+}
+
+.scene-layer {
+  position: absolute;
+  will-change: transform, opacity;
+}
+
+[data-motion='reduced'] .scene,
+[data-motion='reduced'] .scene * {
+  animation: none !important;
+}
+
+/* Neon: a bright scan line sweeping down, behind the panels. */
+.neon-beam {
+  inset: 0 0 auto;
+  height: 22vh;
+  background: linear-gradient(to bottom, transparent, rgb(5 217 232 / 0.14) 85%, rgb(255 42 109 / 0.35));
+  animation: neon-sweep 7s linear infinite;
+}
+
+.neon-scanlines {
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.22) 0 1px, transparent 1px 3px);
+}
+
+@keyframes neon-sweep {
+  from {
+    transform: translateY(-25vh);
+  }
+  to {
+    transform: translateY(105vh);
+  }
+}
+
+/* Dragão: the dragon hovers, beats its wings and glows at the mouth; embers rise past it. */
+.dragon {
+  right: -4%;
+  bottom: 4%;
+  width: min(72vw, 860px);
+  aspect-ratio: 4 / 3;
+  opacity: 0.62;
+  animation: dragon-hover 5s ease-in-out infinite alternate;
+}
+
+.dragon > svg,
+.dragon-wing {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The shoulder, at (192, 140) of the 400 x 300 drawing. */
+.dragon-wing {
+  transform-origin: 48% 46.7%;
+  will-change: transform;
+  animation: dragon-flap 2.2s ease-in-out infinite alternate;
+}
+
+.dragon-wing.far {
+  animation-delay: -0.15s;
+}
+
+.dragon-fire {
+  left: 0%;
+  top: 30%;
+  width: 22%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 190 90 / 0.85), rgb(255 90 40 / 0.35) 45%, transparent 70%);
+  opacity: 0;
+  animation: dragon-fire 6s ease-in-out infinite;
+}
+
+.ember {
+  bottom: -2vh;
+  left: var(--x);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: #ffb347;
+  box-shadow: 0 0 6px 2px rgb(255 120 40 / 0.7);
+  opacity: 0;
+  animation: ember-rise var(--duration) linear var(--delay) infinite;
+}
+
+@keyframes dragon-hover {
+  from {
+    transform: translateY(-1.5%) rotate(-1deg);
+  }
+  to {
+    transform: translateY(2%) rotate(1.5deg);
+  }
+}
+
+@keyframes dragon-flap {
+  from {
+    transform: rotate(-6deg) scaleY(1);
+  }
+  to {
+    transform: rotate(9deg) scaleY(0.5);
+  }
+}
+
+@keyframes dragon-fire {
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  90% {
+    opacity: 0.6;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes ember-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  10% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--drift), -105vh, 0);
+  }
+}

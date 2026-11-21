@@ -1,0 +1,613 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/geist';
+@import './scenes.css';
+
+/* The Discordo palette, and the base every other skin overrides (`:where` keeps it below their blocks). */
+:root,
+:where([data-skin]) {
+  color-scheme: dark;
+
+  /* Discordo: dark chrome, calm contrast and Blurple as the only brand accent. */
+  --color-blurple: #5865f2;
+  --color-blurple-hover: #4752c4;
+  --color-blurple-soft: #7983f5;
+  --color-spring-green: #23a55a;
+  --color-cerulean: #00a8fc;
+  --color-fuchsia: #eb459e;
+  --color-ember-orange: #f0b232;
+  --color-ekko-red: #f23f42;
+  --color-snow: #f2f3f5;
+  --color-fog: #b5bac1;
+  --color-greyple: #949ba4;
+  --color-dim-grey: #5c5e66;
+
+  --surface-cosmic: #0e0f2d;
+  --surface-rail: #1e1f22;
+  --surface-sidebar: #2b2d31;
+  --surface-content: #313338;
+  --surface-raised: #383a40;
+  --surface-floating: #111214;
+  --surface-input: #1e1f22;
+  --surface-hover: #35373c;
+  --surface-active: #404249;
+  --canvas: #1e1f22;
+  --wallpaper: var(--canvas);
+}
+
+/* Aliases live apart from the palette so they re-resolve on any element that sets a skin (the theme
+   previews), not only on <html>. */
+:root,
+[data-skin] {
+  --background: var(--surface-content);
+  --foreground: var(--color-snow);
+  --card: var(--surface-sidebar);
+  --card-foreground: var(--color-snow);
+  --popover: var(--surface-floating);
+  --popover-foreground: var(--color-snow);
+  --primary: var(--color-blurple);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--color-snow);
+  --muted: var(--surface-hover);
+  --muted-foreground: var(--color-fog);
+  --accent: var(--surface-active);
+  --accent-foreground: var(--color-snow);
+  --destructive: var(--color-ekko-red);
+  --border: rgb(255 255 255 / 0.08);
+  --input: var(--surface-input);
+  --ring: var(--color-blurple-soft);
+  --radius: 0.75rem;
+
+  --sidebar: var(--surface-sidebar);
+  --sidebar-foreground: var(--color-snow);
+  --sidebar-primary: var(--color-blurple);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--surface-active);
+  --sidebar-accent-foreground: var(--color-snow);
+  --sidebar-border: rgb(255 255 255 / 0.06);
+  --sidebar-ring: var(--color-blurple-soft);
+
+  --status-success: var(--color-spring-green);
+  --status-success-foreground: #ffffff;
+  --status-warning: var(--color-ember-orange);
+  --status-warning-foreground: #111214;
+  --status-offline: var(--color-greyple);
+  --status-offline-foreground: #ffffff;
+  --media-speaking: var(--color-spring-green);
+  --media-speaking-foreground: #ffffff;
+  --media-muted: var(--color-ekko-red);
+  --media-muted-foreground: #ffffff;
+  --media-deafened: var(--color-ekko-red);
+  --media-deafened-foreground: #ffffff;
+  --media-camera-off: var(--color-greyple);
+  --media-camera-off-foreground: #ffffff;
+  --media-screenshare: var(--color-blurple);
+  --media-screenshare-foreground: #ffffff;
+  --media-connecting: var(--color-cerulean);
+  --media-connecting-foreground: #ffffff;
+
+  --chart-1: var(--color-blurple);
+  --chart-2: var(--color-spring-green);
+  --chart-3: var(--color-fuchsia);
+  --chart-4: var(--color-cerulean);
+  --chart-5: var(--color-ember-orange);
+}
+
+/* Liquid Glass. Same token names, translucent values: anything painted with `bg-surface-*`/`text-*`
+   follows without knowing about skins. Panels and overlays add blur through `glass-panel`. */
+[data-skin='glass'] {
+  color-scheme: dark;
+
+  --color-snow: #f7f8fc;
+  --color-fog: #d3d6e0;
+  --color-greyple: #a9afbd;
+  --color-dim-grey: rgb(255 255 255 / 0.22);
+
+  --canvas: #0b0c1a;
+  --wallpaper:
+    radial-gradient(circle at 8% 6%, rgb(88 101 242 / 0.6), transparent 45%),
+    radial-gradient(circle at 92% 14%, rgb(235 69 158 / 0.38), transparent 42%),
+    radial-gradient(circle at 74% 96%, rgb(0 168 252 / 0.36), transparent 48%),
+    radial-gradient(circle at 18% 92%, rgb(35 165 90 / 0.22), transparent 40%), var(--canvas);
+
+  --surface-cosmic: transparent;
+  --surface-rail: transparent;
+  --surface-sidebar: rgb(255 255 255 / 0.05);
+  /* Tints add up (panel + section + list) into the scrim that keeps chat text AA over the wallpaper. */
+  --surface-content: rgb(10 11 22 / 0.2);
+  --surface-raised: rgb(255 255 255 / 0.09);
+  --surface-floating: rgb(24 26 42 / 0.72);
+  --surface-input: rgb(0 0 0 / 0.24);
+  --surface-hover: rgb(255 255 255 / 0.07);
+  --surface-active: rgb(88 101 242 / 0.3);
+
+  --background: #161827;
+  --border: rgb(255 255 255 / 0.1);
+  --sidebar-border: rgb(255 255 255 / 0.08);
+
+  --glass-fill: rgb(22 24 40 / 0.38);
+  --glass-fill-strong: rgb(14 15 28 / 0.46);
+  --glass-fill-float: rgb(26 28 46 / 0.66);
+  --glass-filter: blur(28px) saturate(180%);
+  --glass-edge: linear-gradient(
+    155deg,
+    rgb(255 255 255 / 0.38),
+    rgb(255 255 255 / 0.06) 35%,
+    rgb(255 255 255 / 0.03) 65%,
+    rgb(255 255 255 / 0.2)
+  );
+  --glass-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.1), inset 0 -1px 2px rgb(0 0 0 / 0.18), 0 16px 48px rgb(0 0 0 / 0.35);
+}
+
+[data-skin='glass'][data-theme='light'] {
+  color-scheme: light;
+
+  --color-blurple-soft: #4752c4;
+  --color-spring-green: #188a48;
+  --color-cerulean: #0071bc;
+  --color-ekko-red: #d92b2e;
+  --color-snow: #16171d;
+  --color-fog: #383a44;
+  --color-greyple: #5c5f6d;
+  --color-dim-grey: rgb(0 0 0 / 0.2);
+
+  --canvas: #eef0f8;
+  --wallpaper:
+    radial-gradient(circle at 8% 6%, rgb(88 101 242 / 0.42), transparent 45%),
+    radial-gradient(circle at 92% 14%, rgb(235 69 158 / 0.3), transparent 42%),
+    radial-gradient(circle at 74% 96%, rgb(0 168 252 / 0.32), transparent 48%),
+    radial-gradient(circle at 18% 92%, rgb(240 178 50 / 0.26), transparent 40%), var(--canvas);
+
+  --surface-sidebar: rgb(255 255 255 / 0.3);
+  --surface-content: rgb(255 255 255 / 0.24);
+  --surface-raised: rgb(255 255 255 / 0.6);
+  --surface-floating: rgb(250 250 253 / 0.78);
+  --surface-input: rgb(255 255 255 / 0.62);
+  --surface-hover: rgb(0 0 0 / 0.05);
+  --surface-active: rgb(88 101 242 / 0.16);
+
+  --background: #f5f6fb;
+  --border: rgb(0 0 0 / 0.09);
+  --sidebar-border: rgb(0 0 0 / 0.07);
+
+  --glass-fill: rgb(255 255 255 / 0.42);
+  --glass-fill-strong: rgb(255 255 255 / 0.55);
+  --glass-fill-float: rgb(255 255 255 / 0.7);
+  --glass-edge: linear-gradient(
+    155deg,
+    rgb(255 255 255 / 0.95),
+    rgb(255 255 255 / 0.35) 35%,
+    rgb(255 255 255 / 0.25) 65%,
+    rgb(255 255 255 / 0.7)
+  );
+  --glass-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.7), inset 0 -1px 2px rgb(0 0 0 / 0.04), 0 12px 36px rgb(40 46 110 / 0.14);
+}
+
+/* "Reduzir transparência" (or the OS setting, resolved by the theme provider): same layout, solid glass. */
+[data-skin='glass'][data-transparency='reduced'] {
+  --surface-floating: #1c1e2e;
+  --glass-fill: #191b2b;
+  --glass-fill-strong: #141523;
+  --glass-fill-float: #1c1e2e;
+  --glass-filter: none;
+}
+[data-skin='glass'][data-theme='light'][data-transparency='reduced'] {
+  --surface-floating: #fafafd;
+  --glass-fill: #f2f3f9;
+  --glass-fill-strong: #fbfbfe;
+  --glass-fill-float: #fafafd;
+}
+
+/* Solid skins: the Discordo layout with another palette. */
+[data-skin='midnight'] {
+  --surface-cosmic: #000000;
+  --surface-rail: #000000;
+  --surface-sidebar: #0a0a0c;
+  --surface-content: #111114;
+  --surface-raised: #1a1a1f;
+  --surface-floating: #000000;
+  --surface-input: #0a0a0c;
+  --surface-hover: #17171b;
+  --surface-active: #222228;
+  --canvas: #000000;
+}
+
+[data-skin='forest'] {
+  --color-blurple: #2f9e6e;
+  --color-blurple-hover: #257f58;
+  --color-blurple-soft: #4cc08b;
+  --color-snow: #eef5f0;
+  --color-fog: #b3c4ba;
+  --color-greyple: #8fa398;
+  --color-dim-grey: #55665c;
+
+  --surface-cosmic: #0b1a14;
+  --surface-rail: #0f1a15;
+  --surface-sidebar: #15231c;
+  --surface-content: #1a2b23;
+  --surface-raised: #22362c;
+  --surface-floating: #0b140f;
+  --surface-input: #0f1a15;
+  --surface-hover: #1f3229;
+  --surface-active: #2a4236;
+  --canvas: #0f1a15;
+}
+
+[data-skin='ocean'] {
+  --color-blurple: #1e9bd7;
+  --color-blurple-hover: #177bab;
+  --color-blurple-soft: #4fb6e8;
+  --color-snow: #eef4fa;
+  --color-fog: #b0c2d3;
+  --color-greyple: #8a9db0;
+  --color-dim-grey: #52657a;
+
+  --surface-cosmic: #08131f;
+  --surface-rail: #0b1724;
+  --surface-sidebar: #10202f;
+  --surface-content: #142636;
+  --surface-raised: #1b3043;
+  --surface-floating: #08111b;
+  --surface-input: #0b1724;
+  --surface-hover: #182b3c;
+  --surface-active: #213a50;
+  --canvas: #0b1724;
+}
+
+[data-skin='dusk'] {
+  --color-blurple: #c75a9b;
+  --color-blurple-hover: #a84a83;
+  --color-blurple-soft: #e08bbd;
+  --color-snow: #f6eef7;
+  --color-fog: #c9b6cc;
+  --color-greyple: #a08fa4;
+  --color-dim-grey: #66586a;
+
+  --surface-cosmic: #1a0f1f;
+  --surface-rail: #1b1220;
+  --surface-sidebar: #241829;
+  --surface-content: #2b1d31;
+  --surface-raised: #36263d;
+  --surface-floating: #140c18;
+  --surface-input: #1b1220;
+  --surface-hover: #312236;
+  --surface-active: #3f2c47;
+  --canvas: #1b1220;
+}
+
+[data-skin='paper'] {
+  color-scheme: light;
+
+  --color-blurple-soft: #4752c4;
+  --color-spring-green: #188a48;
+  --color-cerulean: #0071bc;
+  --color-ekko-red: #d92b2e;
+  --color-snow: #1f2328;
+  --color-fog: #4e5058;
+  --color-greyple: #6d6f78;
+  --color-dim-grey: #a0a3ab;
+
+  --surface-cosmic: #e3e5e8;
+  --surface-rail: #e3e5e8;
+  --surface-sidebar: #f2f3f5;
+  --surface-content: #ffffff;
+  --surface-raised: #ebedef;
+  --surface-floating: #ffffff;
+  --surface-input: #ebedef;
+  --surface-hover: #e8eaed;
+  --surface-active: #dfe1e5;
+  --canvas: #e3e5e8;
+
+  --border: rgb(0 0 0 / 0.1);
+  --sidebar-border: rgb(0 0 0 / 0.08);
+}
+
+[data-skin='neon'] {
+  --color-blurple: #ff2a6d;
+  --color-blurple-hover: #d91c58;
+  --color-blurple-soft: #05d9e8;
+  --color-fuchsia: #ff2a6d;
+  --color-cerulean: #05d9e8;
+  --color-ember-orange: #f3e600;
+  --color-snow: #e8fbff;
+  --color-fog: #9fd8e0;
+  --color-greyple: #6fa3ad;
+  --color-dim-grey: #2e4c55;
+
+  --canvas: #05040c;
+  --wallpaper:
+    radial-gradient(circle at 85% 10%, rgb(255 42 109 / 0.35), transparent 40%),
+    radial-gradient(circle at 10% 95%, rgb(5 217 232 / 0.25), transparent 45%),
+    repeating-linear-gradient(to right, rgb(5 217 232 / 0.07) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(to bottom, rgb(5 217 232 / 0.07) 0 1px, transparent 1px 48px), var(--canvas);
+
+  /* Translucent, so the grid and the scan line show through. */
+  --surface-cosmic: rgb(5 4 12 / 0.9);
+  --surface-rail: rgb(6 5 14 / 0.9);
+  --surface-sidebar: rgb(10 9 22 / 0.85);
+  --surface-content: rgb(12 11 26 / 0.78);
+  --surface-raised: rgb(26 24 52 / 0.9);
+  --surface-floating: #0b0a18;
+  --surface-input: rgb(4 3 10 / 0.85);
+  --surface-hover: rgb(5 217 232 / 0.08);
+  --surface-active: rgb(255 42 109 / 0.22);
+
+  --background: #0c0b1a;
+  --border: rgb(5 217 232 / 0.22);
+  --sidebar-border: rgb(5 217 232 / 0.16);
+}
+
+[data-skin='dragon'] {
+  --color-blurple: #e2552b;
+  --color-blurple-hover: #c0441f;
+  --color-blurple-soft: #ff8a5c;
+  --color-snow: #fbefe8;
+  --color-fog: #d6b8ab;
+  --color-greyple: #a88f84;
+  --color-dim-grey: #5e4840;
+
+  --canvas: #0b0505;
+  --wallpaper:
+    radial-gradient(ellipse at 70% 110%, rgb(226 85 43 / 0.45), transparent 55%),
+    radial-gradient(circle at 15% 10%, rgb(120 20 20 / 0.35), transparent 45%), var(--canvas);
+
+  /* Translucent, so the dragon shows through. */
+  --surface-cosmic: rgb(14 6 6 / 0.85);
+  --surface-rail: rgb(16 7 7 / 0.85);
+  --surface-sidebar: rgb(24 10 10 / 0.78);
+  --surface-content: rgb(20 9 9 / 0.66);
+  --surface-raised: rgb(48 20 18 / 0.85);
+  --surface-floating: #160909;
+  --surface-input: rgb(10 4 4 / 0.8);
+  --surface-hover: rgb(255 120 80 / 0.08);
+  --surface-active: rgb(226 85 43 / 0.25);
+
+  --background: #140808;
+  --border: rgb(255 140 100 / 0.12);
+  --sidebar-border: rgb(255 140 100 / 0.1);
+}
+
+/* Not `inline`: utilities like `text-snow` read `var(--color-snow)`, so a skin can override it. */
+@theme {
+  --color-blurple: #5865f2;
+  --color-blurple-hover: #4752c4;
+  --color-blurple-soft: #7983f5;
+  --color-spring-green: #23a55a;
+  --color-cerulean: #00a8fc;
+  --color-fuchsia: #eb459e;
+  --color-ember-orange: #f0b232;
+  --color-ekko-red: #f23f42;
+  --color-snow: #f2f3f5;
+  --color-fog: #b5bac1;
+  --color-greyple: #949ba4;
+  --color-dim-grey: #5c5e66;
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Geist Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Arial Black', 'Geist Variable', Impact, sans-serif;
+  --font-body: 'Geist Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-data: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+
+  --color-surface-cosmic: var(--surface-cosmic);
+  --color-surface-rail: var(--surface-rail);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-content: var(--surface-content);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-floating: var(--surface-floating);
+  --color-surface-input: var(--surface-input);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-offline: var(--status-offline);
+  --color-status-offline-foreground: var(--status-offline-foreground);
+  --color-media-speaking: var(--media-speaking);
+  --color-media-speaking-foreground: var(--media-speaking-foreground);
+  --color-media-muted: var(--media-muted);
+  --color-media-muted-foreground: var(--media-muted-foreground);
+  --color-media-deafened: var(--media-deafened);
+  --color-media-deafened-foreground: var(--media-deafened-foreground);
+  --color-media-camera-off: var(--media-camera-off);
+  --color-media-camera-off-foreground: var(--media-camera-off-foreground);
+  --color-media-screenshare: var(--media-screenshare);
+  --color-media-screenshare-foreground: var(--media-screenshare-foreground);
+  --color-media-connecting: var(--media-connecting);
+  --color-media-connecting-foreground: var(--media-connecting-foreground);
+
+  --text-caption: 0.75rem;
+  --text-body: 0.9375rem;
+  --text-body-lg: 1rem;
+  --text-subheading: 1.25rem;
+  --text-heading-sm: 1.875rem;
+  --text-heading: 3rem;
+  --text-display: 3.8125rem;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 1.5rem;
+  --radius-action: 0.5rem;
+}
+
+@layer base {
+  html {
+    background: var(--canvas);
+    overscroll-behavior: none;
+  }
+  * {
+    @apply border-border outline-ring/60;
+    scrollbar-color: var(--color-dim-grey) transparent;
+    scrollbar-width: thin;
+  }
+  body {
+    min-width: 320px;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: var(--text-body);
+    font-feature-settings:
+      'ss01' on,
+      'tnum' on;
+    font-synthesis-weight: none;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-blurple) 70%, transparent);
+    color: white;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-blurple-soft);
+    outline-offset: 2px;
+  }
+  time,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility eyebrow {
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-fog);
+}
+@utility section-label {
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-greyple);
+}
+@utility display-crushed {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+@utility titlebar-safe {
+  padding-top: var(--titlebar-height, 0px);
+}
+@utility telemetry {
+  font-family: var(--font-data);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* `data-platform="ios"` vem de `markPlatform` (lib/platform.ts). */
+@custom-variant ios (&:where([data-platform="ios"], [data-platform="ios"] *));
+
+/* Inside the glass skin, unless a nearer solid skin (a theme preview) says otherwise. */
+@custom-variant glass (&:where([data-skin="glass"] *):not(:where([data-skin="glass"] [data-skin]:not([data-skin="glass"]) *)));
+
+/* A floating pane of glass. The 1px specular edge is a gradient painted on the border box under a
+   padding-box fill, so it survives `overflow: auto` (a pseudo-element would scroll away). */
+@utility glass-panel {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--glass-fill), var(--glass-fill)) padding-box,
+    var(--glass-edge) border-box;
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-shadow);
+  corner-shape: squircle;
+}
+/* Denser tint for text-heavy panes (chat) and for overlays above them. */
+@utility glass-strong {
+  --glass-fill: var(--glass-fill-strong);
+}
+@utility glass-float {
+  --glass-fill: var(--glass-fill-float);
+}
+@utility wallpaper {
+  background: var(--wallpaper);
+}
+
+/* Vidro no estilo Liquid Glass para o dock flutuante no iOS. Quem pede menos transparencia no
+   sistema recebe o mesmo dock, solido. */
+@utility dock-glass {
+  background: color-mix(in srgb, var(--surface-rail) 55%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-color: rgb(255 255 255 / 0.14);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -1px 0 rgb(255 255 255 / 0.04),
+    0 12px 40px rgb(0 0 0 / 0.45);
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--surface-rail);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Folga no fim das listas do celular para o dock flutuante nao cobrir o ultimo item.
+   `--dock-height` e medido pelo proprio dock (user-dock.tsx). */
+@utility dock-clearance {
+  @media (width < 48rem) {
+    padding-bottom: calc(var(--dock-height, 4rem) + env(safe-area-inset-bottom) + 1.5rem);
+  }
+}

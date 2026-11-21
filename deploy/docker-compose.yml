@@ -1,0 +1,59 @@
+name: discordo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: discordo
+      POSTGRES_PASSWORD: discordo # local development only
+      POSTGRES_DB: discordo
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "discordo"]
+      interval: 2s
+      retries: 30
+
+  # S3-compatible object storage for attachments. MinIO no longer publishes official images, so this is
+  # Chainguard's build of it; any S3-compatible service works, the server only speaks the S3 API.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: discordo
+      MINIO_ROOT_PASSWORD: discordo-secret # local development only
+    ports:
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001" # web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "/usr/bin/minio", "--version"] # the image has no shell or curl, so this only proves the process starts
+      interval: 2s
+      retries: 30
+
+  # Only for MEDIA_PROVIDER=livekit (see the README); `make db` leaves it off. Its UDP port is the built-in SFU's too,
+  # so stop it before running the server with MEDIA_PROVIDER=pion.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    profiles: [livekit]
+    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1
+    environment:
+      LIVEKIT_CONFIG: | # local development only
+        keys:
+          devkey: devsecret-local-development-only
+        webhook:
+          api_key: devkey
+          urls: [http://host.docker.internal:8080/livekit/webhook]
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # the server, run on the host by `make run`
+    ports:
+      - "127.0.0.1:7880:7880" # signaling and the RoomService API
+      - "127.0.0.1:7881:7881" # media over TCP, when UDP is blocked
+      - "127.0.0.1:7882:7882/udp"
+
+volumes:
+  pgdata:
+  miniodata:

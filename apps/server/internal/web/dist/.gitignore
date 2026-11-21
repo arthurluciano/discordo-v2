@@ -1,0 +1,3 @@
+# The web app build lands here (see Dockerfile).
+*
+!.gitignore

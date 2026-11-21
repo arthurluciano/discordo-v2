@@ -1,0 +1,3 @@
+[submodule "apps/desktop/third_party/go-native-ui"]
+	path = apps/desktop/third_party/go-native-ui
+	url = https://github.com/AdamAugustinsky/go-native-ui

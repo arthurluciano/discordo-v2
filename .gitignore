@@ -1,0 +1,9 @@
+.env
+# Go
+apps/server/discordo
+# Web
+node_modules/
+apps/web/dist/
+
+# builds of the desktop app (released on GitHub)
+/dist/

@@ -1,0 +1,86 @@
+# Production stack, deployed by Openship (see openship.json). It lives at the repository root because
+# Openship rejects build contexts that climb out of the compose file's folder.
+# For local development use deploy/docker-compose.yml (`make db`) instead.
+#
+# Variables come from the project's environment in Openship, never from this file:
+#   POSTGRES_PASSWORD, S3_SECRET_KEY   random secrets (letters and digits only: one goes inside a URL)
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET   from the Discord Developer Portal
+#   PUBLIC_URL        how browsers reach the server, e.g. https://discordo.example.com
+#   MEDIA_PUBLIC_IP   the server's public IP, where clients send voice and video
+#   LIVEKIT_URL       how clients reach LiveKit: PUBLIC_URL as wss://, as the server passes /rtc on to it
+#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET   any key name and a random secret of 32+ letters and digits
+name: discordo
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - minio
+    ports:
+      - "8080" # HTTP and WebSocket, reached through the domain
+    environment:
+      DATABASE_URL: postgres://discordo:${POSTGRES_PASSWORD}@postgres:5432/discordo
+      PUBLIC_URL: ${PUBLIC_URL}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: discordo
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      MEDIA_PROVIDER: livekit
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+
+  # Calls' media. Its signalling comes through the server at /rtc (our domain's certificate); the media goes
+  # straight to the host: UDP 7882, or TCP 7881 where a network blocks UDP. Without the IP, Openship binds them
+  # to 127.0.0.1.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:7881:7881"
+      - "0.0.0.0:7882:7882/udp"
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: ${MEDIA_PUBLIC_IP}
+        keys:
+          ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+        webhook:
+          api_key: ${LIVEKIT_API_KEY}
+          urls:
+            - http://server:8080/livekit/webhook
+
+  # Neither the database nor the object storage publishes a port: only the server reaches them.
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: discordo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: discordo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: server /data
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: discordo
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  miniodata:
