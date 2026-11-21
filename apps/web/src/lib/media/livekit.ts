@@ -13,7 +13,7 @@ import {
   type VideoCodec,
 } from 'livekit-client'
 import type { MediaConnection, TrackName } from '@/lib/wire'
-import { CODECS, probeFor, videoCodecs, type CodecChoice, type VideoCodecId } from './codecs'
+import { CODECS, firstOnGpu, probeFor, videoCodecs, type CodecChoice, type VideoCodecId } from './codecs'
 import type { Encoding } from './presets'
 import type { Quality, RemoteTrack, SendOp, TransportEvents, VoiceTransport } from './transport'
 
@@ -29,16 +29,18 @@ export const sourceOf = (name: TrackName): Track.Source => SOURCES[name]
 export const nameOf = (source: Track.Source): TrackName | undefined =>
   (Object.keys(SOURCES) as TrackName[]).find((name) => SOURCES[name] === source)
 
-/** The best codec this browser can send (GPU first, see codecs.ts) that LiveKit takes; VP8 is its own default. */
+/** The best codec this browser can send (GPU first, see codecs.ts) that LiveKit takes (VP8 is its own default), and
+ * whether it is encoded on the GPU. */
 const bestCodec = async (
   track: MediaStreamTrack,
   maxBitrate: number | undefined,
   choice: CodecChoice | undefined,
-): Promise<VideoCodec> => {
-  const [first] = await videoCodecs(probeFor(track, maxBitrate), choice)
-  const id = first?.mimeType.toLowerCase().replace('video/', '')
+): Promise<{ codec: VideoCodec; gpu: boolean }> => {
+  const probe = probeFor(track, maxBitrate)
+  const codecs = await videoCodecs(probe, choice)
+  const id = codecs[0]?.mimeType.toLowerCase().replace('video/', '')
 
-  return id && id in CODECS ? (id as VideoCodecId) : 'vp8'
+  return { codec: id && id in CODECS ? (id as VideoCodecId) : 'vp8', gpu: await firstOnGpu(codecs, probe) }
 }
 
 const publishOptions = async (
@@ -50,11 +52,9 @@ const publishOptions = async (
   if (name === 'mic' || name === 'screen-audio')
     return encoding ? { ...options, audioPreset: { maxBitrate: encoding.maxBitrate } } : options
   // VP9/AV1 go out as SVC; LiveKit then also sends a VP8 backup for viewers that cannot decode them.
-  const video = {
-    ...options,
-    simulcast: true,
-    videoCodec: await bestCodec(track, encoding?.maxBitrate, encoding?.codec),
-  }
+  // Simulcast is one encode per layer: on the CPU that makes the whole share stutter, so it sends one.
+  const { codec, gpu } = await bestCodec(track, encoding?.maxBitrate, encoding?.codec)
+  const video = { ...options, simulcast: gpu, videoCodec: codec }
   if (!encoding) return video
   const { codec: _, ...limits } = encoding
 

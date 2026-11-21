@@ -59,6 +59,10 @@ func New(store *postgres.Store, provider auth.Provider, opt Options) (http.Handl
 	if webhooks, ok := opt.Media.(http.Handler); ok { // LiveKit reports what participants publish this way
 		mux := http.NewServeMux()
 		mux.Handle("POST /livekit/webhook", webhooks)
+		if p, ok := opt.Media.(interface{ SignalProxy() http.Handler }); ok && p.SignalProxy() != nil {
+			mux.Handle("/rtc", p.SignalProxy()) // LiveKit's signalling, through our own domain and certificate
+			mux.Handle("/rtc/", p.SignalProxy())
+		}
 		mux.Handle("/", handler)
 		handler = mux
 	}

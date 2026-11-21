@@ -51,7 +51,11 @@ func run() error {
 	}
 	var provider media.Provider
 	if cfg.MediaProvider == "livekit" {
-		provider = livekit.New(cfg.LiveKit)
+		lk, err := livekit.New(cfg.LiveKit)
+		if err != nil {
+			return fmt.Errorf("livekit: %w", err)
+		}
+		provider = lk
 	} else {
 		sfu, err := pion.New(cfg.Media)
 		if err != nil {

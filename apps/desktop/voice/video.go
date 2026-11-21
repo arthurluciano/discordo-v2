@@ -26,6 +26,9 @@ const (
 var h264 = webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000,
 	SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"}
 
+// opusCap is the sound we send: the microphone and a screen's.
+var opusCap = webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: Rate, Channels: 2}
+
 const pliEvery = 500 * time.Millisecond // keyframe requests at most this often per track
 
 // videoState is the session's video: what it shows and what it shares. Guarded by Session.mu.
@@ -40,8 +43,8 @@ type videoState struct {
 
 // screenOut is my screen going out: its track, the encoder made for the pictures' size, and its transceiver.
 type screenOut struct {
-	track   *webrtc.TrackLocalStaticSample
-	tr      *webrtc.RTPTransceiver
+	track   sampleTrack
+	remove  func() error
 	enc     *Encoder
 	fps     int
 	bitrate int
@@ -49,12 +52,12 @@ type screenOut struct {
 	lastPic Picture // retained: sent again on a keyframe request, as a still screen sends nothing
 
 	// Its sound, in 20 ms Opus packets; sound comes on one thread (ScreenCaptureKit's queue), under soundMu.
-	sound   *webrtc.TrackLocalStaticSample
-	soundTr *webrtc.RTPTransceiver
-	soundMu sync.Mutex
-	opus    *opus.Encoder
-	pcm     []int16 // what is left of the last sample buffer, short of a packet
-	packet  []byte
+	sound       sampleTrack
+	removeSound func() error
+	soundMu     sync.Mutex
+	opus        *opus.Encoder
+	pcm         []int16 // what is left of the last sample buffer, short of a packet
+	packet      []byte
 }
 
 // closeSound frees the sound's encoder; nothing more is sent after it.
@@ -108,7 +111,16 @@ func videoKey(user, track string) string { return user + "/" + track }
 
 // Watch starts (or stops) receiving someone's camera or screen: the server forwards video only on request.
 func (s *Session) Watch(userID, track string, on bool) {
-	s.send("rtc_subscribe", map[string]any{"user_id": userID, "track": track, "on": on})
+	s.mu.Lock()
+	room := s.lk
+	s.mu.Unlock()
+
+	if room != nil {
+		go s.lkSubscribe(room, userID, track, on, "auto")
+	} else {
+		s.send("rtc_subscribe", map[string]any{"user_id": userID, "track": track, "on": on})
+	}
+
 	if on {
 		return
 	}
@@ -123,6 +135,15 @@ func (s *Session) Watch(userID, track string, on bool) {
 
 // WatchQuality asks for someone's track at a quality: auto, high, medium or low (the server's simulcast layer).
 func (s *Session) WatchQuality(userID, track, quality string) {
+	s.mu.Lock()
+	room := s.lk
+	s.mu.Unlock()
+
+	if room != nil {
+		go s.lkSubscribe(room, userID, track, true, quality)
+		return
+	}
+
 	s.send("rtc_subscribe", map[string]any{"user_id": userID, "track": track, "on": true, "quality": quality})
 }
 
@@ -174,8 +195,8 @@ func (s *Session) setNote(key, note string) {
 }
 
 // receiveVideo depacketizes and decodes one remote video track for as long as it lasts.
-func (s *Session) receiveVideo(remote *webrtc.TrackRemote) {
-	key := videoKey(remote.StreamID(), remote.ID())
+func (s *Session) receiveVideo(userID, name string, remote *webrtc.TrackRemote) {
+	key := videoKey(userID, name)
 	defer func() {
 		s.mu.Lock()
 		s.vid.frames[key].Release()
@@ -212,7 +233,7 @@ func (s *Session) receiveVideo(remote *webrtc.TrackRemote) {
 
 		lastPLI = time.Now()
 		s.mu.Lock()
-		sub := s.sub
+		sub := s.subLocked()
 		s.mu.Unlock()
 
 		if sub != nil {
@@ -231,7 +252,7 @@ func (s *Session) receiveVideo(remote *webrtc.TrackRemote) {
 
 		for {
 			s.mu.Lock()
-			sub := s.sub
+			sub := s.subLocked()
 			s.mu.Unlock()
 
 			if sub != nil {
@@ -378,75 +399,41 @@ func (s *Session) Previewing() bool {
 // StartScreen publishes my screen: a "screen" track in H.264; SendScreen feeds it pictures. It negotiates with the
 // server, so it blocks: not on the UI thread.
 func (s *Session) StartScreen(fps, bitrate int) error {
-	track, err := webrtc.NewTrackLocalStaticSample(h264, TrackScreen, "discordo")
-	if err != nil {
-		return err
+	out := &screenOut{fps: fps, bitrate: bitrate}
+
+	// A viewer that lost pictures (or just started) asks for a keyframe: the last picture goes again as one.
+	keyframe := func() {
+		s.mu.Lock()
+		enc, pic := out.enc, out.lastPic.Retain()
+		s.mu.Unlock()
+
+		if enc != nil {
+			enc.ForceKeyframe()
+		}
+
+		if enc != nil && pic != 0 {
+			_ = enc.Encode(pic)
+		}
+
+		pic.Release()
 	}
 
-	s.pubMu.Lock()
-	pub, err := s.ensurePub()
+	video, err := s.publish(TrackScreen, h264, keyframe)
 	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	tr, err := pub.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
-	if err != nil {
-		s.pubMu.Unlock()
 		return err
 	}
 
 	// The sound goes on its own track, always there: the SFU publishes it with its first packet, if sound comes.
-	sound, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: Rate, Channels: 2}, TrackScreenAudio, "discordo")
+	sound, err := s.publish(TrackScreenAudio, opusCap, nil)
 	if err != nil {
-		s.pubMu.Unlock()
+		_ = video.remove()
 		return err
 	}
 
-	soundTr, err := pub.AddTransceiverFromTrack(sound, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
-	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	go drainRTCP(soundTr.Sender())
-
-	out := &screenOut{track: track, tr: tr, fps: fps, bitrate: bitrate, sound: sound, soundTr: soundTr}
 	s.mu.Lock()
-	s.pubNames[soundTr] = TrackScreenAudio
-	s.pubNames[tr] = TrackScreen
+	out.track, out.remove, out.sound, out.removeSound = video.track, video.remove, sound.track, sound.remove
 	s.vid.screen, s.vid.screenOn = out, true
 	s.mu.Unlock()
-	s.pubMu.Unlock()
-
-	// A viewer that lost pictures (or just started) asks for a keyframe; the SFU passes it on to us.
-	go func() {
-		for {
-			pkts, _, err := tr.Sender().ReadRTCP()
-			if err != nil {
-				return
-			}
-
-			for _, p := range pkts {
-				switch p.(type) {
-				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-					s.mu.Lock()
-					enc, pic := out.enc, out.lastPic.Retain()
-					s.mu.Unlock()
-
-					if enc != nil {
-						enc.ForceKeyframe()
-					}
-
-					if enc != nil && pic != 0 {
-						_ = enc.Encode(pic)
-					}
-
-					pic.Release()
-				}
-			}
-		}
-	}()
 
 	// A still screen gives no pictures: the last one goes again every second, so a viewer who arrives later (whose
 	// track starts with the first packet after the SFU adds them) gets something to ask a keyframe on.
@@ -535,13 +522,10 @@ func (s *Session) StopScreen() error {
 	out, me, c := s.vid.screen, s.me, s.vid.capture
 	s.vid.screen, s.vid.screenOn, s.vid.capture = nil, false, nil
 	if out != nil {
-		delete(s.pubNames, out.tr)
-		delete(s.pubNames, out.soundTr)
 		out.lastPic.Release()
 		out.lastPic = 0
 	}
 
-	pub := s.pub
 	s.vid.frames[videoKey(me, TrackScreen)].Release()
 	delete(s.vid.frames, videoKey(me, TrackScreen))
 	s.mu.Unlock()
@@ -560,15 +544,11 @@ func (s *Session) StopScreen() error {
 	}
 
 	out.closeSound()
-	if pub == nil {
+	if out.remove == nil { // stopped while it started
 		return nil
 	}
 
-	s.pubMu.Lock()
-	err := errors.Join(pub.RemoveTrack(out.tr.Sender()), pub.RemoveTrack(out.soundTr.Sender()))
-	s.pubMu.Unlock()
-
-	if err != nil {
+	if err := errors.Join(out.remove(), out.removeSound()); err != nil {
 		return err
 	}
 

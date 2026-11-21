@@ -71,8 +71,10 @@ func TestSessionFailures(t *testing.T) {
 		name, event, want string
 	}{
 		{"forbidden", `{"t":"VOICE_ERROR","d":{"op":"voice_join","error":"forbidden"}}`, "Erro na chamada: Você não tem permissão para entrar nesta chamada."},
-		{"livekit", `{"t":"VOICE_READY","d":{"channel_id":"v1","connection":{"kind":"livekit","url":"wss://x","token":"t"}}}`,
-			`Este app não suporta o tipo de conexão de mídia do servidor ("livekit").`},
+		{"unknown media", `{"t":"VOICE_READY","d":{"channel_id":"v1","connection":{"kind":"other"}}}`,
+			`Este app não suporta o tipo de conexão de mídia do servidor ("other").`},
+		{"livekit without its address", `{"t":"VOICE_READY","d":{"channel_id":"v1","connection":{"kind":"livekit"}}}`,
+			"Falha ao iniciar a mídia: o servidor não mandou o endereço da chamada"},
 	}
 
 	for _, c := range cases {

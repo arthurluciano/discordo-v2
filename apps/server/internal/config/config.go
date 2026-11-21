@@ -40,6 +40,7 @@ func Load() (Config, error) {
 		MediaProvider:       provider,
 		LiveKit: livekit.Config{
 			URL:       os.Getenv("LIVEKIT_URL"),
+			APIURL:    os.Getenv("LIVEKIT_API_URL"),
 			APIKey:    os.Getenv("LIVEKIT_API_KEY"),
 			APISecret: os.Getenv("LIVEKIT_API_SECRET"),
 		},

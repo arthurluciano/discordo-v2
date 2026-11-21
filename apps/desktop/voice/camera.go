@@ -7,8 +7,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -26,8 +24,8 @@ var errNoCamera = errors.New("nenhuma câmera encontrada")
 
 // cameraOut is my camera going out: its track, the encoder made for the pictures' size, the capture.
 type cameraOut struct {
-	track   *webrtc.TrackLocalStaticSample
-	tr      *webrtc.RTPTransceiver
+	track   sampleTrack
+	remove  func() error
 	enc     *Encoder
 	capture *CameraCapture
 }
@@ -42,53 +40,26 @@ func (s *Session) StartCamera(id string) error {
 		return nil
 	}
 
-	track, err := webrtc.NewTrackLocalStaticSample(h264, TrackCamera, "discordo")
-	if err != nil {
-		return err
-	}
-
-	s.pubMu.Lock()
-	pub, err := s.ensurePub()
-	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	tr, err := pub.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
-	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	out := &cameraOut{track: track, tr: tr}
-	s.mu.Lock()
-	s.pubNames[tr] = TrackCamera
-	s.vid.camera = out
-	s.mu.Unlock()
-	s.pubMu.Unlock()
+	out := &cameraOut{}
 
 	// A viewer that lost pictures (or just started) asks for a keyframe; the SFU passes it on to us.
-	go func() {
-		for {
-			pkts, _, err := tr.Sender().ReadRTCP()
-			if err != nil {
-				return
-			}
+	pub, err := s.publish(TrackCamera, h264, func() {
+		s.mu.Lock()
+		enc := out.enc
+		s.mu.Unlock()
 
-			for _, p := range pkts {
-				switch p.(type) {
-				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-					s.mu.Lock()
-					enc := out.enc
-					s.mu.Unlock()
-
-					if enc != nil {
-						enc.ForceKeyframe()
-					}
-				}
-			}
+		if enc != nil {
+			enc.ForceKeyframe()
 		}
-	}()
+	})
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	out.track, out.remove = pub.track, pub.remove
+	s.vid.camera = out
+	s.mu.Unlock()
 
 	c, err := StartCamera(id, func(p Picture) { s.cameraFrame(out, p) }, func(error) { go s.StopCamera() })
 	if err != nil {
@@ -153,12 +124,11 @@ func (s *Session) cameraFrame(out *cameraOut, p Picture) {
 // StopCamera turns my camera off. It negotiates when it was going out: not on the UI thread.
 func (s *Session) StopCamera() error {
 	s.mu.Lock()
-	out, me, pub := s.vid.camera, s.me, s.pub
+	out, me := s.vid.camera, s.me
 	s.vid.camera = nil
 	var c *CameraCapture
 	var enc *Encoder
 	if out != nil {
-		delete(s.pubNames, out.tr)
 		c, enc = out.capture, out.enc
 	}
 
@@ -179,15 +149,7 @@ func (s *Session) StopCamera() error {
 		enc.Close()
 	}
 
-	if pub == nil {
-		return nil
-	}
-
-	s.pubMu.Lock()
-	err := pub.RemoveTrack(out.tr.Sender())
-	s.pubMu.Unlock()
-
-	if err != nil {
+	if err := out.remove(); err != nil {
 		return err
 	}
 

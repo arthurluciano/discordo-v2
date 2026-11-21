@@ -8,6 +8,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"time"
 
 	"github.com/livekit/protocol/auth"
@@ -21,7 +23,8 @@ import (
 )
 
 type Config struct {
-	URL       string // what browsers connect to (wss://...); also used to reach the RoomService API
+	URL       string // what clients connect to (wss://...)
+	APIURL    string // where we reach LiveKit (http://livekit:7880); also proxied at /rtc when set. "": URL
 	APIKey    string
 	APISecret string
 }
@@ -41,17 +44,32 @@ type Provider struct {
 	cfg      Config
 	rooms    *lksdk.RoomServiceClient
 	keys     auth.KeyProvider
+	proxy    http.Handler // to APIURL's signalling, or nil
 	onTracks func(roomID, userID string, tracks []string)
 }
 
-func New(cfg Config) *Provider {
+func New(cfg Config) (*Provider, error) {
+	api, proxy := cfg.URL, http.Handler(nil)
+	if cfg.APIURL != "" {
+		target, err := url.Parse(cfg.APIURL)
+		if err != nil {
+			return nil, err
+		}
+
+		api, proxy = cfg.APIURL, httputil.NewSingleHostReverseProxy(target) // it carries WebSocket upgrades
+	}
+
 	return &Provider{
 		cfg:      cfg,
-		rooms:    lksdk.NewRoomServiceClient(cfg.URL, cfg.APIKey, cfg.APISecret),
+		rooms:    lksdk.NewRoomServiceClient(api, cfg.APIKey, cfg.APISecret),
+		proxy:    proxy,
 		keys:     auth.NewSimpleKeyProvider(cfg.APIKey, cfg.APISecret),
 		onTracks: func(string, string, []string) {},
-	}
+	}, nil
 }
+
+// SignalProxy passes clients' /rtc requests on to LiveKit, when it is reached at APIURL.
+func (p *Provider) SignalProxy() http.Handler { return p.proxy }
 
 func (p *Provider) OnTracks(fn func(roomID, userID string, tracks []string)) { p.onTracks = fn }
 

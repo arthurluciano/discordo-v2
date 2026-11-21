@@ -20,7 +20,7 @@ import (
 const key, secret = "testkey", "testsecret-that-is-long-enough-for-hs256"
 
 func TestTokenGrants(t *testing.T) {
-	p := New(Config{URL: "ws://livekit.test", APIKey: key, APISecret: secret})
+	p, _ := New(Config{URL: "ws://livekit.test", APIKey: key, APISecret: secret})
 	all := []lkproto.TrackSource{lkproto.TrackSource_MICROPHONE, lkproto.TrackSource_CAMERA, lkproto.TrackSource_SCREEN_SHARE, lkproto.TrackSource_SCREEN_SHARE_AUDIO}
 	for _, tc := range []struct {
 		grants  media.Grants
@@ -77,7 +77,7 @@ func TestSourceNames(t *testing.T) {
 }
 
 func TestWebhook(t *testing.T) {
-	p := New(Config{URL: "ws://livekit.test", APIKey: key, APISecret: secret})
+	p, _ := New(Config{URL: "ws://livekit.test", APIKey: key, APISecret: secret})
 	type update struct {
 		room, user string
 		tracks     []string
@@ -141,4 +141,24 @@ func deliver(t *testing.T, h http.Handler, ev *lkproto.WebhookEvent, secret stri
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w.Code
+}
+
+func TestSignalProxy(t *testing.T) {
+	lk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(r.URL.Path)) }))
+	defer lk.Close()
+
+	p, err := New(Config{URL: "wss://discordo.test", APIURL: lk.URL, APIKey: "k", APISecret: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	p.SignalProxy().ServeHTTP(rec, httptest.NewRequest("GET", "/rtc/validate", nil))
+	if rec.Body.String() != "/rtc/validate" {
+		t.Fatalf("proxied to %q", rec.Body.String())
+	}
+
+	if p, _ := New(Config{URL: "wss://discordo.test"}); p.SignalProxy() != nil {
+		t.Fatal("a proxy without LIVEKIT_API_URL")
+	}
 }

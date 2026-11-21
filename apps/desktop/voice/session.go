@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	lksdk "github.com/livekit/server-sdk-go/v2"
 	"io"
 	"strings"
 	"sync"
@@ -74,10 +75,12 @@ type Session struct {
 	cancel context.CancelFunc
 	out    chan []byte // to the gateway, in order
 
-	enc    *opus.Encoder
-	mic    *webrtc.TrackLocalStaticSample
-	api    *webrtc.API // receiving: every codec the server may forward
-	pubAPI *webrtc.API // sending: Opus and our H.264 only, so the server picks them
+	enc     *opus.Encoder
+	mic     sampleTrack
+	lk      *lksdk.Room       // the LiveKit room, when the server uses LiveKit (then pub and sub stay nil)
+	lkWatch map[string]string // on LiveKit, by user/track: the video I watch, at what quality
+	api     *webrtc.API       // receiving: every codec the server may forward
+	pubAPI  *webrtc.API       // sending: Opus and our H.264 only, so the server picks them
 
 	pubMu   sync.Mutex  // one negotiation of pub at a time: the next offer waits for the last answer
 	answers chan string // RTC_ANSWER's SDPs, for the negotiation waiting on them
@@ -109,7 +112,7 @@ func Join(opt Options) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Session{opt: opt, mixer: NewMixer(), ctx: ctx, cancel: cancel, out: make(chan []byte, 64),
 		listenOnly: opt.ListenOnly, muted: opt.Muted || opt.Deafened, deafened: opt.Deafened, loudAt: map[string]time.Time{}, speaking: map[string]bool{},
-		encoded: make([]byte, 1500), answers: make(chan string, 1), pubNames: map[*webrtc.RTPTransceiver]string{},
+		encoded: make([]byte, 1500), answers: make(chan string, 1), pubNames: map[*webrtc.RTPTransceiver]string{}, lkWatch: map[string]string{},
 		vid: videoState{frames: map[string]Picture{}, notes: map[string]string{}}}
 	if opt.ListenOnly {
 		s.err = opt.ListenOnlyReason
@@ -386,7 +389,9 @@ func (s *Session) handle(t string, d json.RawMessage) {
 		var r struct {
 			ChannelID  string `json:"channel_id"`
 			Connection struct {
-				Kind string `json:"kind"`
+				Kind  string `json:"kind"`
+				URL   string `json:"url"`
+				Token string `json:"token"`
 			} `json:"connection"`
 		}
 		if json.Unmarshal(d, &r) != nil || r.ChannelID != s.opt.ChannelID {
@@ -397,12 +402,18 @@ func (s *Session) handle(t string, d json.RawMessage) {
 		s.pending = false
 		s.mu.Unlock()
 
-		if r.Connection.Kind != "pion" {
+		var err error
+		switch r.Connection.Kind {
+		case "pion":
+			err = s.startMedia(nil)
+		case "livekit":
+			err = s.startMedia(func() error { return s.startLiveKit(r.Connection.URL, r.Connection.Token) })
+		default:
 			s.fail(`Este app não suporta o tipo de conexão de mídia do servidor ("` + r.Connection.Kind + `").`)
 			return
 		}
 
-		if err := s.startMedia(); err != nil {
+		if err != nil {
 			s.fail("Falha ao iniciar a mídia: " + err.Error())
 		}
 
@@ -506,15 +517,22 @@ func (s *Session) peer(api *webrtc.API) (*webrtc.PeerConnection, error) {
 	return pc, nil
 }
 
-// startMedia opens the speakers and, unless listening only, the microphone and the publish connection.
-func (s *Session) startMedia() error {
-	var err error
-	if s.api, err = newAPI(true); err != nil {
-		return err
-	}
+// startMedia opens the speakers and, unless listening only, the microphone and the publish connection. join
+// connects to LiveKit first; nil is our SFU, negotiated over the gateway.
+func (s *Session) startMedia(join func() error) error {
+	if join != nil {
+		if err := join(); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		if s.api, err = newAPI(true); err != nil {
+			return err
+		}
 
-	if s.pubAPI, err = newAPI(false); err != nil {
-		return err
+		if s.pubAPI, err = newAPI(false); err != nil {
+			return err
+		}
 	}
 
 	if !s.opt.Headless {
@@ -553,31 +571,15 @@ func (s *Session) publishMic() error {
 
 	enc.SetBitrate(48000)
 
-	track, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: Rate, Channels: 2}, "mic", "discordo")
+	out, err := s.publish("mic", opusCap, nil)
 	if err != nil {
+		enc.Close()
 		return err
 	}
-
-	s.pubMu.Lock()
-	pub, err := s.ensurePub()
-	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	tr, err := pub.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
-	if err != nil {
-		s.pubMu.Unlock()
-		return err
-	}
-
-	go drainRTCP(tr.Sender())
 
 	s.mu.Lock()
-	s.pubNames[tr] = "mic"
-	s.enc, s.mic = enc, track
+	s.enc, s.mic = enc, out.track
 	s.mu.Unlock()
-	s.pubMu.Unlock()
 
 	// In the background: the answer comes through this goroutine (the reader), which must not wait for it.
 	go s.negotiate()
@@ -786,11 +788,16 @@ func (s *Session) receive(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiv
 	go drainRTCP(receiver)
 
 	if remote.Kind() != webrtc.RTPCodecTypeAudio {
-		s.receiveVideo(remote) // only after rtc_subscribe (Watch)
+		s.receiveVideo(remote.StreamID(), remote.ID(), remote) // only after rtc_subscribe (Watch)
 		return
 	}
 
-	src, err := s.mixer.Add(remote.StreamID())
+	s.receiveAudio(remote.StreamID(), remote)
+}
+
+// receiveAudio mixes a user's sound track for as long as it lasts.
+func (s *Session) receiveAudio(userID string, remote *webrtc.TrackRemote) {
+	src, err := s.mixer.Add(userID)
 	if err != nil {
 		return
 	}
@@ -892,8 +899,8 @@ func (s *Session) watchSpeaking() {
 
 func (s *Session) closePeers() {
 	s.mu.Lock()
-	pcs, enc := []*webrtc.PeerConnection{s.pub, s.sub}, s.enc
-	s.mic, s.enc = nil, nil
+	pcs, enc, room := []*webrtc.PeerConnection{s.pub, s.sub}, s.enc, s.lk
+	s.mic, s.enc, s.lk = nil, nil, nil
 	screen, capture, camera := s.vid.screen, s.vid.capture, s.vid.camera
 	s.vid.screen, s.vid.screenOn, s.vid.capture, s.vid.camera = nil, false, nil, nil
 	if screen != nil {
@@ -931,6 +938,10 @@ func (s *Session) closePeers() {
 		if pc != nil {
 			pc.Close()
 		}
+	}
+
+	if room != nil {
+		room.Disconnect()
 	}
 
 	if enc != nil {
